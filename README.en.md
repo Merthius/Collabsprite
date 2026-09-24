@@ -1,3 +1,5 @@
+<img src="branding/collabsprite-icon.svg" width="96" height="96" alt="Collabsprite logo: two colorful pixel halves make one heart">
+
 # Collabsprite — English guide
 
 [Deutsch](README.md) · [Download v0.4.2 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.4.2/Collabsprite.aseprite-extension)
@@ -61,3 +63,7 @@ The WebSocket connection has **no built-in end-to-end encryption**; use a truste
 RGB/RGBA raster layers are supported, with limits of 8 participants, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, layer properties, frame durations, selections, zoom, and color choices are not fully synchronized. See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
 
 Collabsprite is [MIT-licensed](LICENSE) and is not affiliated with Aseprite or Radmin VPN. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Logo
+
+The cyan and orange halves form one pixel heart: two people, one shared image. Use the [512 × 512 PNG](branding/collabsprite-icon-512.png) for Discord or the [scalable SVG](branding/collabsprite-icon.svg). A [GitHub social preview](branding/collabsprite-social-preview.png) is also included. These graphics are MIT-licensed like the code.
