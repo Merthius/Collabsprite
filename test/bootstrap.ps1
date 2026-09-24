@@ -15,10 +15,11 @@ try {
     [IO.Compression.ZipFile]::ExtractToDirectory($package,$testRoot)
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $launcher = Join-Path $testRoot 'Launcher.vbs'
-    $scriptHost = Start-Process -FilePath wscript.exe -ArgumentList @('//B','//Nologo',('"' + $launcher + '"'),'Host','Test',$port,('"' + $resultPath + '"'),'0') -WindowStyle Hidden -PassThru
-    if (-not $scriptHost.WaitForExit(4000)) { throw 'Launcher beendet sich nicht rechtzeitig.' }
+    # Direct invocation inherits this process's TEMP like Lua os.execute does.
+    # Start-Process can instead use Explorer's environment on GitHub runners.
+    & cscript.exe //B //Nologo $launcher Host Test $port $resultPath 0
     $watch.Stop()
-    if ($scriptHost.ExitCode -ne 0) { throw ('Launcher fehlgeschlagen: ' + $scriptHost.ExitCode) }
+    if ($LASTEXITCODE -ne 0) { throw ('Launcher fehlgeschlagen: ' + $LASTEXITCODE) }
     if ($watch.Elapsed.TotalSeconds -gt 4) { throw ('Aseprite-Start wäre zu langsam: ' + $watch.Elapsed.TotalSeconds) }
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     $result = ''
