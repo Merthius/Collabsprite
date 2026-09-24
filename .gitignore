@@ -1,0 +1,20 @@
+node_modules/
+data/
+test-results/
+dist/
+install-backups/
+00_Codex/
+00_Codex_Rolle.txt
+TESTERGEBNISSE.md
+*.aseprite
+*.ase
+*.aseprite-data
+*.env
+*.env.*
+*.log
+# Older local helper scripts; the extension starts the host automatically.
+ERWEITERUNG_INSTALLIEREN.cmd
+RADMIN_FIREWALL_EINRICHTEN.cmd
+SERVER_LOKAL_STARTEN.cmd
+SERVER_STARTEN.cmd
+firewall-bootstrap.ps1
