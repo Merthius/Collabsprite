@@ -27,7 +27,7 @@ async function connect(port,hello,address='127.0.0.1') {
     return new Promise((resolve,reject)=>{const p={type,resolve};p.timeout=setTimeout(()=>reject(Error('Timeout '+type)),4000);pending.push(p);});
   };
   await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
-  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:2,...hello});
+  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:3,...hello});
   return {ws,send,next};
 }
 async function discover(port) {
@@ -38,7 +38,7 @@ async function discover(port) {
       const timeout=setTimeout(()=>reject(Error('Timeout UDP discovery')),2000);
       socket.once('message',data=>{clearTimeout(timeout);resolve(JSON.parse(data.toString()));});
     });
-    socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V2'),port,'127.0.0.1');
+    socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V3'),port,'127.0.0.1');
     return await reply;
   } finally {socket.close();}
 }
@@ -52,22 +52,22 @@ test('Three real WebSocket clients converge; authorization and restore',async t=
   assert.equal((await a.next('invite')).invite,welcome.invite);
   const b=await connect(service.port,{mode:'join',name:'B',room:code,token});await b.next('welcome');
   const c=await connect(service.port,{mode:'join',name:'C',room:code,token});await c.next('welcome');
-  a.send({type:'paint',seq:1,patches:[{layer:1,frame:1,runs:[0,2,0xff123456]}]});
+  a.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[0,2,0xff123456]}]});
   const events=await Promise.all([a,b,c].map(x=>x.next('patch')));
   assert.deepEqual(events[0],events[2]);
-  b.send({type:'paint',seq:1,patches:[{layer:1,frame:1,runs:[0,1,0xffabcdef]}]});
+  b.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[0,1,0xffabcdef]}]});
   await Promise.all([a,b,c].map(x=>x.next('patch')));
   a.send({type:'undo'});
   const undone=await Promise.all([a,b,c].map(x=>x.next('patch')));
   assert.deepEqual(undone[1].patches[0].runs,[1,1,0]);
-  a.send({type:'append',kind:'frame'});await Promise.all([a,b,c].map(x=>x.next('append')));
+  a.send({type:'append',kind:'frame',structure:0});await Promise.all([a,b,c].map(x=>x.next('append')));
   const bad=await connect(service.port,{mode:'join',room:code,token:'bad'});
   assert.match((await bad.next('error')).message,/Einladungscode/);
-  c.send({type:'append',kind:'layer'});
+  c.send({type:'append',kind:'layer',structure:1});
   const guestLayer=await Promise.all([a,b,c].map(x=>x.next('append')));
   assert.equal(guestLayer[0].index,2);
   assert.deepEqual(guestLayer[0],guestLayer[2]);
-  b.send({type:'append',kind:'frame',source:1});
+  b.send({type:'append',kind:'frame',source:1,structure:2});
   const guestFrame=await Promise.all([a,b,c].map(x=>x.next('append')));
   assert.equal(guestFrame[0].index,3);
   assert.deepEqual(guestFrame[0],guestFrame[2]);
@@ -83,7 +83,7 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
   t.after(()=>service.close());
   assert.deepEqual(await (await fetch(`http://127.0.0.1:${service.port}/status`)).json(),
-    {app:'Collabsprite',protocol:2,localOnly:true,port:service.port});
+    {app:'Collabsprite',protocol:3,localOnly:true,port:service.port});
   const a=await connect(service.port,{mode:'host',name:'Local A',snapshot:snapshot()});
   const welcome=await a.next('welcome');
   assert.equal(welcome.localOnly,true);
@@ -102,14 +102,74 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
     const {stdout}=await execFileAsync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',probe,String(service.discoveryPort),'-LoopbackOnly'],{timeout:15000});
     assert.equal(JSON.parse(stdout.trim().split(/\r?\n/)[0]).rooms[0].invite,welcome.invite);
   }
-  a.send({type:'paint',seq:1,patches:[{layer:1,frame:1,runs:[0,1,0xff123456]}]});
+  a.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[0,1,0xff123456]}]});
   await Promise.all([a.next('patch'),b.next('patch')]);
-  b.send({type:'paint',seq:1,patches:[{layer:1,frame:1,runs:[1,1,0xff654321]}]});
+  b.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[1,1,0xff654321]}]});
   await Promise.all([a.next('patch'),b.next('patch')]);
   a.send({type:'undo'});
   const result=await b.next('patch');
   assert.deepEqual(result.patches,[{layer:1,frame:1,runs:[0,1,0]}]);
   assert.equal(service.rooms.get(room).core.cells.get('1:1').pixels[1],0xff654321);
+});
+test('Peers receive layer/frame deletion, metadata, cursor presence and join notices',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
+  t.after(()=>service.close());
+  const a=await connect(service.port,{mode:'host',name:'Host',snapshot:snapshot()});
+  const welcome=await a.next('welcome');
+  const [,room,token]=welcome.invite.split('/');
+  const b=await connect(service.port,{mode:'join',name:'Freund',room,token});
+  const guest=await b.next('welcome');
+  await b.next('presence');
+  let members;
+  do { members=(await a.next('presence')).members; } while (!members.some(member=>member.author===guest.author));
+  a.send({type:'cursor',x:5,y:6,frame:1,layer:1,structure:0});
+  assert.deepEqual((await b.next('cursor')).cursor,{x:5,y:6,frame:1,layer:1});
+  await new Promise(resolve=>setTimeout(resolve,60));
+  a.send({type:'cursor'});
+  assert.equal((await b.next('cursor')).cursor,null);
+  await new Promise(resolve=>setTimeout(resolve,60));
+  a.send({type:'cursor',x:7,y:8,frame:1,layer:1,structure:0});
+  assert.equal((await b.next('cursor')).cursor.x,7);
+  b.send({type:'append',kind:'layer',structure:0});
+  await Promise.all([a.next('append'),b.next('append')]);
+  const resetPresence=await b.next('presence');
+  assert.equal(resetPresence.members.find(member=>member.author===welcome.author).cursor,null);
+  a.send({type:'append',kind:'frame',structure:1});
+  await Promise.all([a.next('append'),b.next('append')]);
+  b.send({type:'property',kind:'layer',index:2,field:'name',value:'Figur',structure:2});
+  assert.equal((await a.next('property')).value,'Figur');
+  await b.next('property');
+  a.send({type:'property',kind:'frame',index:2,field:'duration',value:300,structure:2});
+  assert.equal((await b.next('property')).value,300);
+  b.send({type:'celProperty',layer:2,frame:2,field:'opacity',value:125,structure:2});
+  assert.equal((await a.next('celProperty')).value,125);
+  a.send({type:'palette',colors:[0xff112233,0xff445566]});
+  assert.deepEqual((await b.next('palette')).colors,[0xff112233,0xff445566]);
+  b.send({type:'delete',kind:'frame',index:1,structure:2});
+  const frameDelete=await a.next('delete');
+  await b.next('delete');
+  assert.equal(frameDelete.kind,'frame');
+  assert.equal(frameDelete.structure,3);
+  a.send({type:'delete',kind:'layer',index:1,structure:3});
+  const layerDelete=await b.next('delete');
+  assert.equal(layerDelete.kind,'layer');
+  assert.equal(layerDelete.layers[0].name,'Figur');
+  assert.equal(service.rooms.get(room).core.snapshot().cels.length,1);
+});
+test('A multi-frame deletion reaches peers as ordered, atomic events',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
+  t.after(()=>service.close());
+  const state=snapshot();state.frames=[100,100,100,100];
+  const host=await connect(service.port,{mode:'host',name:'Host',snapshot:state});
+  const welcome=await host.next('welcome');
+  const [,room,token]=welcome.invite.split('/');
+  const guest=await connect(service.port,{mode:'join',name:'Gast',room,token});
+  await guest.next('welcome');
+  host.send({type:'deleteMany',kind:'frame',indices:[1,3],structure:0});
+  const events=await Promise.all([guest.next('delete'),guest.next('delete')]);
+  assert.deepEqual(events.map(event=>event.index),[3,1]);
+  assert.deepEqual(events.map(event=>event.structure),[1,2]);
+  assert.equal(service.rooms.get(room).core.meta.frames.length,2);
 });
 test('LAN subnet and Radmin addresses share one invitation format',()=>{
   const source={lan:[{family:'IPv4',address:'192.168.5.8',netmask:'255.255.255.0',internal:false}],
@@ -137,7 +197,7 @@ test('A second client can connect through this PC\'s LAN interface',async t=>{
   const [,room,token]=welcome.invite.split('/');
   const guest=await connect(service.port,{mode:'join',name:'LAN-Gast',room,token},lan.address);
   assert.equal((await guest.next('welcome')).room,room);
-  host.send({type:'paint',seq:1,patches:[{layer:1,frame:1,runs:[0,1,0xff112233]}]});
+  host.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[0,1,0xff112233]}]});
   assert.deepEqual((await guest.next('patch')).patches,[{layer:1,frame:1,runs:[0,1,0xff112233]}]);
 });
 test('An available Radmin adapter is advertised and accepts a client',async t=>{

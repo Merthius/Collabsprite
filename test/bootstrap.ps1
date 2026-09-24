@@ -31,7 +31,7 @@ try {
     if (-not (Test-Path -LiteralPath $resultPath)) { throw 'Worker hat keinen Status geliefert.' }
     if ($result -notlike 'READY 18765*') { throw ('Worker meldet: ' + $result) }
     $status = Invoke-RestMethod -Uri ('http://127.0.0.1:' + $port + '/status') -TimeoutSec 2
-    if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 2 -or -not $status.localOnly) { throw 'Falscher Serverstatus.' }
+    if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 3 -or -not $status.localOnly) { throw 'Falscher Serverstatus.' }
     $joinResult = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $testRoot 'Bootstrap.ps1') -Action Join -Mode Network -Port $port -Endpoints ('127.0.0.1:' + $port)
     if ($LASTEXITCODE -ne 0 -or $joinResult -ne ('READY 127.0.0.1:' + $port)) { throw ('Join-Adresse nicht erkannt: ' + $joinResult) }
     $listener = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction Stop | Select-Object -First 1

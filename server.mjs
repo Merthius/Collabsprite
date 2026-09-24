@@ -26,7 +26,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   const server = http.createServer((req, res) => {
     if (req.url === '/status' && allowedPeer(req.socket.remoteAddress, localOnly)) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 2, localOnly, port: server.address()?.port }));
+      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 3, localOnly, port: server.address()?.port }));
       return;
     }
     if (!allowedPeer(req.socket.remoteAddress, localOnly)) { res.writeHead(403); res.end(); return; }
@@ -41,7 +41,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   };
   const broadcast = (room, event) => { for (const client of room.clients) send(client, event); };
   const histories = room => { for (const client of room.clients) send(client, { type: 'history', ...room.core.history(client.author) }); };
-  const presence = room => broadcast(room, { type: 'presence', members: [...room.clients].map(c => ({ name: c.name, author: c.author })) });
+  const presence = room => broadcast(room, { type: 'presence', members: [...room.clients].map(c => ({ name: c.name, author: c.author, cursor: c.cursor || null })) });
   wss.on('connection', (socket, request) => {
     const address = String(request.socket.remoteAddress || '').replace(/^::ffff:/, '');
     if (!allowedPeer(address, localOnly))
@@ -62,7 +62,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
         if (binary) throw new Error('Nur JSON-Nachrichten erlaubt');
         const message = JSON.parse(data.toString());
         if (!socket.room) {
-          if (message.type !== 'hello' || message.protocol !== 2) throw new Error('Unpassende Erweiterungsversion');
+          if (message.type !== 'hello' || message.protocol !== 3) throw new Error('Unpassende Erweiterungsversion');
           socket.name = String(message.name || 'Kuenstler').replace(/[\x00-\x1f]/g, '').slice(0, 30);
           socket.author = randomBytes(16).toString('hex');
           let room, code, token;
@@ -89,7 +89,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           clearTimeout(greetingTimeout);
           socket.room = room; socket.code = code; room.clients.add(socket); room.core.user(socket.author);
           const actualPort = server.address().port;
-          send(socket, { type: 'welcome', protocol: 2, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision,
+          send(socket, { type: 'welcome', protocol: 3, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision, structure: room.core.structure,
             invite: token ? invite(localOnly ? [] : addresses(), actualPort, code, token) : undefined,
             localOnly, restored: room.restored, snapshot: room.core.snapshot() });
           histories(room); presence(room);
@@ -98,15 +98,55 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
         }
         const room = socket.room;
         let event;
-        if (message.type === 'paint') event = room.core.paint(socket.author, message.seq, message.patches);
+        if (message.type === 'paint') event = room.core.paint(socket.author, message.seq, message.patches, message.structure);
         else if (message.type === 'undo' || message.type === 'redo') event = room.core.undoRedo(socket.author, message.type === 'redo');
         else if (message.type === 'append') {
+          if (message.structure !== room.core.structure) throw new Error('Dokumentstruktur hat sich geaendert; bitte neu verbinden');
           event = room.core.append(message.kind, message.name, message.source);
+        } else if (message.type === 'delete') {
+          if (message.structure !== room.core.structure) throw new Error('Dokumentstruktur hat sich geaendert; bitte neu verbinden');
+          event = room.core.delete(message.kind, message.index);
+        } else if (message.type === 'deleteMany') {
+          if (message.structure !== room.core.structure) throw new Error('Dokumentstruktur hat sich geaendert; bitte neu verbinden');
+          const events = room.core.deleteMany(message.kind, message.indices);
+          for (const deletion of events) broadcast(room, deletion);
+          for (const client of room.clients) client.cursor = null;
+          room.dirty = true; presence(room); histories(room);
+          return;
+        } else if (message.type === 'property') {
+          if (message.structure !== room.core.structure) throw new Error('Dokumentstruktur hat sich geaendert; bitte neu verbinden');
+          event = room.core.setProperty(message.kind, message.index, message.field, message.value);
+        } else if (message.type === 'celProperty') {
+          if (message.structure !== room.core.structure) throw new Error('Dokumentstruktur hat sich geaendert; bitte neu verbinden');
+          event = room.core.setCelProperty(message.layer, message.frame, message.field, message.value);
+        } else if (message.type === 'palette') {
+          event = room.core.setPalette(message.colors);
+        } else if (message.type === 'cursor') {
+          const now = Date.now();
+          if (now - (socket.lastCursorAt || 0) < 50) return;
+          socket.lastCursorAt = now;
+          if (message.x == null || message.y == null) socket.cursor = null;
+          else {
+            if (message.structure !== room.core.structure) return;
+            const { width, height, frames, layers } = room.core.meta;
+            const x = Number(message.x), y = Number(message.y), frame = Number(message.frame), layer = Number(message.layer);
+            if (![x, y, frame, layer].every(Number.isSafeInteger) || x < 0 || x >= width || y < 0 || y >= height || frame < 1 || frame > frames.length || layer < 1 || layer > layers.length)
+              throw new Error('Ungueltige Cursorposition');
+            socket.cursor = { x, y, frame, layer };
+          }
+          for (const client of room.clients) if (client !== socket) send(client, { type: 'cursor', author: socket.author, name: socket.name, cursor: socket.cursor });
+          return;
         } else if (message.type === 'invite' && room.hostAuthor === socket.author) {
           send(socket, { type: 'invite', invite: invite(localOnly ? [] : addresses(), server.address().port, socket.code, room.discoveryToken) }); return;
         } else if (message.type === 'ping') { send(socket, { type: 'pong', nonce: message.nonce }); return; }
         else throw new Error('Unbekannte Nachricht');
-        if (event) { broadcast(room, event); room.dirty = true; }
+        if (event) {
+          broadcast(room, event); room.dirty = true;
+          if (event.type === 'append' || event.type === 'delete') {
+            for (const client of room.clients) client.cursor = null;
+            presence(room);
+          }
+        }
         histories(room);
       } catch (error) {
         send(socket, { type: 'error', message: error.message });
@@ -144,7 +184,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   await new Promise((accept, reject) => { server.once('error', reject); server.listen(port, host, accept); });
   const discovery = dgram.createSocket('udp4');
   discovery.on('message', (data, peer) => {
-    if (data.toString() !== 'COLLABSPRITE_DISCOVER_V2') return;
+    if (data.toString() !== 'COLLABSPRITE_DISCOVER_V3') return;
     if (!allowedPeer(peer.address, localOnly)) return;
     const address = replyAddress(peer.address, localOnly);
     if (!address) return;
@@ -154,7 +194,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
       visible.push({ name: room.hostName || 'Kuenstler', image: room.core.meta.name,
         invite: invite([address], server.address().port, code, room.discoveryToken) });
     }
-    const response = Buffer.from(JSON.stringify({ protocol: 2, rooms: visible }));
+    const response = Buffer.from(JSON.stringify({ protocol: 3, rooms: visible }));
     if (response.length <= 1200) discovery.send(response, peer.port, peer.address);
   });
   discovery.on('error', error => log(`Sitzungssuche: ${error.message}`));

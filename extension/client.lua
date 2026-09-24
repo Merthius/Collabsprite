@@ -2,7 +2,7 @@ local directory=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local C=dofile(app.fs.joinPath(directory,'codec.lua'))
 local Client={};Client.__index=Client
 local blocked={}
-for name in ('RemoveLayer RemoveFrame DuplicateLayer DuplicateSprite FlattenLayers FlattenVisibleLayers MergeDownLayer LayerFromBackground BackgroundFromLayer LayerProperties FrameProperties CelProperties SpriteProperties SpriteSize CanvasSize ChangePixelFormat CropSprite TrimSprite RotateCanvas ReverseFrames MoveLayer LinkCels UnlinkCel SetPalette ColorQuantization SetLayerOpacity SetLayerBlendMode ImportSpriteSheet NewSpriteFromSelection'):gmatch('%S+') do blocked[name]=true end
+for name in ('DuplicateSprite FlattenLayers FlattenVisibleLayers MergeDownLayer LayerFromBackground BackgroundFromLayer SpriteProperties SpriteSize CanvasSize ChangePixelFormat CropSprite TrimSprite RotateCanvas ReverseFrames MoveLayer LinkCels UnlinkCel ColorQuantization ImportSpriteSheet NewSpriteFromSelection'):gmatch('%S+') do blocked[name]=true end
 local function plain(value)
   if type(value)~='table' and type(value)~='userdata' then return value end
   local result={}
@@ -16,7 +16,7 @@ local function plain(value)
 end
 function Client.new(notify)
   return setmetatable({notify=notify or function() end,inbox={},pending={},seq=0,connected=false,connecting=false,
-    applying=false,dirty=false,ticks=0,undoCount=0,redoCount=0,status='Nicht verbunden',revision=0},Client)
+    applying=false,dirty=false,ticks=0,undoCount=0,redoCount=0,status='Nicht verbunden',revision=0,structure=0},Client)
 end
 function Client:statusText(text)
   self.status=text;self.notify(self)
@@ -45,14 +45,14 @@ function Client:connect(url,hello)
 end
 function Client:host(sprite,name,port)
   local snapshot=C.capture(sprite)
-  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=2,mode='host',name=name,snapshot=snapshot})
+  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=3,mode='host',name=name,snapshot=snapshot})
 end
 function Client:join(invite,name)
   invite=invite:gsub('%s',''):gsub('^ws://','')
   local address,code,token=invite:match('^([%w%.%-]+:%d+)/(%x+)/(%x+)$')
   assert(address and #code==8 and #token==32,'Bitte den gesamten Einladungscode vom Host einfuegen.')
   self.invite=invite
-  self:connect('ws://'..address,{type='hello',protocol=2,mode='join',name=name,room=code,token=token})
+  self:connect('ws://'..address,{type='hello',protocol=3,mode='join',name=name,room=code,token=token})
 end
 function Client:disconnect(reason)
   local wasActive=self.connected or self.connecting
@@ -66,6 +66,7 @@ end
 function Client:capture()
   if not self.connected or self.applying then return end
   C.checkTopology(self.sprite,self.mapping,self.meta)
+  self:properties()
   local scan=C.scan(self.sprite,self.mapping,self.baseline)
   local patches={}
   for key,current in pairs(scan) do
@@ -78,9 +79,54 @@ function Client:capture()
   self.baseline=scan;self.dirty=false
   if #patches>0 then
     self.seq=self.seq+1
-    local op={type='paint',seq=self.seq,patches=patches}
+    local op={type='paint',seq=self.seq,structure=self.structure,patches=patches}
     self.pending[#self.pending+1]=op
     self:send(op)
+  end
+end
+function Client:properties()
+  if not self.connected or self.applying then return end
+  C.checkTopology(self.sprite,self.mapping,self.meta)
+  local fields={'name','opacity','blend','visible','editable','continuous'}
+  for i,layer in ipairs(self.mapping) do
+    local old=self.meta.layers[i]
+    local current={name=layer.name,opacity=layer.opacity or 255,blend=layer.blendMode or BlendMode.NORMAL,
+      visible=layer.isVisible,editable=layer.isEditable,continuous=not layer.isGroup and layer.isContinuous or false}
+    for _,field in ipairs(fields) do
+      if current[field]~=old[field] then
+        old[field]=current[field]
+        self:send{type='property',kind='layer',index=i,field=field,value=current[field],structure=self.structure}
+      end
+    end
+  end
+  for f,frame in ipairs(self.sprite.frames) do
+    local ms=math.max(1,math.floor(frame.duration*1000+0.5))
+    if ms~=self.meta.frames[f] then
+      self.meta.frames[f]=ms
+      self:send{type='property',kind='frame',index=f,field='duration',value=ms,structure=self.structure}
+    end
+  end
+  for key,cell in pairs(self.cells) do
+    local cel=self.mapping[cell.layer]:cel(cell.frame)
+    local currentOpacity=cel and cel.opacity or 255
+    local currentZ=cel and cel.zIndex or 0
+    if currentOpacity~=cell.opacity then
+      cell.opacity=currentOpacity
+      self:send{type='celProperty',layer=cell.layer,frame=cell.frame,field='opacity',value=currentOpacity,structure=self.structure}
+    end
+    if currentZ~=cell.z then
+      cell.z=currentZ
+      self:send{type='celProperty',layer=cell.layer,frame=cell.frame,field='z',value=currentZ,structure=self.structure}
+    end
+  end
+  local palette={}
+  local pal=self.sprite.palettes[1]
+  if pal then for i=0,math.min(#pal,256)-1 do palette[#palette+1]=pal:getColor(i).rgbaPixel end end
+  local changed=#palette~=#self.meta.palette
+  if not changed then for i,value in ipairs(palette) do if value~=self.meta.palette[i] then changed=true;break end end end
+  if changed then
+    self.meta.palette=palette
+    self:send{type='palette',colors=palette}
   end
 end
 function Client:action(kind)
@@ -90,24 +136,57 @@ function Client:action(kind)
 end
 function Client:append(kind,name,source)
   if not self.connected then return end
-  self:capture();self:send{type='append',kind=kind,name=name,source=source}
+  self:capture();self:send{type='append',kind=kind,name=name,source=source,structure=self.structure}
+end
+function Client:delete(kind,index)
+  if not self.connected then return end
+  self:capture()
+  self:send{type='delete',kind=kind,index=index,structure=self.structure}
+end
+function Client:deleteMany(kind,indices)
+  if not self.connected then return end
+  self:capture()
+  self:send{type='deleteMany',kind=kind,indices=indices,structure=self.structure}
+end
+function Client:updateCursor()
+  if not self.connected then return end
+  local editor=app.editor
+  local x,y,frame,layer
+  if editor and editor.sprite==self.sprite then
+    local point=editor.spritePos
+    if point and point.x>=0 and point.y>=0 and point.x<self.meta.width and point.y<self.meta.height then
+      x,y=point.x,point.y
+      frame=app.frame and app.frame.frameNumber or 1
+      for i,item in ipairs(self.mapping) do if item==app.layer then layer=i;break end end
+    end
+  end
+  local key=x and table.concat({self.structure,x,y,frame,layer or 1},':') or 'outside'
+  if key==self.lastCursor then return end
+  self.lastCursor=key
+  if x then self:send{type='cursor',x=x,y=y,frame=frame,layer=layer or 1,structure=self.structure}
+  else self:send{type='cursor'} end
 end
 function Client:beforeCommand(ev)
   if not self.connected or app.sprite~=self.sprite or self.applying then return end
   if ev.name=='Undo' or ev.name=='Redo' then
     ev.stopPropagation();self:action(ev.name=='Undo' and 'undo' or 'redo')
+  elseif ev.name=='DuplicateLayer' then
+    ev.stopPropagation()
+    local selected=app.layer
+    if selected and selected.isGroup then
+      app.tip('Collabsprite: Gruppen duplizieren ist noch nicht unterstuetzt.',5)
+      return
+    end
+    local source=nil
+    for i,layer in ipairs(self.mapping) do if layer==selected then source=i;break end end
+    if source then self:append('layer',selected.name..' Kopie',source) end
   elseif ev.name=='NewLayer' then
     ev.stopPropagation()
     local params=ev.params or {}
-    if params.viaCut then
-      app.tip('Collabsprite: Ausschneiden als neue Ebene geht hier noch nicht. Kopieren oder neue Ebene verwenden.',5)
+    if params.group or params.reference or params.tilemap or params.fromFile or params.fromClipboard or params.viaCut or params.viaCopy then
+      app.tip('Collabsprite: Diese besondere Ebenenart oder Auswahl-Operation wird noch nicht synchronisiert.',5)
     else
-      local selected=app.layer
-      local source=nil
-      if params.viaCopy and selected then
-        for i,layer in ipairs(self.mapping) do if layer==selected then source=i;break end end
-      end
-      self:append('layer',nil,source)
+      self:append('layer',params.name,nil)
     end
   elseif ev.name=='NewFrame' then
     ev.stopPropagation()
@@ -115,6 +194,22 @@ function Client:beforeCommand(ev)
     local source=nil
     if params.content~='empty' then source=app.frame and app.frame.frameNumber or #self.meta.frames end
     self:append('frame',nil,source)
+  elseif ev.name=='RemoveLayer' or ev.name=='RemoveFrame' then
+    ev.stopPropagation()
+    local kind=ev.name=='RemoveLayer' and 'layer' or 'frame'
+    local selected=kind=='layer' and app.range.layers or app.range.frames
+    local indices={}
+    if selected and #selected>0 then
+      for _,item in ipairs(selected) do
+        if kind=='frame' then indices[#indices+1]=item.frameNumber
+        else for i,layer in ipairs(self.mapping) do if layer==item then indices[#indices+1]=i;break end end end
+      end
+    else
+      if kind=='frame' and app.frame then indices[1]=app.frame.frameNumber
+      elseif kind=='layer' then for i,layer in ipairs(self.mapping) do if layer==app.layer then indices[1]=i;break end end end
+    end
+    if #indices==1 then self:delete(kind,indices[1])
+    elseif #indices>1 then self:deleteMany(kind,indices) end
   elseif ev.name=='UndoHistory' or blocked[ev.name] then
     ev.stopPropagation()
     app.tip('Collabsprite: Diese Strukturaktion ist in der gemeinsamen Sitzung noch nicht unterstuetzt.',5)
@@ -137,7 +232,7 @@ function Client:receive(message)
     self.sprite,self.mapping=C.create(self.meta,self.cells)
     self.baseline=C.scan(self.sprite,self.mapping)
     self.applying=false
-    self.revision=message.revision;self.connected=true;self.connecting=false
+    self.revision=message.revision;self.structure=message.structure or 0;self.connected=true;self.connecting=false
     self.changeListener=self.sprite.events:on('change',function()
       if not self.applying then self.dirty=true end
     end)
@@ -145,7 +240,35 @@ function Client:receive(message)
   elseif message.type=='history' then
     self.undoCount=message.undo;self.redoCount=message.redo;self.notify(self)
   elseif message.type=='presence' then
-    self.members=message.members;self.notify(self)
+    local previous={}
+    for _,member in ipairs(self.members or {}) do previous[member.author]=true end
+    self.members=message.members
+    local active={}
+    self.remoteCursors=self.remoteCursors or {}
+    for _,member in ipairs(self.members or {}) do
+      if member.author~=self.author then
+        active[member.author]=true
+        local cursor=member.cursor
+        self.remoteCursors[member.author]=cursor and {name=member.name,x=cursor.x,y=cursor.y,
+          frame=cursor.frame,layer=cursor.layer,seen=os.time()} or nil
+      end
+    end
+    for author in pairs(self.remoteCursors) do
+      if not active[author] then self.remoteCursors[author]=nil end
+    end
+    if self.hadPresence then
+      for _,member in ipairs(self.members or {}) do
+        if member.author~=self.author and not previous[member.author] then
+          app.tip(member.name..' ist der Sitzung beigetreten.',3)
+        end
+      end
+    end
+    self.hadPresence=true;self.notify(self)
+  elseif message.type=='cursor' then
+    self.remoteCursors=self.remoteCursors or {}
+    self.remoteCursors[message.author]=message.cursor and {name=message.name,x=message.cursor.x,y=message.cursor.y,
+      frame=message.cursor.frame,layer=message.cursor.layer,seen=os.time()} or nil
+    self.notify(self)
   elseif message.type=='invite' then
     self.invite=message.invite
     if self.copyWhenReady then
@@ -166,12 +289,16 @@ function Client:receive(message)
     self.revision=message.revision;self.needsRender=true
   elseif message.type=='append' then
     assert(message.revision==self.revision+1,'Synchronisationsfolge unterbrochen')
+    assert(message.structure==self.structure+1,'Strukturfolge unterbrochen')
+    assert(#self.pending==0,'Eigene Aenderungen vor Strukturwechsel noch nicht bestätigt')
     self.applying=true
     app.transaction('Collabsprite: '..(message.kind=='layer' and 'Neue Ebene' or 'Neues Frame'),function()
       if message.kind=='layer' then
         local layer=self.sprite:newLayer();layer.name=message.layer.name
         layer.parent=self.sprite;layer.stackIndex=#self.sprite.layers
         layer.opacity=message.layer.opacity;layer.blendMode=message.layer.blend;layer.isVisible=message.layer.visible
+        layer.isEditable=message.layer.editable~=false
+        if not message.layer.group then layer.isContinuous=message.layer.continuous==true end
         self.mapping[message.index]=layer;self.meta.layers[message.index]=message.layer
       else
         self.sprite:newEmptyFrame(message.index)
@@ -192,7 +319,89 @@ function Client:receive(message)
       cell.opacity=cel.opacity or 255;cell.z=cel.z or 0
     end
     self.baseline=C.scan(self.sprite,self.mapping)
-    self.applying=false;self.revision=message.revision;self.needsRender=true
+    self.applying=false;self.revision=message.revision;self.structure=message.structure;self.needsRender=true
+  elseif message.type=='delete' then
+    assert(message.revision==self.revision+1 and message.structure==self.structure+1,'Strukturfolge unterbrochen')
+    assert(#self.pending==0,'Eigene Aenderungen vor Strukturwechsel noch nicht bestätigt')
+    self.applying=true
+    if message.kind=='layer' then
+      local target=assert(self.mapping[message.index],'Unbekannte Ebene')
+      app.transaction('Collabsprite: Ebene löschen',function() self.sprite:deleteLayer(target) end)
+      local old=self.cells;self.cells={}
+      for key,cell in pairs(old) do
+        if cell.layer<message.index then self.cells[key]=cell
+        elseif cell.layer>=message.index+message.count then
+          cell.layer=cell.layer-message.count
+          self.cells[C.key(cell.layer,cell.frame)]=cell
+        end
+      end
+      for _=1,message.count do table.remove(self.mapping,message.index) end
+      self.meta.layers=message.layers
+    else
+      app.transaction('Collabsprite: Frame löschen',function() self.sprite:deleteFrame(message.index) end)
+      local old=self.cells;self.cells={}
+      for key,cell in pairs(old) do
+        if cell.frame<message.index then self.cells[key]=cell
+        elseif cell.frame>message.index then
+          cell.frame=cell.frame-1
+          self.cells[C.key(cell.layer,cell.frame)]=cell
+        end
+      end
+      table.remove(self.meta.frames,message.index)
+    end
+    self.baseline=C.scan(self.sprite,self.mapping)
+    self.applying=false;self.revision=message.revision;self.structure=message.structure
+    app.refresh()
+  elseif message.type=='property' then
+    assert(message.revision==self.revision+1,'Synchronisationsfolge unterbrochen')
+    self.applying=true
+    app.transaction('Collabsprite: Eigenschaft',function()
+      if message.kind=='layer' then
+        local layer=assert(self.mapping[message.index],'Unbekannte Ebene')
+        self.meta.layers[message.index][message.field]=message.value
+        local field={name='name',opacity='opacity',blend='blendMode',visible='isVisible',editable='isEditable',continuous='isContinuous'}
+        assert(field[message.field],'Unbekannte Ebeneneigenschaft')
+        layer[field[message.field]]=message.value
+      else
+        assert(message.kind=='frame' and message.field=='duration','Unbekannte Frame-Eigenschaft')
+        self.meta.frames[message.index]=message.value
+        self.sprite.frames[message.index].duration=message.value/1000
+      end
+    end)
+    self.applying=false;self.revision=message.revision
+  elseif message.type=='celProperty' then
+    assert(message.revision==self.revision+1,'Synchronisationsfolge unterbrochen')
+    local cell=assert(self.cells[C.key(message.layer,message.frame)],'Unbekanntes Cel')
+    self.applying=true
+    app.transaction('Collabsprite: Cel-Eigenschaft',function()
+      cell[message.field]=message.value
+      local cel=self.mapping[message.layer]:cel(message.frame)
+      if not cel then
+        C.writeCel(self.sprite,self.mapping[message.layer],message.frame,cell.bytes,cell.opacity,cell.z)
+        cel=self.mapping[message.layer]:cel(message.frame)
+      end
+      if cel then
+        if message.field=='opacity' then cel.opacity=message.value
+        elseif message.field=='z' then cel.zIndex=message.value
+        else error('Unbekannte Cel-Eigenschaft') end
+      end
+    end)
+    self.baseline=C.scan(self.sprite,self.mapping)
+    self.applying=false;self.revision=message.revision
+  elseif message.type=='palette' then
+    assert(message.revision==self.revision+1,'Synchronisationsfolge unterbrochen')
+    self.applying=true
+    app.transaction('Collabsprite: Palette',function()
+      self.meta.palette=message.colors
+      if #message.colors>0 then
+        local pal=Palette(#message.colors)
+        for i,value in ipairs(message.colors) do
+          pal:setColor(i-1,Color{r=value&255,g=(value>>8)&255,b=(value>>16)&255,a=(value>>24)&255})
+        end
+        self.sprite:setPalette(pal)
+      end
+    end)
+    self.applying=false;self.revision=message.revision
   end
 end
 function Client:render()
@@ -243,7 +452,9 @@ function Client:tick()
       -- Do not scan while the mouse is held: Aseprite can expose a transient
       -- cel position mid-stroke, which looks like the whole image jumping
       -- on peers. Sprite.change / aftercommand mark completed edits instead.
-      if self.dirty or #self.inbox>0 then self:capture() end
+      if self.dirty or #self.inbox>0 then self:capture()
+      elseif self.ticks%30==0 then self:properties() end
+      if self.ticks%3==0 then self:updateCursor() end
       if self.ticks%300==0 then self:send{type='ping',nonce=self.ticks} end
     end
     local inbox=self.inbox;self.inbox={}

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0-beta.1 — in Entwicklung
+
+- Löschen einzelner oder mehrerer ausgewählter Frames und Ebenen (einschließlich einer vorhandenen Gruppe samt Unterebenen) wird an alle Teilnehmenden übertragen. Überlebende Cels und persönliche Pixel-Verläufe werden neu zugeordnet.
+- Layer duplizieren sowie Ebenenname, Sichtbarkeit, Sperre, Deckkraft, Mischmodus und durchgehende Cels; Frame-Dauer, Cel-Deckkraft/Z-Index und die erste Palette werden synchronisiert.
+- Beitritt erscheint kurz als Aseprite-Statushinweis. Cursorpositionen werden über das Netz übertragen und bei Verlassen der Zeichenfläche ausgeblendet; eine störungsfreie Anzeige als Namens-Tag direkt auf dem Canvas ist noch offen.
+- Protokoll 3 sichert indexbezogene Aktionen gegen veraltete Ebenen-/Frame-Nummern ab. Nicht kompatibel mit 0.5.0: Alle Teilnehmenden müssen dieselbe Version installieren.
+- 20 automatisierte Tests und ein nativer Aseprite-Test mit zwei Verbindungen bestanden. Ein realer Zwei-PC-Test im LAN/Radmin-Netz bleibt offen.
+
 ## 0.5.0 beta — 2026-09-24
 
 - Eine einzige kompakte Oberfläche für Erstellen/Beitreten ohne lokale oder Radmin-Moduswahl.

@@ -107,7 +107,7 @@ local function searchSessionsNow(output)
     local choices,seen={},{}
     for line in (output or ''):gmatch('[^\r\n]+') do
       local ok,result=pcall(function() return json.decode(line) end)
-      if ok and result and result.protocol==2 then
+      if ok and result and result.protocol==3 then
         for _,room in ipairs(result.rooms or {}) do
           local invite=tostring(room.invite or '')
           local address=invite:match('^([^/]+)/') or ''

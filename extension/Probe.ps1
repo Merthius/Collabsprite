@@ -27,7 +27,7 @@ function IsAllowed([Net.IPAddress]$address) {
 $probeClient = [Net.Sockets.UdpClient]::new(0)
 try {
     $probeClient.EnableBroadcast = $true
-    $requestBytes = [Text.Encoding]::ASCII.GetBytes('COLLABSPRITE_DISCOVER_V2')
+    $requestBytes = [Text.Encoding]::ASCII.GetBytes('COLLABSPRITE_DISCOVER_V3')
     $addresses = @('127.0.0.1')
     foreach ($entry in $entries) {
         $own = $entry.Address.GetAddressBytes()
@@ -52,7 +52,7 @@ try {
             $reply = $probeClient.Receive([ref]$sender)
             if ($reply.Length -le 2000 -and (IsAllowed $sender.Address)) {
                 $line = [Text.Encoding]::UTF8.GetString($reply)
-                if ($line.StartsWith('{"protocol":2,"rooms":',[StringComparison]::Ordinal)) { [Console]::WriteLine($line) }
+                if ($line.StartsWith('{"protocol":3,"rooms":',[StringComparison]::Ordinal)) { [Console]::WriteLine($line) }
             }
         } catch [Net.Sockets.SocketException] {
             if ([DateTime]::UtcNow -ge $deadline) { break }

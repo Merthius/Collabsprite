@@ -42,7 +42,9 @@ export function validateSnapshot(input) {
     parent: integer(layer.parent ?? 0, 0, i, 'Elterngruppe'),
     opacity: integer(layer.opacity ?? 255, 0, 255, 'Deckkraft'),
     blend: integer(layer.blend ?? 3, 0, 31, 'Mischmodus'),
-    visible: layer.visible !== false
+    visible: layer.visible !== false,
+    editable: layer.editable !== false,
+    continuous: layer.continuous === true
   }));
   layers.forEach(layer => { if (layer.parent && !layers[layer.parent - 1].group) throw new Error('Ungueltige Ebenengruppe'); });
   const rasterCount = layers.filter(l => !l.group).length;
@@ -69,6 +71,7 @@ export class Room {
     this.operations = [];
     this.historyPixels = 0;
     this.revision = 0;
+    this.structure = 0;
     this.historyLimit = options.historyLimit ?? LIMITS.history;
     this.pixelLimit = options.pixelLimit ?? LIMITS.historyPixels;
     for (let l = 1; l <= this.meta.layers.length; l++) {
@@ -107,8 +110,9 @@ export class Room {
     }
     return patches;
   }
-  paint(author, seq, patches) {
+  paint(author, seq, patches, structure) {
     const user = this.user(author);
+    if (structure !== this.structure) throw new Error('Dokumentstruktur hat sich geaendert; lokale Kopie speichern und neu verbinden');
     integer(seq, 1, Number.MAX_SAFE_INTEGER, 'Sequenz');
     if (seq !== user.seq + 1) throw new Error('Sequenz stimmt nicht; bitte neu verbinden');
     if (!Array.isArray(patches) || !patches.length || patches.length > this.cells.size) throw new Error('Leere/ungueltige Operation');
@@ -181,7 +185,7 @@ export class Room {
     const layerCount = this.meta.layers.length, frameCount = this.meta.frames.length;
     if (kind === 'layer') {
       if (layerCount >= LIMITS.layers || (raster + 1) * frameCount * this.size > LIMITS.pixels) throw new Error('Ebenen-/Groessenlimit erreicht');
-      const layer = { name: String(name || `Ebene ${layerCount + 1}`).slice(0, 100), group: false, parent: 0, opacity: 255, blend: 3, visible: true };
+      const layer = { name: String(name || `Ebene ${layerCount + 1}`).slice(0, 100), group: false, parent: 0, opacity: 255, blend: 3, visible: true, editable: true, continuous: false };
       const copyFrom = source == null ? null : integer(source, 1, layerCount, 'Quellebene');
       if (copyFrom && this.meta.layers[copyFrom - 1].group) throw new Error('Gruppen lassen sich so nicht duplizieren');
       this.meta.layers.push(layer);
@@ -195,7 +199,7 @@ export class Room {
           cels.push({ layer: layerCount + 1, frame: f, opacity: copy.opacity, z: copy.z, runs: encodeRuns(copy.pixels, true) });
         }
       }
-      return { type: 'append', kind, layer, index: layerCount + 1, cels, revision: ++this.revision };
+      return { type: 'append', kind, layer, index: layerCount + 1, cels, structure: ++this.structure, revision: ++this.revision };
     }
     if (kind !== 'frame' || frameCount >= LIMITS.frames || raster * (frameCount + 1) * this.size > LIMITS.pixels) throw new Error('Frame-/Groessenlimit erreicht');
     const copyFrom = source == null ? null : integer(source, 1, frameCount, 'Quellframe');
@@ -211,6 +215,107 @@ export class Room {
         cels.push({ layer: i + 1, frame: frameCount + 1, opacity: copy.opacity, z: copy.z, runs: encodeRuns(copy.pixels, true) });
       }
     });
-    return { type: 'append', kind, duration: this.meta.frames[frameCount], index: frameCount + 1, cels, revision: ++this.revision };
+    return { type: 'append', kind, duration: this.meta.frames[frameCount], index: frameCount + 1, cels, structure: ++this.structure, revision: ++this.revision };
+  }
+  remapStructure(layerMap, frameMap) {
+    const cells = new Map();
+    for (const cell of this.cells.values()) {
+      const layer = layerMap[cell.layer], frame = frameMap[cell.frame];
+      if (layer && frame) {
+        cell.layer = layer; cell.frame = frame;
+        cells.set(`${layer}:${frame}`, cell);
+      }
+    }
+    this.cells = cells;
+    const retained = [];
+    for (const op of this.operations) {
+      op.patches = op.patches.flatMap(p => {
+        const layer = layerMap[p.layer], frame = frameMap[p.frame];
+        return layer && frame ? [{ ...p, layer, frame }] : [];
+      });
+      op.amount = op.patches.reduce((sum, p) => sum + p.runs.reduce((n, v, i) => i % 3 === 1 ? n + v : n, 0), 0);
+      if (op.patches.length) retained.push(op);
+    }
+    this.operations = retained;
+    this.historyPixels = retained.reduce((sum, op) => sum + op.amount, 0);
+    const live = new Set(retained);
+    for (const user of this.users.values()) {
+      user.undo = user.undo.filter(op => live.has(op));
+      user.redo = user.redo.filter(op => live.has(op));
+    }
+  }
+  delete(kind, index) {
+    if (kind === 'frame') {
+      integer(index, 1, this.meta.frames.length, 'Frame');
+      if (this.meta.frames.length < 2) throw new Error('Das letzte Frame kann nicht geloescht werden');
+      const frameMap = {};
+      for (let f = 1; f <= this.meta.frames.length; f++) if (f !== index) frameMap[f] = f < index ? f : f - 1;
+      const layerMap = Object.fromEntries(this.meta.layers.map((_, i) => [i + 1, i + 1]));
+      this.meta.frames.splice(index - 1, 1);
+      this.remapStructure(layerMap, frameMap);
+      return { type: 'delete', kind, index, count: 1, structure: ++this.structure, revision: ++this.revision };
+    }
+    if (kind !== 'layer') throw new Error('Unbekannter Strukturtyp');
+    integer(index, 1, this.meta.layers.length, 'Ebene');
+    const removed = new Set([index]);
+    for (let i = index + 1; i <= this.meta.layers.length; i++) {
+      let parent = this.meta.layers[i - 1].parent;
+      while (parent && !removed.has(parent)) parent = this.meta.layers[parent - 1].parent;
+      if (parent) removed.add(i);
+    }
+    const remaining = this.meta.layers.filter((layer, i) => !removed.has(i + 1));
+    if (!remaining.some(layer => !layer.group)) throw new Error('Die letzte Rasterebene kann nicht geloescht werden');
+    const layerMap = {}, frameMap = {};
+    let next = 0;
+    for (let i = 1; i <= this.meta.layers.length; i++) if (!removed.has(i)) layerMap[i] = ++next;
+    for (let f = 1; f <= this.meta.frames.length; f++) frameMap[f] = f;
+    this.meta.layers = remaining.map(layer => ({ ...layer, parent: layer.parent ? layerMap[layer.parent] : 0 }));
+    this.remapStructure(layerMap, frameMap);
+    return { type: 'delete', kind, index, count: removed.size, layers: structuredClone(this.meta.layers), structure: ++this.structure, revision: ++this.revision };
+  }
+  deleteMany(kind, indices) {
+    const max = kind === 'layer' ? this.meta.layers.length : kind === 'frame' ? this.meta.frames.length : 0;
+    if (!max) throw new Error('Unbekannter Strukturtyp');
+    if (!Array.isArray(indices) || !indices.length || indices.length > max) throw new Error('Ungueltige Auswahl');
+    const ordered = [...new Set(indices.map(index => integer(index, 1, max, 'Auswahl')))].sort((a, b) => b - a);
+    // Check the complete batch before changing the live room or its history.
+    const trial = new Room(this.snapshot());
+    for (const index of ordered) trial.delete(kind, index);
+    return ordered.map(index => this.delete(kind, index));
+  }
+  setProperty(kind, index, field, value) {
+    if (kind === 'frame') {
+      integer(index, 1, this.meta.frames.length, 'Frame');
+      if (field !== 'duration') throw new Error('Unbekannte Frame-Eigenschaft');
+      value = integer(value, 1, 65535, 'Frame-Dauer');
+      this.meta.frames[index - 1] = value;
+    } else if (kind === 'layer') {
+      integer(index, 1, this.meta.layers.length, 'Ebene');
+      const layer = this.meta.layers[index - 1];
+      if (field === 'name') { value = String(value || '').trim().slice(0, 100); if (!value) throw new Error('Ebenenname fehlt'); }
+      else if (field === 'opacity') value = integer(value, 0, 255, 'Deckkraft');
+      else if (field === 'blend') value = integer(value, 0, 31, 'Mischmodus');
+      else if (['visible', 'editable', 'continuous'].includes(field)) { if (typeof value !== 'boolean') throw new Error('Ungueltiger Schalter'); }
+      else throw new Error('Unbekannte Ebeneneigenschaft');
+      if (layer.group && ['opacity', 'blend', 'continuous'].includes(field)) throw new Error('Fuer Gruppen nicht verfuegbar');
+      layer[field] = value;
+    } else throw new Error('Unbekannter Eigenschaftstyp');
+    return { type: 'property', kind, index, field, value, revision: ++this.revision };
+  }
+  setCelProperty(layer, frame, field, value) {
+    integer(layer, 1, this.meta.layers.length, 'Cel-Ebene');
+    integer(frame, 1, this.meta.frames.length, 'Cel-Frame');
+    const cell = this.cells.get(`${layer}:${frame}`);
+    if (!cell) throw new Error('Unbekanntes Cel');
+    if (field === 'opacity') value = integer(value, 0, 255, 'Cel-Deckkraft');
+    else if (field === 'z') value = integer(value, -32768, 32767, 'Cel-Z');
+    else throw new Error('Unbekannte Cel-Eigenschaft');
+    cell[field] = value;
+    return { type: 'celProperty', layer, frame, field, value, revision: ++this.revision };
+  }
+  setPalette(colors) {
+    if (!Array.isArray(colors) || colors.length > 256) throw new Error('Ungueltige Palette');
+    this.meta.palette = colors.map(color => integer(color, 0, 0xffffffff, 'Palettenfarbe'));
+    return { type: 'palette', colors: [...this.meta.palette], revision: ++this.revision };
   }
 }

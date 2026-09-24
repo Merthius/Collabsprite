@@ -41,7 +41,8 @@ function M.flatten(sprite)
       local id=#mapping+1
       mapping[id]=layer
       metadata[id]={name=layer.name, group=layer.isGroup, parent=parent, opacity=layer.opacity or 255,
-        blend=layer.blendMode or BlendMode.NORMAL, visible=layer.isVisible}
+        blend=layer.blendMode or BlendMode.NORMAL, visible=layer.isVisible,
+        editable=layer.isEditable,continuous=not layer.isGroup and layer.isContinuous or false}
       if layer.isGroup then visit(layer.layers,id) end
     end
   end
@@ -149,6 +150,8 @@ function M.create(s,cells)
       -- Each newly created child is explicitly moved to the top of its parent.
       layer.stackIndex=#(meta.parent>0 and mapping[meta.parent].layers or sprite.layers)
       layer.name=meta.name; layer.opacity=meta.opacity; layer.blendMode=meta.blend; layer.isVisible=meta.visible
+      layer.isEditable=meta.editable~=false
+      if not meta.group then layer.isContinuous=meta.continuous==true end
       mapping[i]=layer
     end
     sprite:deleteLayer(initial)
@@ -170,9 +173,6 @@ function M.checkTopology(sprite,mapping,meta)
   assert(#actual==#mapping,'Ebenenstruktur wurde geaendert.')
   for i,layer in ipairs(actual) do
     assert(layer==mapping[i] and layers[i].parent==meta.layers[i].parent,'Ebenenreihenfolge wurde geaendert.')
-    assert(layer.name==meta.layers[i].name and (layer.isGroup or (layer.opacity==meta.layers[i].opacity and layer.blendMode==meta.layers[i].blend)),
-      'Ebeneneigenschaften geaendert: '..layer.name..'. Kopie speichern und neu teilen.')
   end
-  for f,ms in ipairs(meta.frames) do assert(math.floor(sprite.frames[f].duration*1000+0.5)==ms,'Frame-Dauer waehrend der Sitzung nicht aendern.') end
 end
 return M
