@@ -41,7 +41,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   };
   const broadcast = (room, event) => { for (const client of room.clients) send(client, event); };
   const histories = room => { for (const client of room.clients) send(client, { type: 'history', ...room.core.history(client.author) }); };
-  const presence = room => broadcast(room, { type: 'presence', members: [...room.clients].map(c => ({ name: c.name, author: c.author, cursor: c.cursor || null })) });
+  const presence = room => broadcast(room, { type: 'presence', members: [...room.clients].map(c => ({ name: c.name, author: c.author })) });
   wss.on('connection', (socket, request) => {
     const address = String(request.socket.remoteAddress || '').replace(/^::ffff:/, '');
     if (!allowedPeer(address, localOnly))
@@ -110,8 +110,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           if (message.structure !== room.core.structure) throw new Error('Dokumentstruktur hat sich geaendert; bitte neu verbinden');
           const events = room.core.deleteMany(message.kind, message.indices);
           for (const deletion of events) broadcast(room, deletion);
-          for (const client of room.clients) client.cursor = null;
-          room.dirty = true; presence(room); histories(room);
+          room.dirty = true; histories(room);
           return;
         } else if (message.type === 'property') {
           if (message.structure !== room.core.structure) throw new Error('Dokumentstruktur hat sich geaendert; bitte neu verbinden');
@@ -121,31 +120,12 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           event = room.core.setCelProperty(message.layer, message.frame, message.field, message.value);
         } else if (message.type === 'palette') {
           event = room.core.setPalette(message.colors);
-        } else if (message.type === 'cursor') {
-          const now = Date.now();
-          if (now - (socket.lastCursorAt || 0) < 50) return;
-          socket.lastCursorAt = now;
-          if (message.x == null || message.y == null) socket.cursor = null;
-          else {
-            if (message.structure !== room.core.structure) return;
-            const { width, height, frames, layers } = room.core.meta;
-            const x = Number(message.x), y = Number(message.y), frame = Number(message.frame), layer = Number(message.layer);
-            if (![x, y, frame, layer].every(Number.isSafeInteger) || x < 0 || x >= width || y < 0 || y >= height || frame < 1 || frame > frames.length || layer < 1 || layer > layers.length)
-              throw new Error('Ungueltige Cursorposition');
-            socket.cursor = { x, y, frame, layer };
-          }
-          for (const client of room.clients) if (client !== socket) send(client, { type: 'cursor', author: socket.author, name: socket.name, cursor: socket.cursor });
-          return;
         } else if (message.type === 'invite' && room.hostAuthor === socket.author) {
           send(socket, { type: 'invite', invite: invite(localOnly ? [] : addresses(), server.address().port, socket.code, room.discoveryToken) }); return;
         } else if (message.type === 'ping') { send(socket, { type: 'pong', nonce: message.nonce }); return; }
         else throw new Error('Unbekannte Nachricht');
         if (event) {
           broadcast(room, event); room.dirty = true;
-          if (event.type === 'append' || event.type === 'delete') {
-            for (const client of room.clients) client.cursor = null;
-            presence(room);
-          }
         }
         histories(room);
       } catch (error) {

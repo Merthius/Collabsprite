@@ -2,11 +2,11 @@
 
 # Collabsprite
 
-[![Version](https://img.shields.io/badge/version-0.5.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.5.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/badge/version-0.6.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
 
 **Gemeinsam Pixel-Art und Animationen direkt in Aseprite bearbeiten.** Eine Person hostet, die anderen treten bei. Alle nutzen dieselbe Erweiterung und dieselben Rasterebenen und Frames. `Strg+Z`/`Strg+Y` wirken auf die eigenen synchronisierten Pixelaktionen, ohne neuere fremde Pixel zu entfernen.
 
-**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.5.0/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.6.0/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
 
 ## Schnellstart
 
@@ -30,7 +30,7 @@ Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host
 
 ## Installation – auf jedem PC
 
-1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.5.0) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
+1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.0) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
 2. Öffne Aseprite → **Bearbeiten → Einstellungen → Erweiterungen → Erweiterung hinzufügen** und wähle die Datei. Ein Doppelklick auf die Datei kann ebenfalls funktionieren ([offizielle Aseprite-Anleitung](https://www.aseprite.org/docs/extensions/)).
 3. Starte Aseprite neu. Öffne **Ansicht → Collabsprite…**.
 
@@ -58,7 +58,7 @@ Der Einladungscode hat etwa die Form `192.168.1.10:8766,26.1.2.3:8766/RAUM/TOKEN
 ## Gemeinsam arbeiten und speichern
 
 - Normale Aseprite-Werkzeuge wie Stift, Radierer, Füllen und Formen sowie **abgeschlossene** Auswahl-, Einfüge- und Verschiebeaktionen werden geteilt. Während eines gehaltenen Pinselstrichs oder einer schwebenden Auswahl erscheint noch keine Live-Vorschau beim Gegenüber.
-- Alle Teilnehmenden können über Aseprites normale Befehle neue Rasterebenen und Frames **am Ende** hinzufügen und vorhandene Ebenen/Frames kopieren. Löschen, Umordnen und einige komplexe Strukturänderungen sind während der Sitzung noch nicht unterstützt.
+- Alle Teilnehmenden können über Aseprites normale Befehle Rasterebenen und Frames **am Ende** hinzufügen und vorhandene Ebenen kopieren. Einzelne und mehrere ausgewählte Ebenen/Frames können gelöscht werden; beim Löschen einer Gruppe verschwinden ihre Unterebenen. Ebenenname, Sichtbarkeit, Sperre, Deckkraft und Mischmodus sowie Frame-Dauer, Cel-Deckkraft/Z-Index und die erste Palette werden geteilt. Umordnen und manche komplexe Strukturänderungen bleiben gesperrt.
 - `Strg+Z`/`Strg+Y` schalten nur die **eigenen synchronisierten Pixelaktionen** um. Fremde spätere Beiträge bleiben erhalten; neue Ebenen und Frames gehören nicht zu diesem Pixel-Verlauf.
 - Speichere die Sitzungskopie über **Datei → Speichern unter** als `.aseprite`, damit Ebenen und Frames erhalten bleiben. Der Host legt zusätzlich automatische Sitzungs-Backups lokal im `data`-Ordner an; sie ersetzen kein eigenes Speichern.
 - **Trennen** beendet die Verbindung. Nach einem Netzabbruch gibt es noch keine automatische Wiederverbindung oder Zusammenführung von Offline-Änderungen.
@@ -81,10 +81,10 @@ Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **o
 | **Host startet nicht** | Node.js 20+ auf dem Host installieren, Aseprite neu starten und Port 8766 prüfen. |
 | **Windows fragt nach Freigabe** | Beim ersten Start ist eine begrenzte Firewallregel nötig; die Abfrage selbst bestätigen. |
 | **LAN-Gast erreicht den Host nicht** | Windows-Netzwerkprofil auf dem Host auf **Privat** prüfen; Host-Firewall und WLAN-Client-Isolation prüfen. |
-| **Aseprite reagiert nicht** | Vergewissere dich, dass Version 0.5.0 installiert ist, speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
+| **Aseprite reagiert nicht** | Vergewissere dich, dass Version 0.6.0 auf allen PCs installiert ist, speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
 | **Verbindung weg** | Sitzungskopie speichern; Host/Netz prüfen und bewusst neu beitreten. Offline-Änderungen werden nicht automatisch gemischt. |
 
-Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels, Ebenen-Eigenschaften, Frame-Dauern, Auswahl, Zoom und Farbauswahl. Grenzen: maximal 8 Personen, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. [Technische Details](docs/technical-notes.md).
+Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. **0.6.0 verwendet Protokoll 3 und ist nicht mit 0.5.0-Sitzungen kompatibel; alle müssen aktualisieren.** [Technische Details](docs/technical-notes.md).
 
 ## Entwickeln und beitragen
 

@@ -3,10 +3,6 @@ local root=assert(app.params.root,'root fehlt')
 local Client=dofile(root..'/extension/client.lua')
 local codec=dofile(root..'/extension/codec.lua')
 local a,b=Client.new(),Client.new()
--- The test sends one deterministic cursor position in its final stage.
--- Disable live mouse sampling so idle UI movements cannot immediately clear it.
-a.updateCursor=function() end
-b.updateCursor=function() end
 local source=Sprite(8,8,ColorMode.RGB)
 local before=app.events:on('beforecommand',function(ev) a:beforeCommand(ev);b:beforeCommand(ev) end)
 local stage,started,lastLoggedStage=0,os.time(),nil
@@ -78,18 +74,15 @@ timer=Timer{interval=0.04,ontick=function()
       b.mapping[1].blendMode==BlendMode.MULTIPLY and b.mapping[1].isContinuous and
       b.mapping[1]:cel(1).opacity==127 and b.mapping[1]:cel(1).zIndex==2 and #b.sprite.palettes[1]==2 and
       math.floor(b.sprite.frames[1].duration*1000+0.5)==250 then
-      a:send{type='cursor',x=2,y=3,frame=1,layer=1,structure=a.structure};stage=9
-    elseif stage==9 and b.remoteCursors and b.remoteCursors[a.author] then
-      assert(b.remoteCursors[a.author].x==2 and b.remoteCursors[a.author].y==3,'Cursor nicht uebertragen')
+      a:append('frame');stage=9
+    elseif stage==9 and #a.sprite.frames==2 and #b.sprite.frames==2 then
       a:append('frame');stage=10
-    elseif stage==10 and #a.sprite.frames==2 and #b.sprite.frames==2 then
-      a:append('frame');stage=11
-    elseif stage==11 and #a.sprite.frames==3 and #b.sprite.frames==3 then
+    elseif stage==10 and #a.sprite.frames==3 and #b.sprite.frames==3 then
       app.sprite=b.sprite;app.range.frames={1,2}
       assert(app.command.RemoveFrame(),'Mehrfach-RemoveFrame nicht verfuegbar')
-      stage=12
-    elseif stage==12 and #a.sprite.frames==1 and #b.sprite.frames==1 then
-      finish('PASS native: Ebene/Frames loeschen, Verlauf, Metadaten, Cursor.')
+      stage=11
+    elseif stage==11 and #a.sprite.frames==1 and #b.sprite.frames==1 then
+      finish('PASS native: Ebene/Frames loeschen, Verlauf, Metadaten.')
     end
   end)
   if not ok then finish('FAIL native stage '..stage..': '..tostring(err)) end

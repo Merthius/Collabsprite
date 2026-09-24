@@ -111,7 +111,7 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   assert.deepEqual(result.patches,[{layer:1,frame:1,runs:[0,1,0]}]);
   assert.equal(service.rooms.get(room).core.cells.get('1:1').pixels[1],0xff654321);
 });
-test('Peers receive layer/frame deletion, metadata, cursor presence and join notices',async t=>{
+test('Peers receive layer/frame deletion, metadata and join presence',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
   t.after(()=>service.close());
   const a=await connect(service.port,{mode:'host',name:'Host',snapshot:snapshot()});
@@ -122,18 +122,9 @@ test('Peers receive layer/frame deletion, metadata, cursor presence and join not
   await b.next('presence');
   let members;
   do { members=(await a.next('presence')).members; } while (!members.some(member=>member.author===guest.author));
-  a.send({type:'cursor',x:5,y:6,frame:1,layer:1,structure:0});
-  assert.deepEqual((await b.next('cursor')).cursor,{x:5,y:6,frame:1,layer:1});
-  await new Promise(resolve=>setTimeout(resolve,60));
-  a.send({type:'cursor'});
-  assert.equal((await b.next('cursor')).cursor,null);
-  await new Promise(resolve=>setTimeout(resolve,60));
-  a.send({type:'cursor',x:7,y:8,frame:1,layer:1,structure:0});
-  assert.equal((await b.next('cursor')).cursor.x,7);
+  assert.equal(members.find(member=>member.author===guest.author).name,'Freund');
   b.send({type:'append',kind:'layer',structure:0});
   await Promise.all([a.next('append'),b.next('append')]);
-  const resetPresence=await b.next('presence');
-  assert.equal(resetPresence.members.find(member=>member.author===welcome.author).cursor,null);
   a.send({type:'append',kind:'frame',structure:1});
   await Promise.all([a.next('append'),b.next('append')]);
   b.send({type:'property',kind:'layer',index:2,field:'name',value:'Figur',structure:2});

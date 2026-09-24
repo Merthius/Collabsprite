@@ -2,7 +2,7 @@
 
 # Collabsprite — English guide
 
-[Deutsch](README.md) · [Download v0.5.0 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.5.0/Collabsprite.aseprite-extension)
+[Deutsch](README.md) · [Download v0.6.0 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.6.0/Collabsprite.aseprite-extension)
 
 Collabsprite is an unofficial, open-source Aseprite extension for drawing together on the same pixel-art canvas. The host runs a small local server; everyone uses the **same** extension. Per-user undo/redo applies to synchronized pixel operations without removing newer contributions by someone else.
 
@@ -26,7 +26,7 @@ The session server runs on the **host PC** (port `8766`). There is just **one wo
 
 ## Install on every computer
 
-1. On the [v0.5.0 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.5.0), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
+1. On the [v0.6.0 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.0), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
 2. In Aseprite, open **Edit → Preferences → Extensions → Add Extension** and select the file. Double-clicking the extension may work as well ([official Aseprite instructions](https://www.aseprite.org/docs/extensions/)).
 3. Restart Aseprite. Open **View → Collabsprite…** (in a German UI: **Ansicht → Collabsprite…**).
 
@@ -51,7 +51,7 @@ An invitation may look like `192.168.1.10:8766,26.1.2.3:8766/ROOM/TOKEN`; withou
 ## Working together
 
 - Standard Aseprite drawing tools and **completed** selection, paste, fill, and move operations sync. A held stroke or floating selection is not streamed live.
-- Any participant can append raster layers and frames using ordinary Aseprite commands. Deleting/reordering layers or frames during a session is not supported yet.
+- Any participant can append raster layers and frames and duplicate an existing layer using ordinary Aseprite commands. Single or multiple selected layers/frames can be deleted; deleting a group removes its children. Layer name, visibility, edit lock, opacity and blend mode; frame duration; cel opacity/Z-index; and the first palette sync. Reordering and some complex structure changes are still blocked.
 - `Ctrl+Z` / `Ctrl+Y` affect your own synchronized **pixel** actions. Layer/frame creation is not part of that pixel history.
 - Save the session copy as `.aseprite` with **Save As**. The host also keeps local session backups, but they do not replace manual saves.
 - After a network interruption, there is no automatic reconnect or offline merge. Save the local copy and join deliberately again.
@@ -60,7 +60,7 @@ The WebSocket connection has **no built-in end-to-end encryption**; use only a t
 
 ## Limitations and support
 
-RGB/RGBA raster layers are supported, with limits of 8 participants, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, layer properties, frame durations, selections, zoom, and color choices are not fully synchronized. See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
+RGB/RGBA raster layers are supported, with limits of 8 participants, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.6.0 uses protocol 3 and cannot join a 0.5.0 session; everyone must update.** See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
 
 Collabsprite is [MIT-licensed](LICENSE) and is not affiliated with Aseprite or Radmin VPN. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 

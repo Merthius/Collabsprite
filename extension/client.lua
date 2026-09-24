@@ -148,24 +148,6 @@ function Client:deleteMany(kind,indices)
   self:capture()
   self:send{type='deleteMany',kind=kind,indices=indices,structure=self.structure}
 end
-function Client:updateCursor()
-  if not self.connected then return end
-  local editor=app.editor
-  local x,y,frame,layer
-  if editor and editor.sprite==self.sprite then
-    local point=editor.spritePos
-    if point and point.x>=0 and point.y>=0 and point.x<self.meta.width and point.y<self.meta.height then
-      x,y=point.x,point.y
-      frame=app.frame and app.frame.frameNumber or 1
-      for i,item in ipairs(self.mapping) do if item==app.layer then layer=i;break end end
-    end
-  end
-  local key=x and table.concat({self.structure,x,y,frame,layer or 1},':') or 'outside'
-  if key==self.lastCursor then return end
-  self.lastCursor=key
-  if x then self:send{type='cursor',x=x,y=y,frame=frame,layer=layer or 1,structure=self.structure}
-  else self:send{type='cursor'} end
-end
 function Client:beforeCommand(ev)
   if not self.connected or app.sprite~=self.sprite or self.applying then return end
   if ev.name=='Undo' or ev.name=='Redo' then
@@ -243,19 +225,6 @@ function Client:receive(message)
     local previous={}
     for _,member in ipairs(self.members or {}) do previous[member.author]=true end
     self.members=message.members
-    local active={}
-    self.remoteCursors=self.remoteCursors or {}
-    for _,member in ipairs(self.members or {}) do
-      if member.author~=self.author then
-        active[member.author]=true
-        local cursor=member.cursor
-        self.remoteCursors[member.author]=cursor and {name=member.name,x=cursor.x,y=cursor.y,
-          frame=cursor.frame,layer=cursor.layer,seen=os.time()} or nil
-      end
-    end
-    for author in pairs(self.remoteCursors) do
-      if not active[author] then self.remoteCursors[author]=nil end
-    end
     if self.hadPresence then
       for _,member in ipairs(self.members or {}) do
         if member.author~=self.author and not previous[member.author] then
@@ -264,11 +233,6 @@ function Client:receive(message)
       end
     end
     self.hadPresence=true;self.notify(self)
-  elseif message.type=='cursor' then
-    self.remoteCursors=self.remoteCursors or {}
-    self.remoteCursors[message.author]=message.cursor and {name=message.name,x=message.cursor.x,y=message.cursor.y,
-      frame=message.cursor.frame,layer=message.cursor.layer,seen=os.time()} or nil
-    self.notify(self)
   elseif message.type=='invite' then
     self.invite=message.invite
     if self.copyWhenReady then
@@ -454,7 +418,6 @@ function Client:tick()
       -- on peers. Sprite.change / aftercommand mark completed edits instead.
       if self.dirty or #self.inbox>0 then self:capture()
       elseif self.ticks%30==0 then self:properties() end
-      if self.ticks%3==0 then self:updateCursor() end
       if self.ticks%300==0 then self:send{type='ping',nonce=self.ticks} end
     end
     local inbox=self.inbox;self.inbox={}
