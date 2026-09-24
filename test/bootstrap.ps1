@@ -1,7 +1,10 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $package = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\output\Collabsprite.aseprite-extension'))
-$tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+# Launcher.vbs intentionally accepts only paths under Windows %TEMP%.
+# PowerShell 7/.NET GetTempPath() can resolve a different CI runner folder.
+if (-not $env:TEMP) { throw 'Windows TEMP fehlt.' }
+$tempRoot = [IO.Path]::GetFullPath($env:TEMP)
 $testRoot = Join-Path $tempRoot ('Collabsprite-test-' + [guid]::NewGuid().ToString('N'))
 $port = 18765
 $resultPath = Join-Path $tempRoot ('Collabsprite-start-' + [guid]::NewGuid().ToString('N') + '.status')
