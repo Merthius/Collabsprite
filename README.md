@@ -15,7 +15,7 @@
 *Die Grafik zeigt den Ablauf schematisch; sie ist kein Screenshot der Aseprite-Oberfläche.*
 
 > [!IMPORTANT]
-> Collabsprite ist eine **Beta für Windows**. Lokal auf einem PC getestet; eine vollständige Verbindung zwischen zwei PCs über Radmin VPN, die automatische Sitzungssuche über VPN und der Fall „Radmin zuvor geschlossen“ sind noch nicht Ende-zu-Ende bestätigt. Speichert eure Arbeit zusätzlich regelmäßig als `.aseprite`-Datei.
+> Collabsprite ist eine **Beta für Windows**. Die bisherige Funktionsprüfung mit zwei Aseprite-Fenstern auf einem PC war nur ein Testaufbau. Der vorgesehene Einsatz mit Freunden auf verschiedenen PCs über Radmin VPN, die Sitzungssuche über VPN und der Fall „Radmin zuvor geschlossen“ sind noch nicht Ende-zu-Ende bestätigt. Speichert eure Arbeit zusätzlich regelmäßig als `.aseprite`-Datei.
 
 ## Voraussetzungen
 
@@ -24,9 +24,9 @@
 | Aseprite | Ja, getestet mit 1.3.18.6 | Ja |
 | Diese Erweiterung | Ja | Ja, **dieselbe Version** |
 | [Node.js](https://nodejs.org/) 20+ | Ja | Nein |
-| [Radmin VPN](https://www.radmin-vpn.com/) | Nur für verschiedene PCs | Nur für verschiedene PCs |
+| [Radmin VPN](https://www.radmin-vpn.com/) | Ja, für die Verbindung zu anderen PCs | Ja, für die Verbindung zu anderen PCs |
 
-Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host-Erweiterung. **Lokal** verbindet Aseprite-Fenster auf demselben PC über `127.0.0.1:8765`. **Global** verbindet PCs im selben Radmin-VPN über Port `8766`; „Global“ heißt hier *nicht* öffentliches Internet.
+Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host-Erweiterung. Die Sitzung läuft auf dem **Host-PC**; Freunde verbinden sich über das gemeinsame Radmin-VPN (Port `8766`). Das gilt in Version 0.4.2 auch dann, wenn beide PCs bereits im selben WLAN/LAN sind. Eine direkte LAN-Verbindung ohne Radmin ist derzeit **nicht** implementiert. Die in der Erweiterung noch sichtbare Auswahl **„Lokal (dieser PC)“** ist ein Überbleibsel des Ein-PC-Tests und verbindet **keine zwei PCs**. Für gemeinsames Zeichnen auf verschiedenen Rechnern wählt immer **„Global (Radmin VPN)“**; „Global“ bedeutet hier keinen öffentlichen Internetdienst.
 
 ## Installation – auf jedem PC
 
@@ -40,20 +40,20 @@ Für Host und Gäste gilt exakt dieselbe Installationsdatei. Nur auf dem Host mu
 
 1. Öffne in Aseprite ein **RGB-Bild**. Collabsprite erzeugt beim Start eine **Sitzungskopie**; das Original bleibt unangetastet.
 2. Öffne **Ansicht → Collabsprite…**, trage bei **Dein Name** einen Namen ein und wähle **Erstellen**.
-3. Wähle **Lokal (dieser PC)** zum Testen mit zwei Aseprite-Fenstern oder **Global (Radmin VPN)** für Freunde auf anderen PCs.
+3. Wähle **Global (Radmin VPN)**. Host und Gäste müssen im selben Radmin-VPN-Netz sein – auch wenn sie sich bereits im selben WLAN befinden.
 4. Klicke **Sitzung erstellen**. Der Host-Server startet im Hintergrund. Warte auf **Aktive Sitzung: Verbunden**.
 5. Klicke **Einladung kopieren** und sende den Code privat an deine Freunde.
 
-Für **Global** müssen alle vorher demselben Radmin-Netzwerk beitreten. Wenn Radmin noch nicht läuft, soll Collabsprite es öffnen; tritt dem VPN-Netz bei und klicke dann erneut **Sitzung erstellen**. Beim ersten globalen Start kann Windows eine einmalige Firewallfreigabe verlangen. Bestätige sie selbst; Collabsprite umgeht diese Abfrage nicht.
+Wenn Radmin noch nicht läuft, soll Collabsprite es öffnen; tritt dem gemeinsamen VPN-Netz bei und klicke dann erneut **Sitzung erstellen**. Beim ersten Start kann Windows eine einmalige Firewallfreigabe verlangen. Bestätige sie selbst; Collabsprite umgeht diese Abfrage nicht.
 
 ## Sitzung beitreten – Gast
 
 1. Installiere dieselbe Erweiterung, starte Aseprite neu und öffne **Ansicht → Collabsprite… → Beitreten**. Ein eigenes Bild musst du dafür nicht öffnen.
-2. Wähle denselben Modus wie der Host: **Lokal** auf demselben PC oder **Global** im gemeinsamen Radmin-Netzwerk.
+2. Tritt dem Radmin-VPN-Netz des Hosts bei und wähle **Global (Radmin VPN)**.
 3. Füge den privaten **Einladungscode** ein und klicke **Beitreten**. Du kannst alternativ **Sitzungen suchen** verwenden; falls über Radmin nichts erscheint, nutze den Einladungscode.
 4. Warte auf **Verbunden** und zeichne in der neuen Sitzungskopie.
 
-Ein lokaler Code beginnt mit `127.0.0.1:8765/…`, ein Radmin-Code mit einer `26.…:8766/…`-Adresse. Der ganze Code ist ein **Zugangsschlüssel**: nicht öffentlich posten oder in Issues/Screenshots zeigen.
+Der Einladungscode für Freunde beginnt mit einer `26.…:8766/…`-Adresse. Der ganze Code ist ein **Zugangsschlüssel**: nicht öffentlich posten oder in Issues/Screenshots zeigen.
 
 ## Gemeinsam arbeiten und speichern
 
@@ -66,20 +66,19 @@ Ein lokaler Code beginnt mit `127.0.0.1:8765/…`, ein Radmin-Code mit einer `26
 ## So funktioniert es
 
 ```text
-Gast A ── WebSocket ──┐
-                     ├── Host-PC: lokaler Collabsprite-Server ── Sitzungskopie + Backup
-Gast B ── WebSocket ──┘
-       (direkt auf demselben PC oder über das gemeinsame Radmin-VPN)
+Gast-PC A ── Radmin VPN ──┐
+                         ├── Host-PC: Collabsprite-Server ── Sitzungskopie + Backup
+Gast-PC B ── Radmin VPN ──┘
 ```
 
-Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **ohne eigene Ende-zu-Ende-Verschlüsselung**; bei verschiedenen PCs muss deshalb ein vertrauenswürdiges VPN genutzt werden. Ein privater Einladungscode schützt die Sitzung zusätzlich. Der lokale Modus bindet nur an `127.0.0.1`; der Radmin-Modus nutzt Port `8766` und eine auf Radmin-Adressen begrenzte Windows-Firewallregel.
+Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **ohne eigene Ende-zu-Ende-Verschlüsselung**; nutzt deshalb ein vertrauenswürdiges VPN. Ein privater Einladungscode schützt die Sitzung zusätzlich. Der Radmin-Modus nutzt Port `8766` und eine auf Radmin-Adressen begrenzte Windows-Firewallregel.
 
 ## Probleme und Grenzen
 
 | Problem | Prüfen |
 | --- | --- |
-| **Sitzung erscheint nicht** | Beide im gleichen Modus? Im Radmin-Netz? Sonst den vollständigen Einladungscode einfügen. |
-| **Host startet nicht** | Node.js 20+ auf dem Host installieren, Aseprite neu starten, Port 8765/8766 prüfen. |
+| **Sitzung erscheint nicht** | Beide auf **Global** und im selben Radmin-Netz? Sonst den vollständigen Einladungscode einfügen. |
+| **Host startet nicht** | Node.js 20+ auf dem Host installieren, Aseprite neu starten, Radmin und Port 8766 prüfen. |
 | **Windows fragt nach Freigabe** | Beim ersten globalen Start ist eine begrenzte Firewallregel nötig; die Abfrage selbst bestätigen. |
 | **Aseprite reagiert nicht** | Vergewissere dich, dass Version 0.4.2 installiert ist, speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
 | **Verbindung weg** | Sitzungskopie speichern; Host/Netz prüfen und bewusst neu beitreten. Offline-Änderungen werden nicht automatisch gemischt. |

@@ -3,7 +3,7 @@
 ## Architektur
 
 - Beide Seiten installieren dieselbe Aseprite-Erweiterung (`extension/`). Nur der Host startet `server.mjs` mit Node.js.
-- Im lokalen Modus bindet der Server an `127.0.0.1:8765`. Im Radmin-Modus nutzt er Port `8766`; der Host und alle Gäste müssen im selben Radmin-VPN sein.
+- Der Modus `Lokal (dieser PC)` bindet ausschließlich an `127.0.0.1:8765` und stammt aus dem Ein-PC-Testaufbau; er ist **kein LAN-Modus**. Für die Zusammenarbeit auf verschiedenen PCs nutzt Version 0.4.2 den Radmin-Modus auf Port `8766`; Host und Gäste müssen im selben Radmin-VPN sein, auch wenn sie bereits ein LAN teilen.
 - Die Erweiterung tauscht Sitzungsdaten über WebSocket mit dem Host aus. Der Host prüft Nachrichten, ordnet Operationen und hält einen autorbezogenen Verlauf für Pixel-Undo/Redo.
 - Einladungen enthalten Adresse, Raum-ID und Token. Der Token wird auf dem Server gehasht; **den vollständigen Einladungscode vertraulich behandeln**.
 - Der Host schreibt lokale JSON-Backups in `data/`. Dieser Ordner ist vom Repository ausgeschlossen. Bitte zusätzlich die Sitzungskopie regelmäßig als `.aseprite` speichern.
@@ -22,4 +22,4 @@ Maximalwerte: 8 Teilnehmende; 1024×1024 Bildpunkte; 32 Ebenen inklusive Gruppen
 
 `npm ci` installiert die mitgelieferte `ws`-Abhängigkeit; `npm test` prüft Server, Protokoll und mehrere WebSocket-Clients. `./build.ps1` erstellt `../output/Collabsprite.aseprite-extension`. `test/bootstrap.ps1` prüft den Hintergrundstarter auf einem isolierten lokalen Testport. Native Aseprite-Tests liegen unter `test/*.lua` und benötigen eine lokale Aseprite-Installation.
 
-Bislang bestätigt: lokale Sitzungserstellung im sichtbaren Aseprite 1.3.18.6, zwei lokale Aseprite-Instanzen mit gegenseitigen Pixeln und eigenem Undo/Redo, Node-Protokolltests. Noch offen: durchgehender Zwei-PC-Test über Radmin VPN, VPN-Sitzungssuche, Start mit geschlossenem Radmin und UAC-Ablauf sowie ein nativer Test mit lange gehaltenem Mausstrich.
+Bislang bestätigt: Ein-PC-Testaufbau mit Sitzungserstellung im sichtbaren Aseprite 1.3.18.6 und zwei lokalen Aseprite-Instanzen mit gegenseitigen Pixeln und eigenem Undo/Redo; außerdem Node-Protokolltests. Dieser Test ist kein Nachweis für zwei vernetzte PCs. Noch offen: durchgehender Zwei-PC-Test über Radmin VPN, VPN-Sitzungssuche, Start mit geschlossenem Radmin und UAC-Ablauf sowie ein nativer Test mit lange gehaltenem Mausstrich. Direkte LAN-Verbindung ohne Radmin ist noch nicht implementiert.
