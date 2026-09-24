@@ -13,7 +13,7 @@ resultPath = fso.GetAbsolutePathName(arguments(3))
 endpoints = arguments(4)
 tempRoot = fso.GetAbsolutePathName(shell.ExpandEnvironmentStrings("%TEMP%")) & "\"
 
-If action <> "Host" And action <> "Join" Then WScript.Quit 12
+If action <> "Host" And action <> "Join" And action <> "Search" Then WScript.Quit 12
 If mode <> "Network" And mode <> "Test" Then WScript.Quit 13
 If Not IsNumeric(port) Then WScript.Quit 14
 If CLng(port) < 1 Or CLng(port) > 65535 Then WScript.Quit 14

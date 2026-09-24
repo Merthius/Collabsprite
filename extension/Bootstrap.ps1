@@ -1,5 +1,5 @@
 # Started by the Aseprite dialog. Only the host starts Node; guests need no server.
-param([ValidateSet('Host','Join')][string]$Action,
+param([ValidateSet('Host','Join','Search')][string]$Action,
       [ValidateSet('Network','Test')][string]$Mode,
       [ValidateRange(1,65535)][int]$Port = 8766,
       [string]$ResultPath = '',
@@ -18,6 +18,12 @@ function ServerStatus {
     catch { return $null }
 }
 try {
+    if ($Action -eq 'Search') {
+        $probe = Join-Path $PSScriptRoot 'Probe.ps1'
+        if (-not (Test-Path -LiteralPath $probe)) { Fail 'Sitzungssuche fehlt. Collabsprite neu installieren.' }
+        $found = @(& $probe -Port $Port)
+        Report ("SEARCH`n" + ($found -join "`n")); exit 0
+    }
     if ($Action -eq 'Join') {
         if ($Endpoints -eq '0') { Report ('READY ' + $Port); exit 0 }
         if ($Endpoints.Length -gt 160 -or $Endpoints -notmatch '^[0-9.,:]+$') { Fail 'Einladungscode enthält ungültige Adressen.' }

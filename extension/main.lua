@@ -83,6 +83,7 @@ local function pollBootstrap()
   local ready=reply:match('READY ([^\r\n]+)')
   if problem then alert(problem)
   elseif ready then safely(function() job.onReady(ready) end)
+  elseif reply:sub(1,7)=='SEARCH\n' then safely(function() job.onReady(reply:sub(8)) end)
   else alert('Verbindungsstart fehlgeschlagen.') end
 end
 
@@ -98,16 +99,13 @@ local function joinCode(code)
   end)
 end
 
-local function searchSessionsNow()
+local function searchSessionsNow(output)
   safely(function()
     if not dialog then return end
-    local helper=app.fs.joinPath(extensionPath,'Probe.ps1')
-    local command='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'..helper..'" -Port '..PORT
-    local pipe=assert(io.popen(command,'r'),'Sitzungssuche konnte nicht gestartet werden.')
     discovered={}
     discoveredCount=0
     local choices,seen={},{}
-    for line in pipe:lines() do
+    for line in (output or ''):gmatch('[^\r\n]+') do
       local ok,result=pcall(function() return json.decode(line) end)
       if ok and result and result.protocol==2 then
         for _,room in ipairs(result.rooms or {}) do
@@ -123,7 +121,6 @@ local function searchSessionsNow()
         end
       end
     end
-    pipe:close()
     if #choices==0 then
       dialog:modify{id='sessions',options={'Keine Sitzung gefunden'},option='Keine Sitzung gefunden',visible=false}
       dialog:modify{id='joinFound',visible=false}
@@ -138,7 +135,7 @@ end
 
 local function searchSessions()
   safely(function()
-    beginBootstrap('Join',nil,function() searchSessionsNow() end)
+    beginBootstrap('Search',nil,function(result) searchSessionsNow(result) end)
   end)
 end
 

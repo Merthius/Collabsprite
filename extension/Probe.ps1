@@ -1,10 +1,11 @@
 # One-shot discovery across this PC, the local subnet and an active Radmin VPN.
-param([ValidateRange(1,65535)][int]$Port = 8766)
+param([ValidateRange(1,65535)][int]$Port = 8766,
+      [switch]$LoopbackOnly)
 $ErrorActionPreference = 'Stop'
-$entries = @([Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
+$entries = if ($LoopbackOnly) { @() } else { @([Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
     Where-Object { $_.OperationalStatus -eq 'Up' } |
     ForEach-Object { $_.GetIPProperties().UnicastAddresses } |
-    Where-Object { $_.Address.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork })
+    Where-Object { $_.Address.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork }) }
 function IsPrivate([byte[]]$bytes) {
     return $bytes[0] -eq 10 -or ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or
         ($bytes[0] -eq 192 -and $bytes[1] -eq 168)
