@@ -6,6 +6,8 @@
 
 **[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.4.2/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
 
+## Schnellstart
+
 ![Schematischer Schnellstart: installieren, Sitzung erstellen, beitreten](docs/quick-start.svg)
 
 *Die Grafik zeigt den Ablauf schematisch; sie ist kein Screenshot der Aseprite-Oberfläche.*
