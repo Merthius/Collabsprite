@@ -5,7 +5,7 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
 Set arguments = WScript.Arguments
 
-If arguments.Count <> 5 Then WScript.Quit 2
+If arguments.Count <> 5 Then WScript.Quit 11
 action = arguments(0)
 mode = arguments(1)
 port = arguments(2)
@@ -13,15 +13,15 @@ resultPath = fso.GetAbsolutePathName(arguments(3))
 endpoints = arguments(4)
 tempRoot = fso.GetAbsolutePathName(shell.ExpandEnvironmentStrings("%TEMP%")) & "\"
 
-If action <> "Host" And action <> "Join" Then WScript.Quit 2
-If mode <> "Network" And mode <> "Test" Then WScript.Quit 2
-If Not IsNumeric(port) Then WScript.Quit 2
-If CLng(port) < 1 Or CLng(port) > 65535 Then WScript.Quit 2
-If LCase(Left(resultPath, Len(tempRoot))) <> LCase(tempRoot) Then WScript.Quit 2
-If Left(fso.GetFileName(resultPath), 19) <> "Collabsprite-start-" Then WScript.Quit 2
-If LCase(Right(resultPath, 7)) <> ".status" Then WScript.Quit 2
-If Len(endpoints) > 160 Then WScript.Quit 2
-If Not ValidEndpoints(endpoints) Then WScript.Quit 2
+If action <> "Host" And action <> "Join" Then WScript.Quit 12
+If mode <> "Network" And mode <> "Test" Then WScript.Quit 13
+If Not IsNumeric(port) Then WScript.Quit 14
+If CLng(port) < 1 Or CLng(port) > 65535 Then WScript.Quit 14
+If LCase(Left(resultPath, Len(tempRoot))) <> LCase(tempRoot) Then WScript.Quit 15
+If Left(fso.GetFileName(resultPath), 19) <> "Collabsprite-start-" Then WScript.Quit 16
+If LCase(Right(resultPath, 7)) <> ".status" Then WScript.Quit 17
+If Len(endpoints) > 160 Then WScript.Quit 18
+If Not ValidEndpoints(endpoints) Then WScript.Quit 19
 
 worker = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), "Bootstrap.ps1")
 If Not fso.FileExists(worker) Then
