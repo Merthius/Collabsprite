@@ -1,8 +1,9 @@
 # Started by the Aseprite dialog. Only the host starts Node; guests need no server.
 param([ValidateSet('Host','Join')][string]$Action,
-      [ValidateSet('Local','Global')][string]$Mode,
-      [ValidateRange(1,65535)][int]$Port = 8765,
-      [string]$ResultPath = '')
+      [ValidateSet('Network','Test')][string]$Mode,
+      [ValidateRange(1,65535)][int]$Port = 8766,
+      [string]$ResultPath = '',
+      [string]$Endpoints = '0')
 $ErrorActionPreference = 'Stop'
 function Report([string]$line) {
     if ($ResultPath) {
@@ -17,52 +18,56 @@ function ServerStatus {
     catch { return $null }
 }
 try {
-    if ($Mode -eq 'Global') {
-        $radmin = 'C:\Program Files (x86)\Radmin VPN\RvRvpnGui.exe'
-        if (-not (Test-Path -LiteralPath $radmin)) { Fail 'Radmin VPN ist nicht installiert.' }
-        if (-not (Get-Process -Name 'RvRvpnGui' -ErrorAction SilentlyContinue)) {
-            # Radmin is an interactive app: leave its GUI visible so the user can join a VPN network.
-            $gui = [Diagnostics.ProcessStartInfo]::new($radmin)
-            $gui.UseShellExecute = $true
-            $gui.WindowStyle = [Diagnostics.ProcessWindowStyle]::Normal
-            [Diagnostics.Process]::Start($gui) | Out-Null
-            Report 'RADMIN_OPENED Radmin wurde geöffnet. Bitte dem gemeinsamen VPN-Netz beitreten und erneut versuchen.'
-            exit 0
+    if ($Action -eq 'Join') {
+        if ($Endpoints -eq '0') { Report ('READY ' + $Port); exit 0 }
+        if ($Endpoints.Length -gt 160 -or $Endpoints -notmatch '^[0-9.,:]+$') { Fail 'Einladungscode enthält ungültige Adressen.' }
+        foreach ($candidate in ($Endpoints -split ',' | Select-Object -First 8)) {
+            if ($candidate -notmatch '^((?:\d{1,3}\.){3}\d{1,3}):(\d{1,5})$') { continue }
+            $ip = $Matches[1]; $candidatePort = [int]$Matches[2]
+            if ($candidatePort -lt 1 -or $candidatePort -gt 65535) { continue }
+            $parsed = [Net.IPAddress]::Parse($ip)
+            $bytes = $parsed.GetAddressBytes()
+            $private = $ip -eq '127.0.0.1' -or $bytes[0] -eq 10 -or
+                ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or
+                ($bytes[0] -eq 192 -and $bytes[1] -eq 168) -or $bytes[0] -eq 26
+            if (-not $private) { continue }
+            try {
+                $status = Invoke-RestMethod -Uri ('http://' + $candidate + '/status') -TimeoutSec 1 -UseBasicParsing
+                if ($status.app -eq 'Collabsprite' -and $status.protocol -eq 2 -and $status.port -eq $candidatePort) {
+                    Report ('READY ' + $candidate); exit 0
+                }
+            } catch { }
         }
-        $address = @([Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
-            ForEach-Object { $_.GetIPProperties().UnicastAddresses } |
-            Where-Object { $_.Address.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork -and $_.Address.ToString().StartsWith('26.') })
-        if ($address.Count -eq 0) { Fail 'Radmin ist geöffnet. Bitte einem gemeinsamen VPN-Netz beitreten und erneut versuchen.' }
+        Fail 'Host nicht erreichbar. Beide PCs im selben LAN oder Radmin-Netz? Windows-Firewall prüfen.'
     }
-    if ($Action -eq 'Join') { Report ('READY ' + $Port); exit 0 }
     $node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
     if (-not $node) { Fail 'Node.js fehlt auf dem Host-PC (nodejs.org).' }
     $serverFile = Join-Path $PSScriptRoot 'server.mjs'
     if (-not (Test-Path -LiteralPath $serverFile)) { Fail 'Serverdateien fehlen. Collabsprite neu installieren.' }
     $status = ServerStatus
     if ($status) {
-        if ($status.app -ne 'Collabsprite' -or [bool]$status.localOnly -ne ($Mode -eq 'Local')) {
+        if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 2 -or [bool]$status.localOnly -ne ($Mode -eq 'Test')) {
             Fail ('Port ' + $Port + ' ist durch einen anderen Server belegt.')
         }
         Report ('READY ' + $Port); exit 0
     }
-    if ($Mode -eq 'Global') {
-        $tcpRule = Get-NetFirewallRule -Name 'Collabsprite-Radmin-TCP-8766' -ErrorAction SilentlyContinue
-        $udpRule = Get-NetFirewallRule -Name 'Collabsprite-Radmin-UDP-8766' -ErrorAction SilentlyContinue
-        if (-not $tcpRule -or -not $udpRule) {
+    if ($Mode -eq 'Network') {
+        $rules = @('Collabsprite-LAN-TCP-8766','Collabsprite-LAN-UDP-8766','Collabsprite-Radmin-TCP-8766','Collabsprite-Radmin-UDP-8766')
+        if (@($rules | Where-Object { -not (Get-NetFirewallRule -Name $_ -ErrorAction SilentlyContinue) }).Count -gt 0) {
             $firewallScript = Join-Path $PSScriptRoot 'firewall.ps1'
             $arguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"' + $firewallScript + '"'))
             $setup = Start-Process -FilePath powershell.exe -ArgumentList $arguments -Verb RunAs -WindowStyle Hidden -Wait -PassThru
             if ($setup.ExitCode -ne 0) { Fail 'Die einmalige Windows-Firewallfreigabe wurde nicht erteilt.' }
         }
     }
-    $arguments = @(('"' + $serverFile + '"'), ('--' + $Mode.ToLowerInvariant()), ('--port=' + $Port), '--managed')
+    $serverMode = if ($Mode -eq 'Test') { '--local' } else { '--network' }
+    $arguments = @(('"' + $serverFile + '"'), $serverMode, ('--port=' + $Port), '--managed')
     $serverProcess = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(8)
     while ([DateTime]::UtcNow -lt $deadline) {
         Start-Sleep -Milliseconds 150
         $status = ServerStatus
-        if ($status -and $status.app -eq 'Collabsprite' -and [bool]$status.localOnly -eq ($Mode -eq 'Local')) {
+        if ($status -and $status.app -eq 'Collabsprite' -and $status.protocol -eq 2 -and [bool]$status.localOnly -eq ($Mode -eq 'Test')) {
             Report ('READY ' + $Port); exit 0
         }
         if ($serverProcess.HasExited) { break }

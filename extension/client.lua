@@ -38,26 +38,21 @@ function Client:connect(url,hello)
         local ok,message=pcall(function() return plain(json.decode(data)) end)
         self.inbox[#self.inbox+1]=ok and message or {type='error',message='Ungueltige Serverantwort'}
       elseif kind==WebSocketMessageType.ERROR or kind==WebSocketMessageType.CLOSE then
-        self.inbox[#self.inbox+1]={type='error',message='Verbindung getrennt. Server/Radmin pruefen. Lokale Kopie bleibt erhalten.'}
+        self.inbox[#self.inbox+1]={type='error',message='Verbindung getrennt. Netzwerk/Server prüfen. Lokale Kopie bleibt erhalten.'}
       end
     end}
   self.ws:connect()
 end
 function Client:host(sprite,name,port)
   local snapshot=C.capture(sprite)
-  self:connect('ws://127.0.0.1:'..(port or 8765),{type='hello',protocol=1,mode='host',name=name,snapshot=snapshot})
+  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=2,mode='host',name=name,snapshot=snapshot})
 end
 function Client:join(invite,name)
   invite=invite:gsub('%s',''):gsub('^ws://','')
   local address,code,token=invite:match('^([%w%.%-]+:%d+)/(%x+)/(%x+)$')
   assert(address and #code==8 and #token==32,'Bitte den gesamten Einladungscode vom Host einfuegen.')
   self.invite=invite
-  self:connect('ws://'..address,{type='hello',protocol=1,mode='join',name=name,room=code,token=token})
-end
-function Client:getLocalInvite()
-  assert(self.connected and self.isHost and self.invite,'Lokale Einladung nur am verbundenen Host kopieren.')
-  -- Only replace the address, never the room or secret. Preserve non-default test ports.
-  return (self.invite:gsub('^[^/]+:(%d+)/','127.0.0.1:%1/',1))
+  self:connect('ws://'..address,{type='hello',protocol=2,mode='join',name=name,room=code,token=token})
 end
 function Client:disconnect(reason)
   local wasActive=self.connected or self.connecting
@@ -136,7 +131,7 @@ function Client:receive(message)
   elseif message.type=='welcome' then
     assert(not self.connected,'Doppelte Anmeldung')
     self.author=message.author;self.room=message.room;self.isHost=message.host
-    self.invite=message.invite or self.invite;self.hasRadmin=message.radmin;self.localOnly=message.localOnly==true
+    self.invite=message.invite or self.invite;self.localOnly=message.localOnly==true
     self.meta=message.snapshot;self.cells=C.decode(self.meta)
     self.applying=true
     self.sprite,self.mapping=C.create(self.meta,self.cells)
@@ -151,6 +146,13 @@ function Client:receive(message)
     self.undoCount=message.undo;self.redoCount=message.redo;self.notify(self)
   elseif message.type=='presence' then
     self.members=message.members;self.notify(self)
+  elseif message.type=='invite' then
+    self.invite=message.invite
+    if self.copyWhenReady then
+      self.copyWhenReady=false
+      app.clipboard.text=self.invite
+      app.tip('Einladungscode kopiert.',4)
+    end
   elseif message.type=='patch' then
     assert(message.revision==self.revision+1,'Synchronisationsfolge unterbrochen; bitte neu verbinden.')
     for _,patch in ipairs(message.patches) do
@@ -231,7 +233,7 @@ end
 function Client:tick()
   if self.closed then return end
   local ok,err=pcall(function()
-    if self.connecting and os.time()-self.started>20 then error('Keine Verbindung: Host-Server starten, Radmin und Firewall pruefen.') end
+    if self.connecting and os.time()-self.started>20 then error('Keine Verbindung: Host, LAN/Radmin und Firewall prüfen.') end
     if self.connected then
       local exists=false
       for _,s in ipairs(app.sprites) do if s==self.sprite then exists=true;break end end

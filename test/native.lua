@@ -41,8 +41,9 @@ testTimer=Timer{interval=0.04,ontick=function()
     if a.closed or b.closed then error('Client stopped: '..a.status..' / '..b.status) end
     if os.time()-started>180 then error('Timeout stage '..stage..': '..a.status..' / '..b.status) end
     if stage==0 and a.connected then
-      assert(a:getLocalInvite():match('^127%.0%.0%.1:8766/'),'Wrong local invitation')
-      b:join(a:getLocalInvite(),'B');stage=1
+      local localInvite=a.invite:gsub('^[^/]+:(%d+)/','127.0.0.1:%1/',1)
+      assert(localInvite:match('^127%.0%.0%.1:8766/'),'Wrong local invitation')
+      b:join(localInvite,'B');stage=1
     elseif stage==1 and b.connected then
       draw(a,0xff0000ff,{Point(1,1),Point(2,1)});stage=2
     elseif stage==2 and pixel(b,2,1)==0xff0000ff and #a.pending==0 then

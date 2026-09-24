@@ -2,7 +2,7 @@
 
 # Collabsprite — English guide
 
-[Deutsch](README.md) · [Download v0.4.2 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.4.2/Collabsprite.aseprite-extension)
+[Deutsch](README.md) · [Download v0.5.0 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.5.0/Collabsprite.aseprite-extension)
 
 Collabsprite is an unofficial, open-source Aseprite extension for drawing together on the same pixel-art canvas. The host runs a small local server; everyone uses the **same** extension. Per-user undo/redo applies to synchronized pixel operations without removing newer contributions by someone else.
 
@@ -11,7 +11,7 @@ Collabsprite is an unofficial, open-source Aseprite extension for drawing togeth
 *The image is a schematic guide, not an Aseprite screenshot.*
 
 > [!WARNING]
-> **Windows beta.** The two-Aseprite-windows-on-one-PC setup was only a development test. The intended use with friends on separate PCs via Radmin VPN, VPN discovery, and starting with Radmin closed still need end-to-end testing. Save your work regularly as an `.aseprite` file.
+> **Windows beta.** Direct LAN connectivity was tested with two clients using one PC's LAN address. End-to-end use on two separate PCs, Radmin VPN, Windows firewall approval, and the native Aseprite UI still need testing. Save your work regularly as an `.aseprite` file.
 
 ## Requirements
 
@@ -20,33 +20,33 @@ Collabsprite is an unofficial, open-source Aseprite extension for drawing togeth
 | Aseprite | Yes | Yes |
 | `Collabsprite.aseprite-extension` | Yes | Yes — same version |
 | [Node.js](https://nodejs.org/) 20+ | Yes | No |
-| [Radmin VPN](https://www.radmin-vpn.com/) | Yes, to connect to other PCs | Yes, to connect to other PCs |
+| [Radmin VPN](https://www.radmin-vpn.com/) | Only across different networks | Only across different networks |
 
-The session server runs on the **host PC**. In version 0.4.2, separate PCs connect through the *same Radmin VPN network* (port `8766`), even if they already share a Wi-Fi/LAN. A direct LAN connection without Radmin is **not implemented yet**. The extension still displays **Local/Lokal (this PC)** from the single-PC test; it does **not** connect two PCs. For collaborating with friends, always select **Global/Radmin VPN**. “Global” does not mean a public Internet service.
+The session server runs on the **host PC** (port `8766`). There is just **one workflow**: Create or Join. Separate PCs on the same Wi-Fi/LAN connect directly without Radmin. Across different networks, both users first join the same Radmin VPN network and then use the same buttons. No cloud account or public Collabsprite server is involved.
 
 ## Install on every computer
 
-1. On the [v0.4.2 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.4.2), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
+1. On the [v0.5.0 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.5.0), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
 2. In Aseprite, open **Edit → Preferences → Extensions → Add Extension** and select the file. Double-clicking the extension may work as well ([official Aseprite instructions](https://www.aseprite.org/docs/extensions/)).
 3. Restart Aseprite. Open **View → Collabsprite…** (in a German UI: **Ansicht → Collabsprite…**).
 
 ## Host
 
 1. Open an RGB sprite. Collabsprite creates a **separate session copy**; the original file is not modified.
-2. Open **View/Ansicht → Collabsprite… → Create/Erstellen**. Enter your name and choose **Global/Radmin VPN**. Host and guests must join the same Radmin network, even when already on the same LAN.
+2. Open **View/Ansicht → Collabsprite… → Create/Erstellen** and enter your name. If your friend is on a different network, start Radmin VPN and join your shared VPN network first.
 3. Click **Create session/Sitzung erstellen** and wait for **Connected/Verbunden**.
 4. Click **Copy invitation/Einladung kopieren** and privately send the full code to your friends.
 
-Collabsprite is intended to open Radmin if it is not running; join your shared VPN and click Create again. Windows may request approval for a limited firewall rule on the first start. The user must approve it; the extension cannot bypass this step.
+Collabsprite does not open Radmin automatically because it is unnecessary on a shared LAN. Windows may request approval for limited firewall rules on the first start; the extension cannot bypass this. For direct LAN access, set the host's Windows network profile to **Private**.
 
 ## Join
 
 1. Install the same extension, restart Aseprite, and choose **View/Ansicht → Collabsprite… → Join/Beitreten**. You do not need to open a sprite first.
-2. Join the host's Radmin VPN network and choose **Global/Radmin VPN**.
-3. Paste the **invitation code** and click **Join/Beitreten**. You may also search for active sessions. If Radmin discovery finds nothing, use the code.
+2. Only if you are on different networks, start Radmin VPN and join the host's VPN network.
+3. Paste the full **invitation code** and click **Join/Beitreten**. Collabsprite tries the listed LAN/VPN addresses. You may also search for active sessions; if discovery finds nothing, use the code.
 4. Wait for **Connected/Verbunden** and draw in the shared session copy.
 
-The invitation code for friends starts with a `26.…:8766/…` address. The entire code is a **session access key**. Never publish it in an issue or screenshot.
+An invitation may look like `192.168.1.10:8766,26.1.2.3:8766/ROOM/TOKEN`; without an active Radmin adapter, there is no `26.…` address. The entire code is a **session access key**. Never publish it in an issue or screenshot. If Radmin starts after the session, click **Copy invitation** again.
 
 ## Working together
 
@@ -56,7 +56,7 @@ The invitation code for friends starts with a `26.…:8766/…` address. The ent
 - Save the session copy as `.aseprite` with **Save As**. The host also keeps local session backups, but they do not replace manual saves.
 - After a network interruption, there is no automatic reconnect or offline merge. Save the local copy and join deliberately again.
 
-The WebSocket connection has **no built-in end-to-end encryption**; use a trusted VPN. The host checks and orders changes. The invitation code must remain private.
+The WebSocket connection has **no built-in end-to-end encryption**; use only a trusted LAN or VPN. The host checks and orders changes. The invitation code must remain private. Firewall rules limit inbound TCP/UDP port `8766` to the local subnet on private/domain networks and Radmin's `26.0.0.0/8` range for the Node process.
 
 ## Limitations and support
 

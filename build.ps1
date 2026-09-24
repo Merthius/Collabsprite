@@ -7,7 +7,7 @@ try {
 New-Item -ItemType Directory -Force -Path $pluginBundle,(Join-Path $pluginBundle 'node_modules') | Out-Null
 $pluginFiles = @('client.lua','codec.lua','main.lua','package.json','Probe.ps1','Bootstrap.ps1','Launcher.vbs','LICENSE')
 foreach ($name in $pluginFiles) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('extension\'+$name)) -Destination (Join-Path $pluginBundle $name) -Force }
-foreach ($name in @('server.mjs','core.mjs','firewall.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $pluginBundle $name) -Force }
+foreach ($name in @('server.mjs','core.mjs','network.mjs','firewall.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $pluginBundle $name) -Force }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'node_modules\ws') -Destination (Join-Path $pluginBundle 'node_modules') -Recurse -Force
 $extensionZip = Join-Path $outputRoot 'Collabsprite-extension-build.zip'
 Compress-Archive -Path (Join-Path $pluginBundle '*') -DestinationPath $extensionZip -Force

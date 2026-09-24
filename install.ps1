@@ -18,7 +18,7 @@ if (Test-Path -LiteralPath $oldLauncher) { Remove-Item -LiteralPath $oldLauncher
 Get-ChildItem -LiteralPath $extensionSource -File | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $extensionTarget $_.Name) -Force
 }
-foreach ($name in @('server.mjs','core.mjs','firewall.ps1')) {
+foreach ($name in @('server.mjs','core.mjs','network.mjs','firewall.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $extensionTarget $name) -Force
 }
 $moduleTarget = Join-Path $extensionTarget 'node_modules'

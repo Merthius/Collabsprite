@@ -2,7 +2,7 @@ import http from 'node:http';
 import dgram from 'node:dgram';
 import { WebSocketServer, WebSocket } from 'ws';
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
-import { networkInterfaces } from 'node:os';
+import { allowedPeer, addresses, invite, replyAddress } from './network.mjs';
 import { mkdir, readdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,13 +10,7 @@ import { Room } from './core.mjs';
 
 const hash = value => createHash('sha256').update(String(value)).digest('hex');
 const isLocal = address => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
-export function radminAddress() {
-  for (const entries of Object.values(networkInterfaces())) for (const entry of entries || []) {
-    if (entry.family === 'IPv4' && entry.address.startsWith('26.')) return entry.address;
-  }
-  return null;
-}
-export async function startServer({ port = 8765, host = '0.0.0.0', dataDir = resolve(dirname(fileURLToPath(import.meta.url)), 'data'), log = console.log } = {}) {
+export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = resolve(dirname(fileURLToPath(import.meta.url)), 'data'), log = console.log } = {}) {
   const localOnly = host === '127.0.0.1' || host === '::1';
   const rooms = new Map();
   if (dataDir) {
@@ -30,11 +24,12 @@ export async function startServer({ port = 8765, host = '0.0.0.0', dataDir = res
     }
   }
   const server = http.createServer((req, res) => {
-    if (req.url === '/status' && isLocal(req.socket.remoteAddress)) {
+    if (req.url === '/status' && allowedPeer(req.socket.remoteAddress, localOnly)) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 1, localOnly, port: server.address()?.port }));
+      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 2, localOnly, port: server.address()?.port }));
       return;
     }
+    if (!allowedPeer(req.socket.remoteAddress, localOnly)) { res.writeHead(403); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end('Collabsprite ist bereit. In Aseprite Ansicht > Collabsprite waehlen.\n');
   });
@@ -49,8 +44,8 @@ export async function startServer({ port = 8765, host = '0.0.0.0', dataDir = res
   const presence = room => broadcast(room, { type: 'presence', members: [...room.clients].map(c => ({ name: c.name, author: c.author })) });
   wss.on('connection', (socket, request) => {
     const address = String(request.socket.remoteAddress || '').replace(/^::ffff:/, '');
-    if (!isLocal(request.socket.remoteAddress) && !/^26\.\d+\.\d+\.\d+$/.test(address))
-      return socket.close(1008, 'Nur lokaler Host und Radmin-Netzwerk');
+    if (!allowedPeer(address, localOnly))
+      return socket.close(1008, 'Nur lokales Netzwerk oder Radmin VPN');
     socket._socket?.setNoDelay(true);
     socket.lastSeen = Date.now();
     socket.on('pong', () => { socket.lastSeen = Date.now(); });
@@ -67,7 +62,7 @@ export async function startServer({ port = 8765, host = '0.0.0.0', dataDir = res
         if (binary) throw new Error('Nur JSON-Nachrichten erlaubt');
         const message = JSON.parse(data.toString());
         if (!socket.room) {
-          if (message.type !== 'hello' || message.protocol !== 1) throw new Error('Unpassende Erweiterungsversion');
+          if (message.type !== 'hello' || message.protocol !== 2) throw new Error('Unpassende Erweiterungsversion');
           socket.name = String(message.name || 'Kuenstler').replace(/[\x00-\x1f]/g, '').slice(0, 30);
           socket.author = randomBytes(16).toString('hex');
           let room, code, token;
@@ -94,9 +89,9 @@ export async function startServer({ port = 8765, host = '0.0.0.0', dataDir = res
           clearTimeout(greetingTimeout);
           socket.room = room; socket.code = code; room.clients.add(socket); room.core.user(socket.author);
           const actualPort = server.address().port;
-          send(socket, { type: 'welcome', protocol: 1, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision,
-            invite: token ? `${(!localOnly && radminAddress()) || '127.0.0.1'}:${actualPort}/${code}/${token}` : undefined,
-            radmin: !!radminAddress(), localOnly, restored: room.restored, snapshot: room.core.snapshot() });
+          send(socket, { type: 'welcome', protocol: 2, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision,
+            invite: token ? invite(localOnly ? [] : addresses(), actualPort, code, token) : undefined,
+            localOnly, restored: room.restored, snapshot: room.core.snapshot() });
           histories(room); presence(room);
           log(`Sitzung ${code}: ${room.clients.size} Person(en) verbunden.`);
           return;
@@ -107,6 +102,8 @@ export async function startServer({ port = 8765, host = '0.0.0.0', dataDir = res
         else if (message.type === 'undo' || message.type === 'redo') event = room.core.undoRedo(socket.author, message.type === 'redo');
         else if (message.type === 'append') {
           event = room.core.append(message.kind, message.name, message.source);
+        } else if (message.type === 'invite' && room.hostAuthor === socket.author) {
+          send(socket, { type: 'invite', invite: invite(localOnly ? [] : addresses(), server.address().port, socket.code, room.discoveryToken) }); return;
         } else if (message.type === 'ping') { send(socket, { type: 'pong', nonce: message.nonce }); return; }
         else throw new Error('Unbekannte Nachricht');
         if (event) { broadcast(room, event); room.dirty = true; }
@@ -147,15 +144,17 @@ export async function startServer({ port = 8765, host = '0.0.0.0', dataDir = res
   await new Promise((accept, reject) => { server.once('error', reject); server.listen(port, host, accept); });
   const discovery = dgram.createSocket('udp4');
   discovery.on('message', (data, peer) => {
-    if (data.toString() !== 'COLLABSPRITE_DISCOVER_V1') return;
-    if (!isLocal(peer.address) && !/^26\.\d+\.\d+\.\d+$/.test(peer.address)) return;
+    if (data.toString() !== 'COLLABSPRITE_DISCOVER_V2') return;
+    if (!allowedPeer(peer.address, localOnly)) return;
+    const address = replyAddress(peer.address, localOnly);
+    if (!address) return;
     const visible = [];
     for (const [code, room] of rooms) {
       if (!room.clients.size || !room.discoveryToken) continue;
       visible.push({ name: room.hostName || 'Kuenstler', image: room.core.meta.name,
-        invite: `${peer.address === '127.0.0.1' ? '127.0.0.1' : radminAddress() || '127.0.0.1'}:${server.address().port}/${code}/${room.discoveryToken}` });
+        invite: invite([address], server.address().port, code, room.discoveryToken) });
     }
-    const response = Buffer.from(JSON.stringify({ protocol: 1, rooms: visible }));
+    const response = Buffer.from(JSON.stringify({ protocol: 2, rooms: visible }));
     if (response.length <= 1200) discovery.send(response, peer.port, peer.address);
   });
   discovery.on('error', error => log(`Sitzungssuche: ${error.message}`));
@@ -170,7 +169,7 @@ export async function startServer({ port = 8765, host = '0.0.0.0', dataDir = res
     discovery.close();
     log(`UDP-Sitzungssuche nicht verfuegbar (${error.message}); Einladungscode funktioniert weiterhin.`);
   }
-  log(`Collabsprite | Port ${server.address().port} | ${localOnly ? 'Nur dieser PC (127.0.0.1)' : 'Radmin ' + (radminAddress() || 'nicht aktiv')}\nGleicher PC: 127.0.0.1 (kein VPN erforderlich).\nHost: Collabsprite in Aseprite oeffnen und Sitzung starten.\nServerfenster waehrend der Zusammenarbeit offen lassen.`);
+  log(`Collabsprite | Port ${server.address().port} | ${localOnly ? 'Test: nur dieser PC' : 'LAN und Radmin VPN'}\nHost: Collabsprite in Aseprite oeffnen und Sitzung starten.`);
   return { server, rooms, port: server.address().port, discoveryPort, async close() {
     clearInterval(saveTimer); clearInterval(heartbeat);
     if (discoveryPort) discovery.close();

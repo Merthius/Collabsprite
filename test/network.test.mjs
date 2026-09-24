@@ -3,16 +3,17 @@ import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import dgram from 'node:dgram';
 import { startServer } from '../server.mjs';
+import { allowedPeer, addresses, invite, replyAddress } from '../network.mjs';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { tmpdir, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
 const execFileAsync=promisify(execFile);
 const snapshot=()=>({format:1,name:'Netzwerktest',width:16,height:16,layers:[{name:'Gemeinsam'}],frames:[100],cels:[],palette:[]});
-async function connect(port,hello) {
-  const ws=new WebSocket(`ws://127.0.0.1:${port}`);
+async function connect(port,hello,address='127.0.0.1') {
+  const ws=new WebSocket(`ws://${address}:${port}`);
   const queue=[],pending=[];
   ws.on('message',data=>{
     const message=JSON.parse(data);
@@ -26,7 +27,7 @@ async function connect(port,hello) {
     return new Promise((resolve,reject)=>{const p={type,resolve};p.timeout=setTimeout(()=>reject(Error('Timeout '+type)),4000);pending.push(p);});
   };
   await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
-  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:1,...hello});
+  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:2,...hello});
   return {ws,send,next};
 }
 async function discover(port) {
@@ -37,7 +38,7 @@ async function discover(port) {
       const timeout=setTimeout(()=>reject(Error('Timeout UDP discovery')),2000);
       socket.once('message',data=>{clearTimeout(timeout);resolve(JSON.parse(data.toString()));});
     });
-    socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V1'),port,'127.0.0.1');
+    socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V2'),port,'127.0.0.1');
     return await reply;
   } finally {socket.close();}
 }
@@ -47,6 +48,8 @@ test('Three real WebSocket clients converge; authorization and restore',async t=
   t.after(async()=>{await service.close();await rm(dataDir,{recursive:true});});
   const a=await connect(service.port,{mode:'host',name:'A',snapshot:snapshot()});
   const welcome=await a.next('welcome');const [,code,token]=welcome.invite.split('/');
+  a.send({type:'invite'});
+  assert.equal((await a.next('invite')).invite,welcome.invite);
   const b=await connect(service.port,{mode:'join',name:'B',room:code,token});await b.next('welcome');
   const c=await connect(service.port,{mode:'join',name:'C',room:code,token});await c.next('welcome');
   a.send({type:'paint',seq:1,patches:[{layer:1,frame:1,runs:[0,2,0xff123456]}]});
@@ -80,7 +83,7 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
   t.after(()=>service.close());
   assert.deepEqual(await (await fetch(`http://127.0.0.1:${service.port}/status`)).json(),
-    {app:'Collabsprite',protocol:1,localOnly:true,port:service.port});
+    {app:'Collabsprite',protocol:2,localOnly:true,port:service.port});
   const a=await connect(service.port,{mode:'host',name:'Local A',snapshot:snapshot()});
   const welcome=await a.next('welcome');
   assert.equal(welcome.localOnly,true);
@@ -107,4 +110,46 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   const result=await b.next('patch');
   assert.deepEqual(result.patches,[{layer:1,frame:1,runs:[0,1,0]}]);
   assert.equal(service.rooms.get(room).core.cells.get('1:1').pixels[1],0xff654321);
+});
+test('LAN subnet and Radmin addresses share one invitation format',()=>{
+  const source={lan:[{family:'IPv4',address:'192.168.5.8',netmask:'255.255.255.0',internal:false}],
+    vpn:[{family:'IPv4',address:'26.42.7.9',netmask:'255.0.0.0',internal:false}]};
+  assert.deepEqual(addresses(source),['192.168.5.8','26.42.7.9']);
+  assert.equal(invite(addresses(source),8766,'AABBCCDD','0123456789abcdef0123456789abcdef'),
+    '192.168.5.8:8766,26.42.7.9:8766/AABBCCDD/0123456789abcdef0123456789abcdef');
+  assert.equal(allowedPeer('192.168.5.99',false,source),true);
+  assert.equal(allowedPeer('192.168.6.1',false,source),false);
+  assert.equal(allowedPeer('26.9.9.9',false,source),true);
+  assert.equal(allowedPeer('8.8.8.8',false,source),false);
+  assert.equal(allowedPeer('26.9.9.9',true,source),false);
+  assert.equal(replyAddress('192.168.5.99',false,source),'192.168.5.8');
+  assert.equal(replyAddress('26.9.9.9',false,source),'26.42.7.9');
+});
+test('A second client can connect through this PC\'s LAN interface',async t=>{
+  const lan=Object.values(networkInterfaces()).flat().find(entry=>entry?.family==='IPv4' &&
+    !entry.internal && /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(entry.address));
+  if (!lan) { t.skip('No active private IPv4 interface'); return; }
+  const service=await startServer({port:0,dataDir:null,log:()=>{}});
+  t.after(()=>service.close());
+  const host=await connect(service.port,{mode:'host',name:'Host',snapshot:snapshot()});
+  const welcome=await host.next('welcome');
+  assert.match(welcome.invite,new RegExp(lan.address.replaceAll('.','\\.')+':'+service.port));
+  const [,room,token]=welcome.invite.split('/');
+  const guest=await connect(service.port,{mode:'join',name:'LAN-Gast',room,token},lan.address);
+  assert.equal((await guest.next('welcome')).room,room);
+  host.send({type:'paint',seq:1,patches:[{layer:1,frame:1,runs:[0,1,0xff112233]}]});
+  assert.deepEqual((await guest.next('patch')).patches,[{layer:1,frame:1,runs:[0,1,0xff112233]}]);
+});
+test('An available Radmin adapter is advertised and accepts a client',async t=>{
+  const vpn=Object.values(networkInterfaces()).flat().find(entry=>entry?.family==='IPv4' &&
+    !entry.internal && /^26\./.test(entry.address));
+  if (!vpn) { t.skip('No active Radmin-style IPv4 adapter'); return; }
+  const service=await startServer({port:0,dataDir:null,log:()=>{}});
+  t.after(()=>service.close());
+  const host=await connect(service.port,{mode:'host',name:'Host',snapshot:snapshot()});
+  const welcome=await host.next('welcome');
+  assert.ok(welcome.invite.includes(`${vpn.address}:${service.port}`));
+  const [,room,token]=welcome.invite.split('/');
+  const guest=await connect(service.port,{mode:'join',name:'VPN-Gast',room,token},vpn.address);
+  assert.equal((await guest.next('welcome')).room,room);
 });

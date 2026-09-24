@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Bitte diese Datei als Administrator ausfuehren. Es werden nur TCP/UDP 8766 fuer Radmin (26.0.0.0/8) freigegeben.'
+    throw 'Bitte die einmalige Collabsprite-Firewallfreigabe als Administrator bestaetigen.'
 }
 $nodePath = (Get-Command node.exe -ErrorAction Stop).Source
 $ruleName = 'Collabsprite-Radmin-TCP-8766'
@@ -20,3 +20,11 @@ if (-not (Get-NetFirewallRule -Name $discoveryRule -ErrorAction SilentlyContinue
     Write-Host 'UDP 8766 fuer Sitzungssuche ausschliesslich ueber Radmin freigegeben.'
 }
 Write-Host "Rueckgaengig: Remove-NetFirewallRule -Name '$discoveryRule'"
+foreach ($protocol in @('TCP','UDP')) {
+    $lanRule = 'Collabsprite-LAN-' + $protocol + '-8766'
+    if (-not (Get-NetFirewallRule -Name $lanRule -ErrorAction SilentlyContinue)) {
+        New-NetFirewallRule -Name $lanRule -DisplayName ('Collabsprite - LAN ' + $protocol + ' 8766') -Direction Inbound -Action Allow -Protocol $protocol -LocalPort 8766 -RemoteAddress LocalSubnet -Program $nodePath -Profile Private,Domain | Out-Null
+        Write-Host ($protocol + ' 8766 nur fuer lokales Subnetz auf privaten/Domain-Netzen freigegeben.')
+    }
+    Write-Host "Rueckgaengig: Remove-NetFirewallRule -Name '$lanRule'"
+}

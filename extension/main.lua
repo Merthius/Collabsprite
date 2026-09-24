@@ -3,8 +3,8 @@ local guarded,discovered={},{}
 local copyInvite,disconnect
 local pane='host'
 local discoveredCount=0
-local LOCAL,GLOBAL='Lokal (dieser PC)','Global (Radmin VPN)'
 local startup,startupCounter=nil,0
+local PORT=8766
 
 local function alert(message)
   app.alert{title='Collabsprite',text=tostring(message)}
@@ -46,15 +46,7 @@ local function newSession()
   return session
 end
 
-local function selectedMode(which)
-  return dialog.data[which]=='Global (Radmin VPN)' and 'Global' or 'Local'
-end
-
-local function port(mode)
-  return mode=='Global' and 8766 or 8765
-end
-
-local function beginBootstrap(action,mode,onReady)
+local function beginBootstrap(action,endpoints,onReady)
   assert(not startup,'Verbindung wird bereits vorbereitet.')
   local temp=os.getenv('TEMP') or os.getenv('TMP')
   assert(temp and temp~='','Windows-Temp-Verzeichnis fehlt.')
@@ -62,7 +54,7 @@ local function beginBootstrap(action,mode,onReady)
   local id=string.format('%d-%d-%d',os.time(),startupCounter,math.random(100000,999999))
   local resultPath=app.fs.joinPath(temp,'Collabsprite-start-'..id..'.status')
   local script=app.fs.joinPath(extensionPath,'Launcher.vbs')
-  local command='wscript.exe //B //Nologo "'..script..'" '..action..' '..mode..' '..port(mode)..' "'..resultPath..'"'
+  local command='wscript.exe //B //Nologo "'..script..'" '..action..' Network '..PORT..' "'..resultPath..'" "'..(endpoints or '0')..'"'
   -- WScript exits immediately after spawning the detached worker. Never wait for
   -- a pipe here: a child inheriting it can freeze Aseprite's UI indefinitely.
   local launched=os.execute(command)
@@ -77,7 +69,7 @@ local function pollBootstrap()
   if not file then
     if os.time()-startup.started>90 then
       startup=nil;refresh(session or {})
-      alert('Verbindungsstart dauert zu lange. Radmin und Windows-Freigabe prüfen.')
+      alert('Verbindungsstart dauert zu lange. Netzwerk und Windows-Freigabe prüfen.')
     end
     return
   end
@@ -88,48 +80,40 @@ local function pollBootstrap()
   refresh(session or {})
   if job.cancelled then return end
   local problem=reply:match('ERROR ([^\r\n]+)')
-  local radmin=reply:match('RADMIN_OPENED ([^\r\n]+)')
-  if problem and problem:match('^Radmin') then
-    if dialog then dialog:modify{id='status',text='Radmin-Netz prüfen'} end
-    app.tip(problem,10)
-  elseif problem then alert(problem)
-  elseif radmin then
-    if dialog then dialog:modify{id='status',text='Radmin geöffnet · erneut Erstellen'} end
-    app.tip(radmin,10)
-  elseif reply:find('READY ',1,true) then safely(job.onReady)
+  local ready=reply:match('READY ([^\r\n]+)')
+  if problem then alert(problem)
+  elseif ready then safely(function() job.onReady(ready) end)
   else alert('Verbindungsstart fehlgeschlagen.') end
 end
 
 local function joinCode(code)
   safely(function()
     assert(code and code~='','Bitte eine Sitzung auswaehlen oder einen Einladungscode eingeben.')
-    local mode=selectedMode('joinMode')
-    local address=code:gsub('%s',''):gsub('^ws://',''):match('^([^/]+)/') or ''
-    if mode=='Local' then assert(address:match('^127%.0%.0%.1:'),'Für Lokal bitte einen lokalen Einladungscode verwenden.')
-    else assert(address:match('^26%.%d+%.%d+%.%d+:'),'Für Global bitte einen Radmin-Einladungscode verwenden.') end
+    code=code:gsub('%s',''):gsub('^ws://','')
+    local endpoints,room,token=code:match('^([^/]+)/(%x+)/(%x+)$')
+    assert(endpoints and #room==8 and #token==32,'Bitte den vollständigen Einladungscode eingeben.')
+    assert(#endpoints<160 and endpoints:match('^[%d%.,:]+$'),'Einladungscode enthält ungültige Adressen.')
     local name=artistName()
-    beginBootstrap('Join',mode,function() newSession():join(code,name) end)
+    beginBootstrap('Join',endpoints,function(address) newSession():join(address..'/'..room..'/'..token,name) end)
   end)
 end
 
-local function searchSessionsNow(mode)
+local function searchSessionsNow()
   safely(function()
     if not dialog then return end
     local helper=app.fs.joinPath(extensionPath,'Probe.ps1')
-    local command='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'..helper..'" -Mode '..mode..' -Port '..port(mode)
+    local command='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'..helper..'" -Port '..PORT
     local pipe=assert(io.popen(command,'r'),'Sitzungssuche konnte nicht gestartet werden.')
     discovered={}
     discoveredCount=0
     local choices,seen={},{}
     for line in pipe:lines() do
       local ok,result=pcall(function() return json.decode(line) end)
-      if ok and result and result.protocol==1 then
+      if ok and result and result.protocol==2 then
         for _,room in ipairs(result.rooms or {}) do
           local invite=tostring(room.invite or '')
           local address=invite:match('^([^/]+)/') or ''
-          local inScope=mode=='Local' and address:match('^127%.0%.0%.1:') or
-            mode=='Global' and address:match('^26%.%d+%.%d+%.%d+:')
-          if inScope and invite:match('^[%w%.%-]+:%d+/%x+/%x+$') and not seen[invite] then
+          if address:match('^[%d%.]+:%d+$') and invite:match('^[%d%.]+:%d+/%x+/%x+$') and not seen[invite] then
             seen[invite]=true
             local label=tostring(room.name or 'Kuenstler'):sub(1,30)..' - '..tostring(room.image or 'Bild'):sub(1,30)
             if discovered[label] then label=label..' ('..(#choices+1)..')' end
@@ -154,8 +138,7 @@ end
 
 local function searchSessions()
   safely(function()
-    local mode=selectedMode('joinMode')
-    beginBootstrap('Join',mode,function() searchSessionsNow(mode) end)
+    beginBootstrap('Join',nil,function() searchSessionsNow() end)
   end)
 end
 
@@ -165,8 +148,8 @@ local function showPane(which)
   local host=which=='host'
   dialog:modify{id='tabHost',text=host and '● Erstellen' or 'Erstellen'}
   dialog:modify{id='tabJoin',text=host and 'Beitreten' or '● Beitreten'}
-  for _,id in ipairs({'hostMode','startHost'}) do dialog:modify{id=id,visible=host} end
-  for _,id in ipairs({'joinMode','manual','joinManual','search'}) do dialog:modify{id=id,visible=not host} end
+  dialog:modify{id='startHost',visible=host}
+  for _,id in ipairs({'manual','joinManual','search'}) do dialog:modify{id=id,visible=not host} end
   dialog:modify{id='sessions',visible=not host and discoveredCount>0}
   dialog:modify{id='joinFound',visible=not host and discoveredCount>0}
 end
@@ -181,24 +164,13 @@ local function show()
     :button{id='tabJoin',text='Beitreten',onclick=function() showPane('join') end}
     :newrow()
     :entry{id='name',label='Dein Name',text=preferences.name or 'Kuenstler'}
-    :combobox{id='hostMode',label='Verbindung',options={LOCAL,GLOBAL},option=preferences.hostMode or LOCAL}
     :button{id='startHost',text='Sitzung erstellen',onclick=function()
       if not app.sprite then alert('Bitte zuerst ein Bild öffnen');return end
       safely(function()
-        local mode=selectedMode('hostMode')
-        preferences.hostMode=dialog.data.hostMode
         local sprite,name=app.sprite,artistName()
-        beginBootstrap('Host',mode,function() newSession():host(sprite,name,port(mode)) end)
+        beginBootstrap('Host',nil,function() newSession():host(sprite,name,PORT) end)
       end)
     end}
-    :combobox{id='joinMode',label='Verbindung',options={LOCAL,GLOBAL},option=preferences.joinMode or LOCAL,visible=false,
-      onchange=function()
-        preferences.joinMode=dialog.data.joinMode
-        discovered={}
-        discoveredCount=0
-        dialog:modify{id='sessions',visible=false}
-        dialog:modify{id='joinFound',visible=false}
-      end}
     :entry{id='manual',label='Einladungscode',text='',visible=false}
     :button{id='joinManual',text='Beitreten',visible=false,onclick=function() joinCode(dialog.data.manual) end}
     :button{id='search',text='Sitzungen suchen',visible=false,onclick=searchSessions}
@@ -219,8 +191,8 @@ copyInvite=function()
   if not session or not session.connected or not session.isHost then
     alert('Erst eine Sitzung erstellen.');return
   end
-  app.clipboard.text=session.localOnly and session:getLocalInvite() or session.invite
-  app.tip('Einladungscode kopiert.',4)
+  session:send{type='invite'}
+  session.copyWhenReady=true
 end
 
 disconnect=function()
