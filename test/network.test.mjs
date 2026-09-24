@@ -95,7 +95,8 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   assert.equal(found.rooms[0].invite,welcome.invite);
   const probe=join(import.meta.dirname,'..','extension','Probe.ps1');
   if (process.platform==='win32' && existsSync(probe)) {
-    const {stdout}=await execFileAsync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',probe,String(service.discoveryPort)],{timeout:6000});
+    // A fresh Windows CI runner can take several seconds to start PowerShell.
+    const {stdout}=await execFileAsync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',probe,String(service.discoveryPort)],{timeout:15000});
     assert.equal(JSON.parse(stdout.trim().split(/\r?\n/)[0]).rooms[0].invite,welcome.invite);
   }
   a.send({type:'paint',seq:1,patches:[{layer:1,frame:1,runs:[0,1,0xff123456]}]});
