@@ -1,6 +1,6 @@
 Option Explicit
 
-Dim fso, shell, arguments, action, mode, port, resultPath, endpoints, tempRoot, worker, command
+Dim fso, shell, arguments, action, mode, port, resultPath, endpoints, worker, command
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
 Set arguments = WScript.Arguments
@@ -11,13 +11,12 @@ mode = arguments(1)
 port = arguments(2)
 resultPath = fso.GetAbsolutePathName(arguments(3))
 endpoints = arguments(4)
-tempRoot = fso.GetAbsolutePathName(shell.ExpandEnvironmentStrings("%TEMP%")) & "\"
 
 If action <> "Host" And action <> "Join" And action <> "Search" Then WScript.Quit 12
 If mode <> "Network" And mode <> "Test" Then WScript.Quit 13
 If Not IsNumeric(port) Then WScript.Quit 14
 If CLng(port) < 1 Or CLng(port) > 65535 Then WScript.Quit 14
-If LCase(Left(resultPath, Len(tempRoot))) <> LCase(tempRoot) Then WScript.Quit 15
+If Not fso.FolderExists(fso.GetParentFolderName(resultPath)) Then WScript.Quit 15
 If Left(fso.GetFileName(resultPath), 19) <> "Collabsprite-start-" Then WScript.Quit 16
 If LCase(Right(resultPath, 7)) <> ".status" Then WScript.Quit 17
 If Len(endpoints) > 160 Then WScript.Quit 18
