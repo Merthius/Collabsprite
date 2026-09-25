@@ -2,16 +2,17 @@
 local root=app.params.root
 local Client=dofile(root..'/extension/client.lua')
 local codec=dofile(root..'/extension/codec.lua')
-local shallow=Client._plainForTest({snapshot={width=2}})
-assert(shallow.snapshot.width==2,'JSON normalization failed')
-local nested={}
-for _=1,20 do nested={child=nested} end
-local nestedOk,nestedError=pcall(Client._plainForTest,nested)
-assert(not nestedOk and tostring(nestedError):find('zu tief verschachtelt',1,true),
-  'Deep JSON must fail with a bounded, readable error rather than overflowing the Lua stack')
+local decoded=Client._decodeForTest('{"type":"welcome","snapshot":{"width":2}}')
+assert(decoded.snapshot.width==2,'JSON decoding failed')
+local deep='0'
+for _=1,40 do deep='{"child":'..deep..'}' end
+local nestedOk,nestedError=pcall(Client._decodeForTest,deep)
+assert(not nestedOk and tostring(nestedError):find('maximum nesting depth',1,true),
+  'Deep JSON must fail with a bounded error rather than overflowing the Lua stack')
 local function log(text) print(text);io.stdout:flush() end
 local a,b=Client.new(function(s) log('A: '..s.status) end),Client.new(function(s) log('B: '..s.status) end)
 local size=tonumber(app.params.size) or 8
+local port=tonumber(app.params.port) or 8766
 local idleSeconds=tonumber(app.params.idle) or 0
 local source=Sprite(size,size,ColorMode.RGB)
 local before=app.events:on('beforecommand',function(ev) a:beforeCommand(ev);b:beforeCommand(ev) end)
@@ -39,7 +40,7 @@ local function draw(client,color,points)
     brush=Brush(1),points=points,layer=client.mapping[1],frame=client.sprite.frames[1]}
   client:capture()
 end
-a:host(source,'A',8766)
+a:host(source,'A',port)
 log('Host connect requested, API '..app.apiVersion)
 started=os.time()
 testTimer=Timer{interval=0.04,ontick=function()
@@ -49,7 +50,7 @@ testTimer=Timer{interval=0.04,ontick=function()
     if os.time()-started>180 then error('Timeout stage '..stage..': '..a.status..' / '..b.status) end
     if stage==0 and a.connected then
       local localInvite=a.invite:gsub('^[^/]+:(%d+)/','127.0.0.1:%1/',1)
-      assert(localInvite:match('^127%.0%.0%.1:8766/'),'Wrong local invitation')
+      assert(localInvite:match('^127%.0%.0%.1:'..port..'/'),'Wrong local invitation')
       b:join(localInvite,'B');stage=1
     elseif stage==1 and b.connected then
       draw(a,0xff0000ff,{Point(1,1),Point(2,1)});stage=2

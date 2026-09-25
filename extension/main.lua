@@ -1,4 +1,4 @@
-local Client,session,dialog,timer,commandListener,afterCommandListener,preferences,extensionPath
+local Client,decodeJson,session,dialog,timer,commandListener,afterCommandListener,preferences,extensionPath
 local guarded,discovered={},{}
 local copyInvite,disconnect
 local pane='host'
@@ -108,7 +108,7 @@ local function searchSessionsNow(output)
     discoveredCount=0
     local choices,seen={},{}
     for line in (output or ''):gmatch('[^\r\n]+') do
-      local ok,result=pcall(function() return json.decode(line) end)
+      local ok,result=pcall(function() return decodeJson(line) end)
       if ok and result and result.protocol==3 then
         for _,room in ipairs(result.rooms or {}) do
           local invite=tostring(room.invite or '')
@@ -277,6 +277,7 @@ end
 function init(plugin)
   if not app.isUIAvailable then return end
   extensionPath=plugin.path
+  decodeJson=dofile(app.fs.joinPath(plugin.path,'json.lua')).decode
   Client=dofile(app.fs.joinPath(plugin.path,'client.lua'))
   preferences=plugin.preferences
   installedVersion=plugin.version and tostring(plugin.version) or '0.0.0'

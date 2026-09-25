@@ -1,22 +1,9 @@
 local directory=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local C=dofile(app.fs.joinPath(directory,'codec.lua'))
+local decodeJson=dofile(app.fs.joinPath(directory,'json.lua')).decode
 local Client={};Client.__index=Client
 local blocked={}
 for name in ('DuplicateSprite FlattenLayers FlattenVisibleLayers MergeDownLayer LayerFromBackground BackgroundFromLayer SpriteProperties SpriteSize CanvasSize ChangePixelFormat CropSprite TrimSprite RotateCanvas ReverseFrames MoveLayer LinkCels UnlinkCel ColorQuantization ImportSpriteSheet NewSpriteFromSelection'):gmatch('%S+') do blocked[name]=true end
-local MAX_JSON_DEPTH=12
-local function plain(value,depth)
-  if type(value)~='table' and type(value)~='userdata' then return value end
-  depth=(depth or 0)+1
-  if depth>MAX_JSON_DEPTH then error('Serverantwort ist zu tief verschachtelt',0) end
-  local result={}
-  -- Aseprite JsonValue arrays support numeric indexing/ipairs, but not pairs.
-  if value[1]~=nil then
-    for i=1,#value do result[i]=plain(value[i],depth) end
-  else
-    for k,v in pairs(value) do result[k]=plain(v,depth) end
-  end
-  return result
-end
 function Client.new(notify)
   return setmetatable({notify=notify or function() end,inbox={},pending={},seq=0,connected=false,connecting=false,
     applying=false,dirty=false,ticks=0,undoCount=0,redoCount=0,status='Nicht verbunden',revision=0,structure=0},Client)
@@ -38,7 +25,7 @@ function Client:connect(url,hello)
       if self.closed then return end
       if kind==WebSocketMessageType.OPEN then self.inbox[#self.inbox+1]={type='_open'}
       elseif kind==WebSocketMessageType.TEXT then
-        local ok,message=pcall(function() return plain(json.decode(data)) end)
+        local ok,message=pcall(function() return decodeJson(data) end)
         local detail=not ok and tostring(message):gsub('[\r\n]',' '):sub(1,120) or nil
         self.inbox[#self.inbox+1]=ok and message or {type='error',message='Serverantwort konnte nicht gelesen werden: '..detail}
       elseif kind==WebSocketMessageType.ERROR or kind==WebSocketMessageType.CLOSE then
@@ -435,6 +422,6 @@ function Client:tick()
     self:disconnect(tostring(err))
   end
 end
--- Exposed only to the native regression script for a nested-response check.
-Client._plainForTest=plain
+-- Exposed only to native regression scripts.
+Client._decodeForTest=decodeJson
 return Client

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4 beta — 2026-09-25
+
+- Die Beitrittsantwort wird jetzt mit einem begrenzten Lua-Parser statt über Aseprites table-artige JSON-Werte verarbeitet. Das umgeht vorsorglich den gemeldeten C-Stack-Überlauf; die Ursache muss auf dem betroffenen Gast-PC noch verifiziert werden.
+- Der Join-Test prüft nun eine vollständige Willkommensnachricht samt Erzeugung eines Sitzungssprites, Unicode-Escapes, Zahlen und zu tiefe JSON-Eingaben.
+- Serverseitiges Protokoll bleibt 3 und ist mit 0.6.3 kompatibel.
+
 ## 0.6.3 beta — 2026-09-25
 
 - Ein voller Sicherungsordner blockiert keinen Hoststart mehr: Die acht zuletzt geänderten Sitzungen werden geladen; bei Bedarf wird nur ein ältester, inaktiver Speicherplatz im Arbeitsspeicher wiederverwendet. Sicherungsdateien werden nicht gelöscht.
