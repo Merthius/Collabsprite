@@ -42,6 +42,8 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   const broadcast = (room, event) => { for (const client of room.clients) send(client, event); };
   const histories = room => { for (const client of room.clients) send(client, { type: 'history', ...room.core.history(client.author) }); };
   const presence = room => broadcast(room, { type: 'presence', members: [...room.clients].map(c => ({ name: c.name, author: c.author })) });
+  const hasConnectedHost = () => [...rooms.values()].some(room =>
+    [...room.clients].some(client => client.author === room.hostAuthor));
   wss.on('connection', (socket, request) => {
     const address = String(request.socket.remoteAddress || '').replace(/^::ffff:/, '');
     if (!allowedPeer(address, localOnly))
@@ -135,22 +137,35 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
     });
     socket.on('close', () => {
       clearTimeout(greetingTimeout);
-      if (socket.room) { socket.room.clients.delete(socket); presence(socket.room); }
+      if (socket.room) {
+        const room = socket.room;
+        room.clients.delete(socket);
+        presence(room);
+        // Only a managed host process listens for this event. A guest leaving
+        // must never stop the server; another active host can keep it alive.
+        if (socket.author === room.hostAuthor && !hasConnectedHost())
+          server.emit('collabsprite:last-host-left');
+      }
     });
     socket.on('error', () => {});
   });
-  async function save() {
-    if (!dataDir) return;
-    for (const [code, room] of rooms) {
-      if (!room.dirty || room.saving) continue;
-      room.saving = true; room.dirty = false;
-      try {
-        const temporary = resolve(dataDir, `${code}.tmp`);
-        await writeFile(temporary, JSON.stringify({ tokenHash: room.tokenHash, snapshot: room.core.snapshot() }));
-        await rename(temporary, resolve(dataDir, `${code}.json`));
-      } catch (error) { room.dirty = true; log(`Backup fehlgeschlagen: ${error.message}`); }
-      finally { room.saving = false; }
-    }
+  let saving = Promise.resolve();
+  function save() {
+    if (!dataDir) return saving;
+    // Serialize the periodic backup and shutdown backup. Otherwise a shutdown
+    // can skip a room whose earlier write is still in progress.
+    saving = saving.then(async () => {
+      for (const [code, room] of rooms) {
+        if (!room.dirty) continue;
+        room.dirty = false;
+        try {
+          const temporary = resolve(dataDir, `${code}.tmp`);
+          await writeFile(temporary, JSON.stringify({ tokenHash: room.tokenHash, snapshot: room.core.snapshot() }));
+          await rename(temporary, resolve(dataDir, `${code}.json`));
+        } catch (error) { room.dirty = true; log(`Backup fehlgeschlagen: ${error.message}`); }
+      }
+    });
+    return saving;
   }
   const saveTimer = setInterval(() => void save(), 2000); saveTimer.unref();
   const heartbeat = setInterval(() => {
@@ -206,13 +221,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Ungueltiger Serverport');
   const service = await startServer({ port, host: mode === 'local' ? '127.0.0.1' : '0.0.0.0' });
   let stopping = false;
-  const stop = async () => { if (stopping) return; stopping = true; await service.close(); process.exit(0); };
+  const stop = async () => { if (stopping) return; stopping = true; await service.close(); };
   if (process.argv.includes('--managed')) {
+    service.server.on('collabsprite:last-host-left', () => void stop());
     let idleSince = Date.now();
     const idleTimer = setInterval(() => {
       if ([...service.rooms.values()].some(room => room.clients.size > 0)) idleSince = Date.now();
-      else if (Date.now() - idleSince > 120000) void stop();
-    }, 30000);
+      else if (Date.now() - idleSince > 30000) void stop();
+    }, 1000);
     idleTimer.unref();
   }
   process.on('SIGINT', stop); process.on('SIGTERM', stop);

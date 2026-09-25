@@ -40,6 +40,10 @@ try {
         throw 'Serverprozess gehört nicht zum Test.'
     }
     $ownedPid = $process.ProcessId
+    & node.exe (Join-Path $PSScriptRoot 'managed-lifecycle.mjs') $port
+    if ($LASTEXITCODE -ne 0) { throw 'Host-Lebenszyklustest fehlgeschlagen.' }
+    $backupFiles = @(Get-ChildItem -LiteralPath (Join-Path $testRoot 'data') -Filter '*.json' -File)
+    if ($backupFiles.Count -ne 1) { throw 'Sitzungsbackup beim Host-Shutdown fehlt.' }
     Write-Output ('PASS: Launcher in ' + [Math]::Round($watch.Elapsed.TotalSeconds,2) + ' s zurück; Server später bereit.')
 } finally {
     if ($ownedPid) { Stop-Process -Id $ownedPid -ErrorAction SilentlyContinue }

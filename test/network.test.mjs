@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
+import { once } from 'node:events';
 const execFileAsync=promisify(execFile);
 const snapshot=()=>({format:1,name:'Netzwerktest',width:16,height:16,layers:[{name:'Gemeinsam'}],frames:[100],cels:[],palette:[]});
 async function connect(port,hello,address='127.0.0.1') {
@@ -29,6 +30,13 @@ async function connect(port,hello,address='127.0.0.1') {
   await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
   const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:3,...hello});
   return {ws,send,next};
+}
+async function waitFor(check,description) {
+  const deadline=Date.now()+2000;
+  while (!check()) {
+    if (Date.now()>deadline) throw new Error(`Timeout ${description}`);
+    await new Promise(resolve=>setTimeout(resolve,5));
+  }
 }
 async function discover(port) {
   const socket=dgram.createSocket('udp4');
@@ -110,6 +118,29 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   const result=await b.next('patch');
   assert.deepEqual(result.patches,[{layer:1,frame:1,runs:[0,1,0]}]);
   assert.equal(service.rooms.get(room).core.cells.get('1:1').pixels[1],0xff654321);
+});
+test('Only the last host leaving requests managed server shutdown',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
+  t.after(()=>service.close());
+  let shutdowns=0;
+  service.server.on('collabsprite:last-host-left',()=>{shutdowns++;});
+  const host1=await connect(service.port,{mode:'host',name:'Host 1',snapshot:snapshot()});
+  const welcome1=await host1.next('welcome');
+  const [,room,token]=welcome1.invite.split('/');
+  const guest=await connect(service.port,{mode:'join',name:'Guest',room,token});
+  await guest.next('welcome');
+  const host2=await connect(service.port,{mode:'host',name:'Host 2',snapshot:snapshot()});
+  await host2.next('welcome');
+  guest.ws.close();await once(guest.ws,'close');
+  await waitFor(()=>service.rooms.get(room).clients.size===1,'guest disconnect');
+  assert.equal(shutdowns,0,'A guest leaving must not stop the server');
+  host1.ws.close();await once(host1.ws,'close');
+  await waitFor(()=>service.rooms.get(room).clients.size===0,'first host disconnect');
+  assert.equal(shutdowns,0,'A second active host keeps the server alive');
+  const finalHostLeft=once(service.server,'collabsprite:last-host-left');
+  host2.ws.close();await once(host2.ws,'close');
+  await finalHostLeft;
+  assert.equal(shutdowns,1,'The final host leaving stops a managed server');
 });
 test('Peers receive layer/frame deletion, metadata and join presence',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});

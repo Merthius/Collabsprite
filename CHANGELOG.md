@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 beta — 2026-09-25
+
+- Der automatisch gestartete Host-Server beendet sich, sobald das Sitzungsbild oder Aseprite auf dem Host geschlossen wird. Gäste allein halten ihn nicht offen; ein weiterer aktiver Host im selben Prozess bleibt ungestört.
+- Das Sitzungsbackup wird vor dem Freigeben des Ports abgeschlossen. Ein noch nicht verbundenes, verlassenes Startfenster läuft spätestens nach rund 30 Sekunden Leerlauf aus.
+- Regressions- und Hintergrundprozess-Test prüfen, dass nach dem Schließen des Hosts der Port für einen Neustart frei ist. Protokoll 3 bleibt kompatibel zu 0.6.0.
+
 ## 0.6.0 beta — 2026-09-25
 
 - Löschen einzelner oder mehrerer ausgewählter Frames und Ebenen (einschließlich einer vorhandenen Gruppe samt Unterebenen) wird an alle Teilnehmenden übertragen. Überlebende Cels und persönliche Pixel-Verläufe werden neu zugeordnet.

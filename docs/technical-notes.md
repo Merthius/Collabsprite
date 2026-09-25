@@ -7,6 +7,7 @@
 - Die Erweiterung tauscht Sitzungsdaten über WebSocket mit dem Host aus. Der Host prüft Nachrichten, ordnet Operationen und hält einen autorbezogenen Verlauf für Pixel-Undo/Redo.
 - Einladungen enthalten eine oder mehrere LAN-/VPN-Adressen, Raum-ID und Token. Der Gast wählt im Hintergrund eine erreichbare Adresse; der Token wird auf dem Server gehasht. **Den vollständigen Einladungscode vertraulich behandeln**.
 - Der Host schreibt lokale JSON-Backups in `data/`. Dieser Ordner ist vom Repository ausgeschlossen. Bitte zusätzlich die Sitzungskopie regelmäßig als `.aseprite` speichern.
+- Seit 0.6.1 beendet sich ein automatisch gestarteter Host-Server, wenn die letzte Host-Verbindung schließt (Sitzungsbild geschlossen, Erweiterung beendet oder Aseprite geschlossen). Der Shutdown wartet auf laufende Backups; ein Server ohne jemals verbundenen Host beendet sich nach rund 30 Sekunden Leerlauf. Die Gäste werden beim Host-Ende getrennt.
 
 ## Synchronisationsmodell
 
