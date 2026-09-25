@@ -4,6 +4,8 @@ local copyInvite,disconnect
 local pane='host'
 local discoveredCount=0
 local startup,startupCounter=nil,0
+local updateJob,updateCounter=nil,0
+local installedVersion='0.0.0'
 local PORT=8766
 
 local function alert(message)
@@ -139,6 +141,72 @@ local function searchSessions()
   end)
 end
 
+local function update()
+  safely(function()
+    if updateJob then app.tip('Collabsprite prüft bereits auf Updates.',4);return end
+    local temp=os.getenv('TEMP') or os.getenv('TMP')
+    assert(temp and temp~='','Windows-Temp-Verzeichnis fehlt.')
+    updateCounter=updateCounter+1
+    local id=string.format('%d-%d-%d',os.time(),updateCounter,math.random(100000,999999))
+    local resultPath=app.fs.joinPath(temp,'Collabsprite-start-'..id..'.status')
+    local script=app.fs.joinPath(extensionPath,'Launcher.vbs')
+    local command='wscript.exe //B //Nologo "'..script..'" Update Network '..PORT..' "'..resultPath..'" "'..installedVersion..'"'
+    local launched=os.execute(command)
+    assert(launched==true or launched==0,'Update-Prüfung konnte nicht gestartet werden.')
+    updateJob={path=resultPath,started=os.time()}
+    app.tip('Collabsprite prüft GitHub im Hintergrund auf Updates.',5)
+  end)
+end
+
+local function pollUpdate()
+  if not updateJob then return end
+  local file=io.open(updateJob.path,'rb')
+  if not file then
+    if os.time()-updateJob.started>45 then
+      updateJob=nil
+      alert('Update-Prüfung hat zu lange gedauert. Internetverbindung prüfen.')
+    end
+    return
+  end
+  local reply=file:read('*a') or ''
+  if reply=='QUEUED' then file:close();return end
+  file:close();os.remove(updateJob.path)
+  updateJob=nil
+  local problem=reply:match('^ERROR ([^\r\n]+)')
+  local current=reply:match('^CURRENT ([^\r\n]+)')
+  local version,path=reply:match('^DOWNLOADED (v[%d%.]+)|([^\r\n]+)')
+  if problem then alert(problem)
+  elseif current then alert('Keine neuere Version veröffentlicht. Installiert: '..current)
+  elseif version and path then
+    local filename=path:match('([^\\/]+)$') or 'Collabsprite.aseprite-extension'
+    local downloaded=Dialog{title='Collabsprite - Update'}
+    downloaded:label{text='Neue Version '..version..' heruntergeladen.'}
+      :newrow()
+      :label{label='Downloads',text=filename}
+      :newrow()
+      :label{text='Datei oeffnen, Installation bestaetigen,'}
+      :newrow()
+      :label{text='Aseprite danach neu starten.'}
+      :button{text='OK'}
+    downloaded:show{wait=false}
+  else alert('Update-Prüfung fehlgeschlagen.') end
+end
+
+local function info()
+  local about=Dialog{title='Collabsprite - Info'}
+  about:label{label='Version',text=installedVersion}
+    :newrow()
+    :label{label='Entwickler',text='Merthius'}
+    :newrow()
+    :label{label='Lizenz',text='MIT'}
+    :newrow()
+    :label{label='Projekt',text='github.com/Merthius/Collabsprite'}
+    :newrow()
+    :label{text='Zusammen zeichnen im LAN oder ueber Radmin VPN.'}
+    :button{text='Schliessen'}
+  about:show{wait=false}
+end
+
 local function showPane(which)
   pane=which
   if not dialog then return end
@@ -211,8 +279,12 @@ function init(plugin)
   extensionPath=plugin.path
   Client=dofile(app.fs.joinPath(plugin.path,'client.lua'))
   preferences=plugin.preferences
-  -- This is a native item in Aseprite's menu bar; Lua cannot add a brush-bar button.
-  plugin:newCommand{id='PixelKollabMultiplayer',title='Collabsprite...',group='view_new',onclick=show}
+  installedVersion=plugin.version and tostring(plugin.version) or '0.0.0'
+  -- Aseprite exposes groups within existing menus, not a group on main_menu.
+  plugin:newMenuGroup{id='CollabspriteMenu',title='Collabsprite',group='view_new'}
+  plugin:newCommand{id='PixelKollabMultiplayer',title='Server erstellen / beitreten...',group='CollabspriteMenu',onclick=show}
+  plugin:newCommand{id='CollabspriteUpdate',title='Update...',group='CollabspriteMenu',onclick=update}
+  plugin:newCommand{id='CollabspriteInfo',title='Info...',group='CollabspriteMenu',onclick=info}
   commandListener=app.events:on('beforecommand',function(ev)
     if session and session.connected then
       local ok,error=pcall(function() session:beforeCommand(ev) end)
@@ -231,6 +303,7 @@ function init(plugin)
   end)
   timer=Timer{interval=0.033,ontick=function()
     pollBootstrap()
+    pollUpdate()
     if session then session:tick() end
   end}
   timer:start()

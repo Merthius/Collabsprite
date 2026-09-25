@@ -25,5 +25,5 @@ $moduleTarget = Join-Path $extensionTarget 'node_modules'
 New-Item -ItemType Directory -Force -Path $moduleTarget | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'node_modules\ws') -Destination $moduleTarget -Recurse -Force
 Write-Host "Collabsprite installiert (kompatibles Update): $extensionTarget"
-Write-Host 'Alle Aseprite-Instanzen nach dem Speichern bitte neu starten. Danach: Ansicht > Collabsprite...'
+Write-Host 'Alle Aseprite-Instanzen nach dem Speichern bitte neu starten. Danach: Ansicht > Collabsprite.'
 Write-Host 'Andere Erweiterungen und eigene Bilddateien wurden nicht geaendert.'

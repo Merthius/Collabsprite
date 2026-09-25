@@ -2,11 +2,13 @@
 
 # Collabsprite
 
-[![Version](https://img.shields.io/badge/version-0.6.1%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.1) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/badge/version-0.6.2%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.2) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
 
 **Gemeinsam Pixel-Art und Animationen direkt in Aseprite bearbeiten.** Eine Person hostet, die anderen treten bei. Alle nutzen dieselbe Erweiterung und dieselben Rasterebenen und Frames. `Strg+Z`/`Strg+Y` wirken auf die eigenen synchronisierten Pixelaktionen, ohne neuere fremde Pixel zu entfernen.
 
-**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.6.1/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.6.2/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+
+Version **0.6.2 Beta** ergänzt **Ansicht → Collabsprite → Server erstellen / beitreten · Update · Info**. „Update“ lädt eine neuere offizielle `.aseprite-extension`-Datei in den Downloads-Ordner und prüft den GitHub-SHA-256-Wert. Öffne die heruntergeladene Datei und bestätige Installation und Aseprite-Neustart.
 
 ## Schnellstart
 
@@ -30,16 +32,16 @@ Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host
 
 ## Installation – auf jedem PC
 
-1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.1) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
+1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.2) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
 2. Öffne Aseprite → **Bearbeiten → Einstellungen → Erweiterungen → Erweiterung hinzufügen** und wähle die Datei. Ein Doppelklick auf die Datei kann ebenfalls funktionieren ([offizielle Aseprite-Anleitung](https://www.aseprite.org/docs/extensions/)).
-3. Starte Aseprite neu. Öffne **Ansicht → Collabsprite…**.
+3. Starte Aseprite neu. Öffne **Ansicht → Collabsprite → Server erstellen / beitreten**.
 
 Für Host und Gäste gilt exakt dieselbe Installationsdatei. Nur auf dem Host muss Node.js verfügbar sein.
 
 ## Sitzung erstellen – Host
 
 1. Öffne in Aseprite ein **RGB-Bild**. Collabsprite erzeugt beim Start eine **Sitzungskopie**; das Original bleibt unangetastet.
-2. Öffne **Ansicht → Collabsprite…**, trage bei **Dein Name** einen Namen ein und wähle **Erstellen**.
+2. Öffne **Ansicht → Collabsprite → Server erstellen / beitreten**, trage bei **Dein Name** einen Namen ein und wähle **Erstellen**.
 3. Nur wenn ihr in **verschiedenen Netzwerken** seid: Starte Radmin VPN und tritt eurem gemeinsamen VPN-Netz bei.
 4. Klicke **Sitzung erstellen**. Der Host-Server startet im Hintergrund. Warte auf **Aktive Sitzung: Verbunden**.
 5. Klicke **Einladung kopieren** und sende den gesamten Code privat an deine Freunde. Der Code enthält erreichbare LAN- und gegebenenfalls Radmin-Adressen.
@@ -48,7 +50,7 @@ Radmin wird nicht automatisch geöffnet: Im LAN wird es nicht gebraucht, und fü
 
 ## Sitzung beitreten – Gast
 
-1. Installiere dieselbe Erweiterung, starte Aseprite neu und öffne **Ansicht → Collabsprite… → Beitreten**. Ein eigenes Bild musst du dafür nicht öffnen.
+1. Installiere dieselbe Erweiterung, starte Aseprite neu und öffne **Ansicht → Collabsprite → Server erstellen / beitreten → Beitreten**. Ein eigenes Bild musst du dafür nicht öffnen.
 2. Falls ihr nicht im selben LAN seid: Starte Radmin VPN und tritt demselben VPN-Netz wie der Host bei.
 3. Füge den privaten **Einladungscode** ein und klicke **Beitreten**. Collabsprite probiert die enthaltenen Adressen der Reihe nach. Du kannst alternativ **Sitzungen suchen** verwenden; falls die Suche nichts zeigt, nutze den Einladungscode.
 4. Warte auf **Verbunden** und zeichne in der neuen Sitzungskopie.
@@ -82,10 +84,10 @@ Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **o
 | **Host startet nicht** | Node.js 20+ auf dem Host installieren, Aseprite neu starten und Port 8766 prüfen. |
 | **Windows fragt nach Freigabe** | Beim ersten Start ist eine begrenzte Firewallregel nötig; die Abfrage selbst bestätigen. |
 | **LAN-Gast erreicht den Host nicht** | Windows-Netzwerkprofil auf dem Host auf **Privat** prüfen; Host-Firewall und WLAN-Client-Isolation prüfen. |
-| **Aseprite reagiert nicht** | Vergewissere dich, dass Version 0.6.1 auf allen PCs installiert ist, speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
+| **Aseprite reagiert nicht** | Vergewissere dich, dass Version 0.6.2 auf allen PCs installiert ist, speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
 | **Verbindung weg** | Sitzungskopie speichern; Host/Netz prüfen und bewusst neu beitreten. Offline-Änderungen werden nicht automatisch gemischt. |
 
-Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. **0.6.1 verwendet weiterhin Protokoll 3; 0.5.0-Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
+Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. **0.6.2 verwendet weiterhin Protokoll 3; 0.5.0-Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
 
 ## Entwickeln und beitragen
 

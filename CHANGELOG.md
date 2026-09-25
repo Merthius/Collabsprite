@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2 beta — 2026-09-25
+
+- Unter **Ansicht → Collabsprite** stehen jetzt die drei Befehle **Server erstellen / beitreten**, **Update** und **Info**. Ein eigener Hauptmenüpunkt neben „Datei“ ist mit Aseprites Erweiterungs-API nicht möglich.
+- **Update** prüft veröffentlichte GitHub-Releases ohne blockierende Netzwerkanfrage in Aseprite, lädt bei einer neueren Version die Installationsdatei in den Downloads-Ordner und verifiziert ihren SHA-256-Wert. Installation und Neustart bleiben bewusst beim Nutzer.
+- **Info** zeigt die installierte Version, Merthius als Entwickler, MIT-Lizenz und die Projektadresse.
+
 ## 0.6.1 beta — 2026-09-25
 
 - Der automatisch gestartete Host-Server beendet sich, sobald das Sitzungsbild oder Aseprite auf dem Host geschlossen wird. Gäste allein halten ihn nicht offen; ein weiterer aktiver Host im selben Prozess bleibt ungestört.

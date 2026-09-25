@@ -12,7 +12,7 @@ port = arguments(2)
 resultPath = fso.GetAbsolutePathName(arguments(3))
 endpoints = arguments(4)
 
-If action <> "Host" And action <> "Join" And action <> "Search" Then WScript.Quit 12
+If action <> "Host" And action <> "Join" And action <> "Search" And action <> "Update" Then WScript.Quit 12
 If mode <> "Network" And mode <> "Test" Then WScript.Quit 13
 If Not IsNumeric(port) Then WScript.Quit 14
 If CLng(port) < 1 Or CLng(port) > 65535 Then WScript.Quit 14
@@ -20,17 +20,30 @@ If Not fso.FolderExists(fso.GetParentFolderName(resultPath)) Then WScript.Quit 1
 If Left(fso.GetFileName(resultPath), 19) <> "Collabsprite-start-" Then WScript.Quit 16
 If LCase(Right(resultPath, 7)) <> ".status" Then WScript.Quit 17
 If Len(endpoints) > 160 Then WScript.Quit 18
-If Not ValidEndpoints(endpoints) Then WScript.Quit 19
+If action = "Update" Then
+  If Not ValidVersion(endpoints) Then WScript.Quit 19
+Else
+  If Not ValidEndpoints(endpoints) Then WScript.Quit 19
+End If
 
-worker = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), "Bootstrap.ps1")
+If action = "Update" Then
+  worker = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), "Update.ps1")
+Else
+  worker = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), "Bootstrap.ps1")
+End If
 If Not fso.FileExists(worker) Then
   Report "ERROR Startskript fehlt."
   WScript.Quit 1
 End If
 
 Report "QUEUED"
-command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Quote(worker) & _
-  " -Action " & action & " -Mode " & mode & " -Port " & port & " -ResultPath " & Quote(resultPath) & " -Endpoints " & Quote(endpoints)
+If action = "Update" Then
+  command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Quote(worker) & _
+    " -ResultPath " & Quote(resultPath) & " -InstalledVersion " & Quote(endpoints)
+Else
+  command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Quote(worker) & _
+    " -Action " & action & " -Mode " & mode & " -Port " & port & " -ResultPath " & Quote(resultPath) & " -Endpoints " & Quote(endpoints)
+End If
 On Error Resume Next
 shell.Run command, 0, False
 If Err.Number <> 0 Then
@@ -41,6 +54,13 @@ On Error GoTo 0
 
 Function Quote(value)
   Quote = Chr(34) & Replace(value, Chr(34), "") & Chr(34)
+End Function
+
+Function ValidVersion(value)
+  Dim re
+  Set re = CreateObject("VBScript.RegExp")
+  re.Pattern = "^[0-9]+\.[0-9]+\.[0-9]+(-dev)?$"
+  ValidVersion = re.Test(value)
 End Function
 
 Function ValidEndpoints(value)

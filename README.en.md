@@ -2,7 +2,9 @@
 
 # Collabsprite — English guide
 
-[Deutsch](README.md) · [Download v0.6.1 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.6.1/Collabsprite.aseprite-extension)
+[Deutsch](README.md) · [Download v0.6.2 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.6.2/Collabsprite.aseprite-extension)
+
+Version **0.6.2 beta** adds **View → Collabsprite → Create / Join Server · Update · Info**. Update downloads a newer official `.aseprite-extension` file into Downloads and checks its GitHub SHA-256 digest. Open the downloaded file and confirm installation and the Aseprite restart.
 
 Collabsprite is an unofficial, open-source Aseprite extension for drawing together on the same pixel-art canvas. The host runs a small local server; everyone uses the **same** extension. Per-user undo/redo applies to synchronized pixel operations without removing newer contributions by someone else.
 
@@ -26,14 +28,14 @@ The session server runs on the **host PC** (port `8766`). There is just **one wo
 
 ## Install on every computer
 
-1. On the [v0.6.1 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.1), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
+1. On the [v0.6.2 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.2), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
 2. In Aseprite, open **Edit → Preferences → Extensions → Add Extension** and select the file. Double-clicking the extension may work as well ([official Aseprite instructions](https://www.aseprite.org/docs/extensions/)).
-3. Restart Aseprite. Open **View → Collabsprite…** (in a German UI: **Ansicht → Collabsprite…**).
+3. Restart Aseprite. Open **View → Collabsprite → Create / Join Server** (German UI: **Ansicht → Collabsprite → Server erstellen / beitreten**).
 
 ## Host
 
 1. Open an RGB sprite. Collabsprite creates a **separate session copy**; the original file is not modified.
-2. Open **View/Ansicht → Collabsprite… → Create/Erstellen** and enter your name. If your friend is on a different network, start Radmin VPN and join your shared VPN network first.
+2. Open **View/Ansicht → Collabsprite → Create / Join Server** (the label follows Aseprite's language), enter your name and select Create/Erstellen. If your friend is on a different network, start Radmin VPN and join your shared VPN network first.
 3. Click **Create session/Sitzung erstellen** and wait for **Connected/Verbunden**.
 4. Click **Copy invitation/Einladung kopieren** and privately send the full code to your friends.
 
@@ -41,7 +43,7 @@ Collabsprite does not open Radmin automatically because it is unnecessary on a s
 
 ## Join
 
-1. Install the same extension, restart Aseprite, and choose **View/Ansicht → Collabsprite… → Join/Beitreten**. You do not need to open a sprite first.
+1. Install the same extension, restart Aseprite, and choose **View/Ansicht → Collabsprite → Create / Join Server → Join/Beitreten**. You do not need to open a sprite first.
 2. Only if you are on different networks, start Radmin VPN and join the host's VPN network.
 3. Paste the full **invitation code** and click **Join/Beitreten**. Collabsprite tries the listed LAN/VPN addresses. You may also search for active sessions; if discovery finds nothing, use the code.
 4. Wait for **Connected/Verbunden** and draw in the shared session copy.
@@ -61,7 +63,7 @@ The WebSocket connection has **no built-in end-to-end encryption**; use only a t
 
 ## Limitations and support
 
-RGB/RGBA raster layers are supported, with limits of 8 participants, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.6.1 still uses protocol 3; 0.5.0 sessions are incompatible.** See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
+RGB/RGBA raster layers are supported, with limits of 8 participants, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.6.2 still uses protocol 3; 0.5.0 sessions are incompatible.** See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
 
 Collabsprite is [MIT-licensed](LICENSE) and is not affiliated with Aseprite or Radmin VPN. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
