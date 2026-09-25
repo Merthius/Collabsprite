@@ -3,14 +3,17 @@ local C=dofile(app.fs.joinPath(directory,'codec.lua'))
 local Client={};Client.__index=Client
 local blocked={}
 for name in ('DuplicateSprite FlattenLayers FlattenVisibleLayers MergeDownLayer LayerFromBackground BackgroundFromLayer SpriteProperties SpriteSize CanvasSize ChangePixelFormat CropSprite TrimSprite RotateCanvas ReverseFrames MoveLayer LinkCels UnlinkCel ColorQuantization ImportSpriteSheet NewSpriteFromSelection'):gmatch('%S+') do blocked[name]=true end
-local function plain(value)
+local MAX_JSON_DEPTH=12
+local function plain(value,depth)
   if type(value)~='table' and type(value)~='userdata' then return value end
+  depth=(depth or 0)+1
+  if depth>MAX_JSON_DEPTH then error('Serverantwort ist zu tief verschachtelt',0) end
   local result={}
   -- Aseprite JsonValue arrays support numeric indexing/ipairs, but not pairs.
   if value[1]~=nil then
-    for i=1,#value do result[i]=plain(value[i]) end
+    for i=1,#value do result[i]=plain(value[i],depth) end
   else
-    for k,v in pairs(value) do result[k]=plain(v) end
+    for k,v in pairs(value) do result[k]=plain(v,depth) end
   end
   return result
 end
@@ -36,7 +39,8 @@ function Client:connect(url,hello)
       if kind==WebSocketMessageType.OPEN then self.inbox[#self.inbox+1]={type='_open'}
       elseif kind==WebSocketMessageType.TEXT then
         local ok,message=pcall(function() return plain(json.decode(data)) end)
-        self.inbox[#self.inbox+1]=ok and message or {type='error',message='Ungueltige Serverantwort'}
+        local detail=not ok and tostring(message):gsub('[\r\n]',' '):sub(1,120) or nil
+        self.inbox[#self.inbox+1]=ok and message or {type='error',message='Serverantwort konnte nicht gelesen werden: '..detail}
       elseif kind==WebSocketMessageType.ERROR or kind==WebSocketMessageType.CLOSE then
         self.inbox[#self.inbox+1]={type='error',message='Verbindung getrennt. Netzwerk/Server prüfen. Lokale Kopie bleibt erhalten.'}
       end
@@ -424,6 +428,13 @@ function Client:tick()
     for _,message in ipairs(inbox) do self:receive(message) end
     if self.connected then self:render() end
   end)
-  if not ok then self.applying=false;self:disconnect(tostring(err)) end
+  if not ok then
+    self.applying=false
+    local trace=debug and debug.traceback and debug.traceback(tostring(err),2) or tostring(err)
+    pcall(function() print('[Collabsprite] '..trace) end)
+    self:disconnect(tostring(err))
+  end
 end
+-- Exposed only to the native regression script for a nested-response check.
+Client._plainForTest=plain
 return Client

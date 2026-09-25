@@ -3,25 +3,50 @@ import dgram from 'node:dgram';
 import { WebSocketServer, WebSocket } from 'ws';
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { allowedPeer, addresses, invite, replyAddress } from './network.mjs';
-import { mkdir, readdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile, rename, stat } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Room } from './core.mjs';
 
 const hash = value => createHash('sha256').update(String(value)).digest('hex');
 const isLocal = address => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
+const MAX_ROOMS = 8;
 export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = resolve(dirname(fileURLToPath(import.meta.url)), 'data'), log = console.log } = {}) {
   const localOnly = host === '127.0.0.1' || host === '::1';
   const rooms = new Map();
   if (dataDir) {
     await mkdir(dataDir, { recursive: true });
-    for (const file of (await readdir(dataDir)).filter(f => /^[A-F0-9]{8}\.json$/.test(f)).slice(0, 8)) {
+    const backups = await Promise.all((await readdir(dataDir))
+      .filter(file => /^[A-F0-9]{8}\.json$/.test(file))
+      .map(async file => {
+        try {
+          const info = await stat(resolve(dataDir, file));
+          return info.isFile() ? { file, savedAt: info.mtimeMs } : null;
+        } catch { return null; }
+      }));
+    // Restore the most recently used eight sessions. Older backup files stay
+    // on disk untouched, but must not prevent a new room from being created.
+    let restoredCount = 0;
+    for (const backup of backups.filter(Boolean).sort((a, b) => b.savedAt - a.savedAt)) {
+      if (restoredCount >= MAX_ROOMS) break;
+      const { file, savedAt } = backup;
       try {
         const saved = JSON.parse(await readFile(resolve(dataDir, file), 'utf8'));
         if (!/^[a-f0-9]{64}$/.test(saved.tokenHash)) continue;
-        rooms.set(file.slice(0, -5), { core: new Room(saved.snapshot), tokenHash: saved.tokenHash, clients: new Set(), dirty: false, restored: true });
+        rooms.set(file.slice(0, -5), { core: new Room(saved.snapshot), tokenHash: saved.tokenHash, clients: new Set(), dirty: false, restored: true, persisted: true, savedAt });
+        restoredCount++;
       } catch (error) { log(`Backup ${file} konnte nicht geladen werden: ${error.message}`); }
     }
+  }
+  function makeRoomSlot() {
+    if (rooms.size < MAX_ROOMS) return;
+    const stale = [...rooms.entries()]
+      .filter(([, room]) => room.persisted && !room.dirty && room.clients.size === 0)
+      .sort((a, b) => a[1].savedAt - b[1].savedAt)[0];
+    if (!stale) throw new Error(`Alle ${MAX_ROOMS} Sitzungsplätze sind belegt. Eine aktive Sitzung schließen und erneut versuchen.`);
+    // The durable JSON backup is deliberately retained. Only its in-memory
+    // room slot is recycled; a later server start can restore recent files.
+    rooms.delete(stale[0]);
   }
   const server = http.createServer((req, res) => {
     if (req.url === '/status' && allowedPeer(req.socket.remoteAddress, localOnly)) {
@@ -70,12 +95,12 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           let room, code, token;
           if (message.mode === 'host') {
             if (!isLocal(request.socket.remoteAddress)) throw new Error('Sitzungen bitte auf dem Host-PC starten (127.0.0.1)');
-            if (rooms.size >= 8) throw new Error('Maximal 8 gespeicherte Sitzungen; alte Backups im data-Ordner archivieren');
+            makeRoomSlot();
             const core = new Room(message.snapshot);
             code = randomBytes(4).toString('hex').toUpperCase();
             token = randomBytes(16).toString('hex');
             room = { core, tokenHash: hash(token), discoveryToken: token, hostName: socket.name,
-              clients: new Set(), dirty: true, restored: false, hostAuthor: socket.author };
+              clients: new Set(), dirty: true, restored: false, persisted: false, savedAt: Date.now(), hostAuthor: socket.author };
             rooms.set(code, room);
           } else if (message.mode === 'join') {
             code = String(message.room || '').toUpperCase(); room = rooms.get(code);
@@ -162,6 +187,8 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           const temporary = resolve(dataDir, `${code}.tmp`);
           await writeFile(temporary, JSON.stringify({ tokenHash: room.tokenHash, snapshot: room.core.snapshot() }));
           await rename(temporary, resolve(dataDir, `${code}.json`));
+          room.persisted = true;
+          room.savedAt = Date.now();
         } catch (error) { room.dirty = true; log(`Backup fehlgeschlagen: ${error.message}`); }
       }
     });

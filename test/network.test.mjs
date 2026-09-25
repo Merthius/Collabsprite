@@ -4,7 +4,7 @@ import { WebSocket } from 'ws';
 import dgram from 'node:dgram';
 import { startServer } from '../server.mjs';
 import { allowedPeer, addresses, invite, replyAddress } from '../network.mjs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, utimes, readdir } from 'node:fs/promises';
 import { tmpdir, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -118,6 +118,32 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   const result=await b.next('patch');
   assert.deepEqual(result.patches,[{layer:1,frame:1,runs:[0,1,0]}]);
   assert.equal(service.rooms.get(room).core.cells.get('1:1').pixels[1],0xff654321);
+});
+test('A full backup folder never blocks hosting and old backups are preserved',async t=>{
+  const dataDir=await mkdtemp(join(tmpdir(),'collabsprite-full-backups-'));
+  t.after(()=>rm(dataDir,{recursive:true,force:true}));
+  const saved={tokenHash:'a'.repeat(64),snapshot:snapshot()};
+  for (let i=1;i<=10;i++) {
+    const code=i.toString(16).toUpperCase().padStart(8,'0');
+    const path=join(dataDir,`${code}.json`);
+    await writeFile(path,JSON.stringify(saved));
+    const time=new Date(Date.UTC(2026,0,1,0,0,i));
+    await utimes(path,time,time);
+  }
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir,log:()=>{}});
+  t.after(()=>service.close());
+  assert.equal(service.rooms.size,8);
+  assert.equal(service.rooms.has('00000001'),false,'Only the eight newest backups are restored');
+  assert.equal(service.rooms.has('00000003'),true);
+  const host=await connect(service.port,{mode:'host',name:'Host',snapshot:snapshot()});
+  const welcome=await host.next('welcome');
+  assert.equal(service.rooms.size,8,'New hosting reuses an idle in-memory slot');
+  assert.equal(service.rooms.has('00000003'),false,'The oldest idle loaded room is evicted first');
+  assert.ok(service.rooms.has(welcome.room));
+  const files=await readdir(dataDir);
+  assert.equal(files.filter(file=>file.endsWith('.json')).length,10,'No saved backup is removed');
+  assert.ok(files.includes('00000001.json'),'Even backups outside the restore window remain untouched');
+  assert.ok(files.includes('00000003.json'),'Evicting a room never deletes its backup');
 });
 test('Only the last host leaving requests managed server shutdown',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});

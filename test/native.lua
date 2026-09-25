@@ -2,6 +2,13 @@
 local root=app.params.root
 local Client=dofile(root..'/extension/client.lua')
 local codec=dofile(root..'/extension/codec.lua')
+local shallow=Client._plainForTest({snapshot={width=2}})
+assert(shallow.snapshot.width==2,'JSON normalization failed')
+local nested={}
+for _=1,20 do nested={child=nested} end
+local nestedOk,nestedError=pcall(Client._plainForTest,nested)
+assert(not nestedOk and tostring(nestedError):find('zu tief verschachtelt',1,true),
+  'Deep JSON must fail with a bounded, readable error rather than overflowing the Lua stack')
 local function log(text) print(text);io.stdout:flush() end
 local a,b=Client.new(function(s) log('A: '..s.status) end),Client.new(function(s) log('B: '..s.status) end)
 local size=tonumber(app.params.size) or 8

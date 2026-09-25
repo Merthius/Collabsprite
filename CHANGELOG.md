@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.3 beta — 2026-09-25
+
+- Ein voller Sicherungsordner blockiert keinen Hoststart mehr: Die acht zuletzt geänderten Sitzungen werden geladen; bei Bedarf wird nur ein ältester, inaktiver Speicherplatz im Arbeitsspeicher wiederverwendet. Sicherungsdateien werden nicht gelöscht.
+- Netzwerkantworten werden beim Umwandeln in Lua-Tabellen auf maximale Verschachtelung begrenzt. Bei Fehlern zeigt die Aseprite-Konsole jetzt einmalig einen Traceback, damit Abstürze wie „Stack overflow“ genauer nachvollzogen werden können.
+- Serverseitiger Protokollstand bleibt 3; bestehende 0.6.x-Clients bleiben grundsätzlich kompatibel.
+
 ## 0.6.2 beta — 2026-09-25
 
 - Unter **Ansicht → Collabsprite** stehen jetzt die drei Befehle **Server erstellen / beitreten**, **Update** und **Info**. Ein eigener Hauptmenüpunkt neben „Datei“ ist mit Aseprites Erweiterungs-API nicht möglich.
