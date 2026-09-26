@@ -2,13 +2,15 @@
 
 # Collabsprite
 
-[![Version](https://img.shields.io/badge/version-0.6.4%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.4) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/badge/version-0.6.5%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.5) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
 
 **Gemeinsam Pixel-Art und Animationen direkt in Aseprite bearbeiten.** Eine Person hostet, die anderen treten bei. Alle nutzen dieselbe Erweiterung und dieselben Rasterebenen und Frames. `Strg+Z`/`Strg+Y` wirken auf die eigenen synchronisierten Pixelaktionen, ohne neuere fremde Pixel zu entfernen.
 
-**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.6.4/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.6.5/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
 
-Version **0.6.4 Beta** verarbeitet beim Beitritt die Serverantwort vorsorglich mit einem begrenzten Lua-Parser, statt Aseprites table-artige JSON-Werte weiterzuverarbeiten. Das ist ein Workaround für den gemeldeten „C stack overflow“; ob es den Fehler auf dem betroffenen Gast-PC behebt, muss dort noch geprüft werden. Die automatische Sitzungsverwaltung aus 0.6.3 bleibt enthalten. Das Menü **Ansicht → Collabsprite → Server erstellen / beitreten · Update · Info** bleibt gleich. „Update“ lädt eine neuere offizielle `.aseprite-extension`-Datei in den Downloads-Ordner und prüft den GitHub-SHA-256-Wert. Öffne die heruntergeladene Datei und bestätige Installation und Aseprite-Neustart.
+Version **0.6.5 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Die Paketierung ist korrigiert: Aseprite erkennt jetzt Collabsprite statt versehentlich die enthaltene Bibliothek „ws“. Updates von Entwicklungsständen funktionieren ebenfalls.
+
+Die **Diagnosekonsole ist dauerhaft enthalten**: **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren**. Das lokale Protokoll unter `%TEMP%\Collabsprite-debug.log` bleibt nach einem Neustart erhalten und ist auf 512 KiB begrenzt. Es enthält technische Ereignisse und Fehler, keine Bilddaten oder Einladungscodes. **Neues Protokoll** leert die Aufnahme; nur **vor** dem erneuten Auslösen eines Fehlers verwenden. Schutz gegen wiederholte Timer-Aufrufe während Freigabedialogen wurde ergänzt. Ob dies den gemeldeten „C stack overflow“ auf dem betroffenen Freund-PC behebt, bleibt dort zu prüfen.
 
 ## Schnellstart
 
@@ -25,18 +27,28 @@ Version **0.6.4 Beta** verarbeitet beim Beitritt die Serverantwort vorsorglich m
 | --- | --- | --- |
 | Aseprite | Ja, getestet mit 1.3.18.6 | Ja |
 | Diese Erweiterung | Ja | Ja, **dieselbe Version** |
-| [Node.js](https://nodejs.org/) 20+ | Ja | Nein |
+| Windows 10/11 x64 | Ja, Host-Laufzeit enthalten | Ja |
 | [Radmin VPN](https://www.radmin-vpn.com/) | Nur bei verschiedenen Netzwerken | Nur bei verschiedenen Netzwerken |
 
 Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host-Erweiterung. Die Sitzung läuft auf dem **Host-PC** (Port `8766`). Es gibt **nur einen Ablauf**: Erstellen oder Beitreten. Im selben WLAN/LAN verbinden sich verschiedene PCs direkt, **ohne Radmin**. Über verschiedene Netzwerke treten beide zuerst demselben Radmin-VPN-Netz bei; danach funktionieren dieselben Schaltflächen. „Lokal“ meint hier die direkte Netzwerkverbindung, nicht zwei Aseprite-Fenster auf einem PC.
 
 ## Installation – auf jedem PC
 
-1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.4) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
+1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.5) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
 2. Öffne Aseprite → **Bearbeiten → Einstellungen → Erweiterungen → Erweiterung hinzufügen** und wähle die Datei. Ein Doppelklick auf die Datei kann ebenfalls funktionieren ([offizielle Aseprite-Anleitung](https://www.aseprite.org/docs/extensions/)).
 3. Starte Aseprite neu. Öffne **Ansicht → Collabsprite → Server erstellen / beitreten**.
 
-Für Host und Gäste gilt exakt dieselbe Installationsdatei. Nur auf dem Host muss Node.js verfügbar sein.
+Für Host und Gäste gilt exakt dieselbe Installationsdatei. Du kannst jederzeit zwischen Erstellen und Beitreten wählen. Die enthaltene Node.js-Laufzeit (24.21.0) startet nur beim Hosten im Hintergrund.
+
+### Eine ältere Version aktualisieren
+
+1. Sitzungskopie speichern und die laufende Sitzung über **Trennen** beenden.
+2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.6.5** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
+3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Ansicht → Collabsprite → Info** muss **0.6.5** stehen.
+
+**„Update“** im Collabsprite-Menü lädt das geprüfte Paket nach Downloads; danach wird es wie oben installiert. Es installiert sich nicht stillschweigend selbst. Bei sehr alten oder fehlerhaften Builds das Paket direkt von dieser Seite laden.
+
+Falls zuvor **„ws 8.21.3“** im Installationsdialog erschien: Das war ein Fehler unserer älteren Pakete. Installiere die korrigierte Datei erneut; ein vorhandener separater „ws“-Eintrag ist keine Collabsprite-Version. Nicht den Quellcode-ZIP verwenden.
 
 ## Sitzung erstellen – Host
 
@@ -81,14 +93,14 @@ Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **o
 | Problem | Prüfen |
 | --- | --- |
 | **Sitzung erscheint nicht** | Beide PCs im selben LAN oder Radmin-Netz? Sonst den vollständigen Einladungscode einfügen. VPN-Broadcast kann scheitern. |
-| **Host startet nicht** | Node.js 20+ auf dem Host installieren, Aseprite neu starten und Port 8766 prüfen. |
+| **Host startet nicht** | Aktuellen Installer erneut installieren, Aseprite neu starten und Diagnosekonsole öffnen; die Host-Laufzeit ist enthalten. |
 | **Windows fragt nach Freigabe** | Beim ersten Start ist eine begrenzte Firewallregel nötig; die Abfrage selbst bestätigen. |
 | **LAN-Gast erreicht den Host nicht** | Windows-Netzwerkprofil auf dem Host auf **Privat** prüfen; Host-Firewall und WLAN-Client-Isolation prüfen. |
-| **„C stack overflow“ beim Beitreten** | Aktualisiere Host und Gäste auf dieselbe Version. Wenn v0.6.4 den Fehler nicht behebt, melde die Aseprite-Version, den ersten vollständigen `[Collabsprite]`-Traceback und den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
+| **„C stack overflow“ beim Beitreten** | Aktualisiere Host und Gäste auf dieselbe Version. Nach dem Fehler **Diagnosekonsole → Protokoll kopieren**; Aseprite-Version und genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues) ergänzen. |
 | **Aseprite reagiert nicht** | Speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
 | **Verbindung weg** | Sitzungskopie speichern; Host/Netz prüfen und bewusst neu beitreten. Offline-Änderungen werden nicht automatisch gemischt. |
 
-Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. **0.6.4 verwendet weiterhin Protokoll 3; 0.5.0-Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
+Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. **0.6.5 verwendet weiterhin Protokoll 3; 0.5.0-Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
 
 ## Entwickeln und beitragen
 
@@ -100,7 +112,7 @@ npm test
 
 Der Build legt den Installer im benachbarten Ordner `../output/` ab. `test/` enthält automatisierte Server-/Protokolltests und native Aseprite-Testskripte. Hinweise zu Fehlern und Pull Requests stehen in [CONTRIBUTING.md](CONTRIBUTING.md). **Sitzungsdateien aus `data/`, private Einladungscodes und Bilder gehören nie in ein öffentliches Issue oder einen Commit.**
 
-Collabsprite steht unter der [MIT-Lizenz](LICENSE). Die mit dem Installer ausgelieferte `ws`-Bibliothek steht ebenfalls unter MIT. Dieses Community-Projekt ist nicht offiziell mit Aseprite oder Radmin VPN verbunden.
+Collabsprite steht unter der [MIT-Lizenz](LICENSE). Die mit dem Installer ausgelieferte `ws`-Bibliothek steht ebenfalls unter MIT; die unveränderte Node.js-Laufzeit enthält ihre vollständigen Lizenzhinweise in `runtime/LICENSE`. Dieses Community-Projekt ist nicht offiziell mit Aseprite oder Radmin VPN verbunden.
 
 ## Logo
 

@@ -2,13 +2,19 @@
 
 ## Architektur
 
-- Beide Seiten installieren dieselbe Aseprite-Erweiterung (`extension/`). Nur der Host startet `server.mjs` mit Node.js.
+- Beide Seiten installieren dieselbe Aseprite-Erweiterung (`extension/`). Nur der Host startet `server.mjs` mit der gebündelten Node.js-Laufzeit (Windows x64, 24.21.0). Eine globale Node-Installation wird im Release nicht benötigt.
 - Seit Version 0.5.0 gibt es einen einzigen sichtbaren Netzwerkablauf auf Port `8766`. Im selben LAN verbindet sich ein Gast direkt; über verschiedene Netzwerke dient Radmin VPN als virtuelles LAN. Die alte Loopback-Variante bleibt nur für isolierte automatisierte Tests, nicht als Benutzeroption.
 - Die Erweiterung tauscht Sitzungsdaten über WebSocket mit dem Host aus. Der Host prüft Nachrichten, ordnet Operationen und hält einen autorbezogenen Verlauf für Pixel-Undo/Redo.
 - Einladungen enthalten eine oder mehrere LAN-/VPN-Adressen, Raum-ID und Token. Der Gast wählt im Hintergrund eine erreichbare Adresse; der Token wird auf dem Server gehasht. **Den vollständigen Einladungscode vertraulich behandeln**.
 - Der Host schreibt lokale JSON-Backups in `data/`. Dieser Ordner ist vom Repository ausgeschlossen. Bitte zusätzlich die Sitzungskopie regelmäßig als `.aseprite` speichern.
 - Seit 0.6.1 beendet sich ein automatisch gestarteter Host-Server, wenn die letzte Host-Verbindung schließt (Sitzungsbild geschlossen, Erweiterung beendet oder Aseprite geschlossen). Der Shutdown wartet auf laufende Backups; ein Server ohne jemals verbundenen Host beendet sich nach rund 30 Sekunden Leerlauf. Die Gäste werden beim Host-Ende getrennt.
 - Seit 0.6.4 werden eingehende WebSocket-JSON-Nachrichten mit einem gebündelten, begrenzten Lua-Parser in normale Lua-Tabellen umgewandelt. Das umgeht Aseprites table-artige JSON-Wrapper vorsorglich als Workaround für einen Gast-PC-Fehler „C stack overflow“; die Wirkung muss am betroffenen Gast-PC bestätigt werden.
+
+## Paket und Diagnose ab 0.6.5
+
+Der Build enthält zuerst das Collabsprite-`package.json`: Aseprite 1.3.18.6 wertet das erste Manifest aus, auch wenn es in einer Abhängigkeit liegt. `test/bootstrap.ps1` prüft diese Reihenfolge und den Hoststart ohne Node im PATH. `runtime.json` fixiert die offiziellen Download-URLs und SHA-256-Werte; `build.ps1` prüft alle Runtime-Dateien vor dem Verpacken. Der Build-Cache wird nicht veröffentlicht. Die Windows-x64-Laufzeit und vollständige Node-Lizenz liegen unter `runtime/`.
+
+Die Diagnose ist Teil der regulären Beta. Dateizugriffe finden nicht im WebSocket-Empfang oder Paint-Callback der Diagnoseansicht statt. Der Haupttimer und Client schützen sich gegen Wiedereintritt durch Aseprites modale Freigabedialoge. `test/callbacks.lua` modelliert einen solchen verschachtelten Callback, verweigerte Dateifreigabe und einen dauerhaft wartenden Worker; der reale Fehler auf dem Freund-PC ist damit noch nicht abschließend erklärt.
 
 ## Synchronisationsmodell
 

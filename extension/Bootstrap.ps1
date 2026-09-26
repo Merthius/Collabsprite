@@ -46,8 +46,8 @@ try {
         }
         Fail 'Host nicht erreichbar. Beide PCs im selben LAN oder Radmin-Netz? Windows-Firewall prüfen.'
     }
-    $node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
-    if (-not $node) { Fail 'Node.js fehlt auf dem Host-PC (nodejs.org).' }
+    . (Join-Path $PSScriptRoot 'Runtime.ps1')
+    $node = Get-CollabspriteNode
     $serverFile = Join-Path $PSScriptRoot 'server.mjs'
     if (-not (Test-Path -LiteralPath $serverFile)) { Fail 'Serverdateien fehlen. Collabsprite neu installieren.' }
     $status = ServerStatus
@@ -59,9 +59,15 @@ try {
     }
     if ($Mode -eq 'Network') {
         $rules = @('Collabsprite-LAN-TCP-8766','Collabsprite-LAN-UDP-8766','Collabsprite-Radmin-TCP-8766','Collabsprite-Radmin-UDP-8766')
-        if (@($rules | Where-Object { -not (Get-NetFirewallRule -Name $_ -ErrorAction SilentlyContinue) }).Count -gt 0) {
+        $needsFirewall = @($rules | Where-Object {
+            $rule = Get-NetFirewallRule -Name $_ -ErrorAction SilentlyContinue
+            if (-not $rule) { return $true }
+            $program = ($rule | Get-NetFirewallApplicationFilter).Program
+            return ($program -ne $node -or $rule.Enabled -ne 'True' -or $rule.Action -ne 'Allow')
+        }).Count -gt 0
+        if ($needsFirewall) {
             $firewallScript = Join-Path $PSScriptRoot 'firewall.ps1'
-            $arguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"' + $firewallScript + '"'))
+            $arguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"' + $firewallScript + '"'),'-NodePath',('"' + $node + '"'))
             $setup = Start-Process -FilePath powershell.exe -ArgumentList $arguments -Verb RunAs -WindowStyle Hidden -Wait -PassThru
             if ($setup.ExitCode -ne 0) { Fail 'Die einmalige Windows-Firewallfreigabe wurde nicht erteilt.' }
         }

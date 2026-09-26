@@ -1,7 +1,7 @@
 # Detached update worker. Aseprite polls ResultPath instead of waiting for HTTPS.
 param(
     [Parameter(Mandatory=$true)][string]$ResultPath,
-    [Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(-dev)?$')][string]$InstalledVersion,
+    [Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+([.-][a-zA-Z0-9]+)*)?$')][string]$InstalledVersion,
     [string]$DownloadDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -24,8 +24,8 @@ try {
     }
     $latest = $candidates | Sort-Object -Property Version -Descending | Select-Object -First 1
     if (-not $latest) { throw 'Kein gueltiger Collabsprite-Release mit SHA-256-Pruefsumme gefunden.' }
-    $current = [version]($InstalledVersion -replace '-dev$','')
-    if ($latest.Version -lt $current -or ($latest.Version -eq $current -and $InstalledVersion -notlike '*-dev')) {
+    $current = [version]($InstalledVersion -replace '-.*$','')
+    if ($latest.Version -lt $current -or ($latest.Version -eq $current -and $InstalledVersion -notmatch '-')) {
         Report ('CURRENT ' + $InstalledVersion); exit 0
     }
     if (-not $DownloadDirectory) { $DownloadDirectory = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads' }
@@ -43,7 +43,7 @@ try {
     }
     $partial = Join-Path $DownloadDirectory ('.' + $stem + '-' + [guid]::NewGuid().ToString('N') + '.part')
     $url = 'https://github.com/Merthius/Collabsprite/releases/download/' + $latest.Tag + '/Collabsprite.aseprite-extension'
-    Invoke-WebRequest -Uri $url -Headers @{ 'User-Agent'='Collabsprite-Update' } -TimeoutSec 20 -UseBasicParsing -OutFile $partial
+    Invoke-WebRequest -Uri $url -Headers @{ 'User-Agent'='Collabsprite-Update' } -TimeoutSec 120 -UseBasicParsing -OutFile $partial
     $downloadHash = (Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($downloadHash -ne $latest.Digest) { throw 'Die heruntergeladene Datei hat nicht die GitHub-Pruefsumme. Sie wurde verworfen.' }
     [IO.File]::Move($partial,$destination)

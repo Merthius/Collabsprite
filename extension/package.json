@@ -1,8 +1,8 @@
 {
   "name": "pixelkollab-native",
   "displayName": "Collabsprite",
-  "description": "Gemeinsam in Aseprite zeichnen, lokal oder ueber Radmin VPN, mit eigenem Undo.",
-  "version": "0.6.4",
+  "description": "Gemeinsam in Aseprite zeichnen, lokal oder ueber Radmin VPN, mit eigenem Undo und kopierbarem Diagnoseprotokoll.",
+  "version": "0.6.5",
   "author": { "name": "Merthius", "url": "https://github.com/Merthius" },
   "publisher": "pixelkollab",
   "license": "MIT",

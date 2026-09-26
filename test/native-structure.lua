@@ -21,8 +21,12 @@ local function finish(result)
   log(result)
   if timer then timer:stop() end
   a:disconnect();b:disconnect();app.events:off(before)
+  if app.params.result then
+    local file=assert(io.open(app.params.result,'wb'));file:write(result);file:close()
+    app.exit()
+  end
 end
-a:host(source,'Host',8766)
+a:host(source,'Host',tonumber(app.params.port) or 8766)
 timer=Timer{interval=0.04,ontick=function()
   local ok,err=pcall(function()
     a:tick();b:tick()

@@ -1,8 +1,16 @@
 $ErrorActionPreference = 'Stop'
-$extensionSource = Join-Path $PSScriptRoot 'extension'
+$package = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\output\Collabsprite.aseprite-extension'))
 $extensionRoot = Join-Path $env:APPDATA 'Aseprite\extensions'
 $extensionTarget = Join-Path $extensionRoot 'pixelkollab-native'
-if (-not (Test-Path -LiteralPath (Join-Path $extensionSource 'package.json'))) { throw 'Erweiterungsdateien fehlen.' }
+if (-not (Test-Path -LiteralPath $package)) { throw 'Zuerst build.ps1 ausfuehren.' }
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [IO.Compression.ZipFile]::OpenRead($package)
+try {
+$first = $archive.Entries | Where-Object { [IO.Path]::GetFileName($_.FullName) -eq 'package.json' } | Select-Object -First 1
+if ($first.FullName -ne 'package.json') { throw 'Ungueltige Reihenfolge der Installerdateien.' }
+$reader = [IO.StreamReader]::new($first.Open())
+try { $manifest = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+if ($manifest.name -ne 'pixelkollab-native') { throw 'Falsches Erweiterungspaket.' }
 if (Test-Path -LiteralPath $extensionTarget) {
     $backupRoot = Join-Path $PSScriptRoot 'install-backups'
     New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
@@ -11,19 +19,19 @@ if (Test-Path -LiteralPath $extensionTarget) {
     Write-Host "Bisherige eigene Erweiterung gesichert: $backupTarget"
 }
 New-Item -ItemType Directory -Force -Path $extensionTarget | Out-Null
-$oldProbe = Join-Path $extensionTarget 'Probe.exe'
-if (Test-Path -LiteralPath $oldProbe) { Remove-Item -LiteralPath $oldProbe -Force }
-$oldLauncher = Join-Path $extensionTarget 'Launcher.ps1'
-if (Test-Path -LiteralPath $oldLauncher) { Remove-Item -LiteralPath $oldLauncher -Force }
-Get-ChildItem -LiteralPath $extensionSource -File | ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $extensionTarget $_.Name) -Force
+foreach ($entry in $archive.Entries) {
+    if ($entry.FullName -match '(^|/)(data|__pref.lua|__info.json)(/|$)') { throw 'Nutzerdaten im Installer.' }
+    $destination = [IO.Path]::GetFullPath((Join-Path $extensionTarget $entry.FullName))
+    if (-not $destination.StartsWith($extensionTarget + '\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Ungueltiger Archivpfad.' }
+    New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName($destination)) | Out-Null
+    [IO.Compression.ZipFileExtensions]::ExtractToFile($entry,$destination,$true)
 }
-foreach ($name in @('server.mjs','core.mjs','network.mjs','firewall.ps1')) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $extensionTarget $name) -Force
-}
-$moduleTarget = Join-Path $extensionTarget 'node_modules'
-New-Item -ItemType Directory -Force -Path $moduleTarget | Out-Null
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'node_modules\ws') -Destination $moduleTarget -Recurse -Force
+# Aseprite requires this inventory for a future native update/uninstall.
+# Never include data/ or __pref.lua: they belong to the user.
+$inventory = @{ installedFiles = @($archive.Entries | ForEach-Object FullName) }
+$inventoryJson = $inventory | ConvertTo-Json -Depth 3
+[IO.File]::WriteAllText((Join-Path $extensionTarget '__info.json'),$inventoryJson,[Text.UTF8Encoding]::new($false))
+} finally { $archive.Dispose() }
 Write-Host "Collabsprite installiert (kompatibles Update): $extensionTarget"
 Write-Host 'Alle Aseprite-Instanzen nach dem Speichern bitte neu starten. Danach: Ansicht > Collabsprite.'
 Write-Host 'Andere Erweiterungen und eigene Bilddateien wurden nicht geaendert.'

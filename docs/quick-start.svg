@@ -28,7 +28,7 @@
     <rect x="472" y="316" width="255" height="36" rx="6" fill="#8f72ff"/>
     <text x="529" y="340" fill="#171b24" font-size="15" font-weight="700">Sitzung erstellen</text>
     <text x="472" y="381" fill="#b6c2d8" font-size="15">Einladung kopieren</text>
-    <text x="454" y="443" fill="#aeb8cf" font-size="15">Nur der Host braucht Node.js.</text>
+    <text x="454" y="443" fill="#aeb8cf" font-size="15">Host-Laufzeit bereits enthalten.</text>
     <path d="M782 292 H800 M794 284 L802 292 L794 300" fill="none" stroke="#8f72ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
     <rect x="816" y="125" width="340" height="348" rx="14" fill="#222838" stroke="#46516b" stroke-width="2"/>
     <circle cx="855" cy="163" r="20" fill="#f6c56b"/><text x="849" y="170" fill="#171b24" font-size="20" font-weight="700">3</text>

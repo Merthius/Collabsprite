@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.5 beta — 2026-09-26
+
+- Fix the installer manifest order: Aseprite previously detected the nested ws package (8.21.3) before Collabsprite. The root manifest is now first and covered by a package regression check.
+- Bundle checksum-pinned, unmodified Node.js 24.21.0 for Windows x64 with its license: one download can host or join, without installing Node separately.
+- Repair Collabsprite-owned firewall rules when the runtime path changes.
+- Guard timer/client reentrancy during permission dialogs, defer WebSocket decoding/logging to the guarded timer, and terminate denied/expired startup polling. This is not yet confirmed as the affected friend's stack-overflow fix.
+- Accept dev.1/prerelease versions in the updater and allow time for the larger package.
+- Local developer installation now uses the release archive and writes Aseprite's update inventory.
+- Add a persistent, size-bounded diagnostic log and live Aseprite console with one-click copy/reset controls.
+- Log connection stages, WebSocket message types/sizes, safe snapshot counts, and full Lua tracebacks while redacting invite codes, endpoints, and Windows user-profile names. Pixel and image payloads are never logged.
+- Capture JSON-decode and client tick errors before disconnecting, to help diagnose the guest-PC “C stack overflow” report.
+
 ## 0.6.4 beta — 2026-09-25
 
 - Die Beitrittsantwort wird jetzt mit einem begrenzten Lua-Parser statt über Aseprites table-artige JSON-Werte verarbeitet. Das umgeht vorsorglich den gemeldeten C-Stack-Überlauf; die Ursache muss auf dem betroffenen Gast-PC noch verifiziert werden.

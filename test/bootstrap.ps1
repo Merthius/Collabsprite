@@ -13,6 +13,19 @@ if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyCon
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 try {
     [IO.Compression.ZipFile]::ExtractToDirectory($package,$testRoot)
+    $archive = [IO.Compression.ZipFile]::OpenRead($package)
+    try {
+        # Mirror Aseprite's first-manifest detection, not just root JSON lookup.
+        $first = $archive.Entries | Where-Object { [IO.Path]::GetFileName($_.FullName) -eq 'package.json' } | Select-Object -First 1
+        if ($first.FullName -ne 'package.json') { throw 'Aseprite wuerde die ws-Abhaengigkeit statt Collabsprite installieren.' }
+        if (@($archive.Entries | Where-Object { $_.FullName -match '(^|/)(data|test|00_Codex|__pref.lua|__info.json)(/|$)' }).Count) { throw 'Private/Testdateien im Installer.' }
+    } finally { $archive.Dispose() }
+    $manifest = Get-Content -LiteralPath (Join-Path $testRoot 'package.json') -Raw | ConvertFrom-Json
+    $sourceManifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\package.json') -Raw | ConvertFrom-Json
+    if ($manifest.name -ne 'pixelkollab-native' -or $manifest.version -ne $sourceManifest.version) { throw 'Falsche Installer-Identitaet/Version.' }
+    # A clean PC has no global Node installation in PATH.
+    $originalPath = $env:PATH
+    $env:PATH = $env:SystemRoot + '\System32;' + $env:SystemRoot + '\System32\WindowsPowerShell\v1.0'
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $launcher = Join-Path $testRoot 'Launcher.vbs'
     # Direct invocation inherits this process's TEMP like Lua os.execute does.
@@ -40,12 +53,14 @@ try {
         throw 'Serverprozess gehört nicht zum Test.'
     }
     $ownedPid = $process.ProcessId
-    & node.exe (Join-Path $PSScriptRoot 'managed-lifecycle.mjs') $port
+    if ($process.ExecutablePath -ne (Join-Path $testRoot 'runtime\node.exe')) { throw 'Host nutzt nicht die gebuendelte Runtime.' }
+    & (Join-Path $testRoot 'runtime\node.exe') (Join-Path $PSScriptRoot 'managed-lifecycle.mjs') $port
     if ($LASTEXITCODE -ne 0) { throw 'Host-Lebenszyklustest fehlgeschlagen.' }
     $backupFiles = @(Get-ChildItem -LiteralPath (Join-Path $testRoot 'data') -Filter '*.json' -File)
     if ($backupFiles.Count -ne 1) { throw 'Sitzungsbackup beim Host-Shutdown fehlt.' }
     Write-Output ('PASS: Launcher in ' + [Math]::Round($watch.Elapsed.TotalSeconds,2) + ' s zurück; Server später bereit.')
 } finally {
+    if ($originalPath) { $env:PATH = $originalPath }
     if ($ownedPid) { Stop-Process -Id $ownedPid -ErrorAction SilentlyContinue }
     if (Test-Path -LiteralPath $resultPath) { Remove-Item -LiteralPath $resultPath }
     if (-not $testRoot.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase) -or

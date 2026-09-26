@@ -1,6 +1,6 @@
 {
   "name": "collabsprite-server",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "test": "node --test test/core.test.mjs test/network.test.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "ws": "8.21.3"

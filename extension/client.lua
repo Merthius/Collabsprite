@@ -4,30 +4,41 @@ local decodeJson=dofile(app.fs.joinPath(directory,'json.lua')).decode
 local Client={};Client.__index=Client
 local blocked={}
 for name in ('DuplicateSprite FlattenLayers FlattenVisibleLayers MergeDownLayer LayerFromBackground BackgroundFromLayer SpriteProperties SpriteSize CanvasSize ChangePixelFormat CropSprite TrimSprite RotateCanvas ReverseFrames MoveLayer LinkCels UnlinkCel ColorQuantization ImportSpriteSheet NewSpriteFromSelection'):gmatch('%S+') do blocked[name]=true end
-function Client.new(notify)
-  return setmetatable({notify=notify or function() end,inbox={},pending={},seq=0,connected=false,connecting=false,
+function Client.new(notify,log)
+  return setmetatable({notify=notify or function() end,log=log or function() end,inbox={},pending={},seq=0,connected=false,connecting=false,
     applying=false,dirty=false,ticks=0,undoCount=0,redoCount=0,status='Nicht verbunden',revision=0,structure=0},Client)
 end
+function Client:trace(event,detail)
+  pcall(self.log,event,detail)
+end
 function Client:statusText(text)
-  self.status=text;self.notify(self)
+  self.status=text
+  local category=text=='Verbinde ...' and 'connecting' or text:match('^Verbunden') and 'connected' or text:match('^Getrennt') and 'disconnected' or 'status'
+  self:trace('session',category)
+  self.notify(self)
 end
 function Client:send(message)
   assert(self.ws,'Keine Verbindung')
-  self.ws:sendText(json.encode(message))
+  local bytes=json.encode(message)
+  local kind=tostring(message.type or 'unknown')
+  if kind~='ping' then self:trace('websocket send',kind..' bytes='..#bytes) end
+  self.ws:sendText(bytes)
 end
 function Client:connect(url,hello)
   assert(not self.connected and not self.connecting,'Bereits verbunden')
   self.connecting=true;self.started=os.time();self.hello=hello;self.closed=false
+  self:trace('websocket','connect-start; endpoint hidden')
   self:statusText('Verbinde ...')
   self.ws=WebSocket{url=url,deflate=true,minreconnectwait=60,maxreconnectwait=60,
     onreceive=function(kind,data,err)
       -- No document mutations here: Aseprite can still hold a document lock.
       if self.closed then return end
-      if kind==WebSocketMessageType.OPEN then self.inbox[#self.inbox+1]={type='_open'}
+      if kind==WebSocketMessageType.OPEN then
+        self.inbox[#self.inbox+1]={type='_open'}
       elseif kind==WebSocketMessageType.TEXT then
-        local ok,message=pcall(function() return decodeJson(data) end)
-        local detail=not ok and tostring(message):gsub('[\r\n]',' '):sub(1,120) or nil
-        self.inbox[#self.inbox+1]=ok and message or {type='error',message='Serverantwort konnte nicht gelesen werden: '..detail}
+        -- Only queue in the native callback: even diagnostic IO can open a
+        -- permission dialog and recursively dispatch another native callback.
+        self.inbox[#self.inbox+1]={type='_text',data=data}
       elseif kind==WebSocketMessageType.ERROR or kind==WebSocketMessageType.CLOSE then
         self.inbox[#self.inbox+1]={type='error',message='Verbindung getrennt. Netzwerk/Server prüfen. Lokale Kopie bleibt erhalten.'}
       end
@@ -42,11 +53,13 @@ function Client:join(invite,name)
   invite=invite:gsub('%s',''):gsub('^ws://','')
   local address,code,token=invite:match('^([%w%.%-]+:%d+)/(%x+)/(%x+)$')
   assert(address and #code==8 and #token==32,'Bitte den gesamten Einladungscode vom Host einfuegen.')
+  self:trace('session','join-requested; address and invite hidden')
   self.invite=invite
   self:connect('ws://'..address,{type='hello',protocol=3,mode='join',name=name,room=code,token=token})
 end
 function Client:disconnect(reason)
   local wasActive=self.connected or self.connecting
+  self:trace('session','disconnect requested')
   self.closed=true;self.connected=false;self.connecting=false
   if self.ws then pcall(function() self.ws:close() end);self.ws=nil end
   if self.sprite and self.changeListener then pcall(function() self.sprite.events:off(self.changeListener) end) end
@@ -194,8 +207,21 @@ function Client:beforeCommand(ev)
   end
 end
 function Client:receive(message)
+  local messageType=tostring(message.type or 'unknown')
+  local summary=messageType
+  if messageType=='patch' then summary=summary..' patches='..tostring(#(message.patches or {}))
+  elseif messageType=='welcome' then
+    local snap=message.snapshot or {}
+    summary=summary..' layers='..tostring(#(snap.layers or {}))..' frames='..tostring(#(snap.frames or {}))..
+      ' cels='..tostring(#(snap.cels or {}))..' size='..tostring(snap.width or '?')..'x'..tostring(snap.height or '?')
+  elseif messageType=='presence' then summary=summary..' members='..tostring(#(message.members or {}))
+  elseif messageType=='invite' then summary='invite received; code hidden'
+  elseif messageType=='error' then summary='server error (details omitted for privacy)' end
+  self:trace('websocket receive',summary)
   if message.type=='_open' then self:send(self.hello);self.hello=nil
-  elseif message.type=='error' then error(message.message or 'Serverfehler')
+  elseif message.type=='error' then
+    self:disconnect(tostring(message.message or 'Serverfehler.'))
+    return
   elseif message.type=='welcome' then
     assert(not self.connected,'Doppelte Anmeldung')
     self.author=message.author;self.room=message.room;self.isHost=message.host
@@ -395,8 +421,9 @@ function Client:render()
   self.needsRender=false
 end
 function Client:tick()
-  if self.closed then return end
-  local ok,err=pcall(function()
+  if self.closed or self.ticking then return end
+  self.ticking=true
+  local ok,err=xpcall(function()
     if self.connecting and os.time()-self.started>20 then error('Keine Verbindung: Host, LAN/Radmin und Firewall prüfen.') end
     if self.connected then
       local exists=false
@@ -412,15 +439,27 @@ function Client:tick()
       if self.ticks%300==0 then self:send{type='ping',nonce=self.ticks} end
     end
     local inbox=self.inbox;self.inbox={}
-    for _,message in ipairs(inbox) do self:receive(message) end
+    for _,message in ipairs(inbox) do
+      if self.closed then break end
+      if message.type=='_text' then
+        self:trace('websocket','text bytes='..#message.data)
+        local decoded,value=pcall(decodeJson,message.data)
+        if not decoded then self:trace('json decode error',value);error('Serverantwort konnte nicht gelesen werden.') end
+        assert(type(value)=='table','Ungueltige Serverantwort')
+        message=value
+      end
+      self:receive(message)
+    end
     if self.connected then self:render() end
+  end,function(value)
+    return debug and debug.traceback and debug.traceback(tostring(value),2) or tostring(value)
   end)
   if not ok then
     self.applying=false
-    local trace=debug and debug.traceback and debug.traceback(tostring(err),2) or tostring(err)
-    pcall(function() print('[Collabsprite] '..trace) end)
-    self:disconnect(tostring(err))
+    self:trace('FATAL client tick',err)
+    self:disconnect('Clientfehler; Diagnoseprotokoll kopieren.')
   end
+  self.ticking=false
 end
 -- Exposed only to native regression scripts.
 Client._decodeForTest=decodeJson

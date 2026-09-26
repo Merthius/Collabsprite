@@ -17,7 +17,7 @@ If mode <> "Network" And mode <> "Test" Then WScript.Quit 13
 If Not IsNumeric(port) Then WScript.Quit 14
 If CLng(port) < 1 Or CLng(port) > 65535 Then WScript.Quit 14
 If Not fso.FolderExists(fso.GetParentFolderName(resultPath)) Then WScript.Quit 15
-If Left(fso.GetFileName(resultPath), 19) <> "Collabsprite-start-" Then WScript.Quit 16
+If Left(fso.GetFileName(resultPath), Len("Collabsprite-start-")) <> "Collabsprite-start-" Then WScript.Quit 16
 If LCase(Right(resultPath, 7)) <> ".status" Then WScript.Quit 17
 If Len(endpoints) > 160 Then WScript.Quit 18
 If action = "Update" Then
@@ -59,7 +59,7 @@ End Function
 Function ValidVersion(value)
   Dim re
   Set re = CreateObject("VBScript.RegExp")
-  re.Pattern = "^[0-9]+\.[0-9]+\.[0-9]+(-dev)?$"
+  re.Pattern = "^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+([.-][a-zA-Z0-9]+)*)?$"
   ValidVersion = re.Test(value)
 End Function
 

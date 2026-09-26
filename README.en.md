@@ -2,9 +2,11 @@
 
 # Collabsprite — English guide
 
-[Deutsch](README.md) · [Download v0.6.4 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.6.4/Collabsprite.aseprite-extension)
+[Deutsch](README.md) · [Download v0.6.5 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.6.5/Collabsprite.aseprite-extension)
 
-Version **0.6.4 beta** parses server responses during join with a bounded Lua parser rather than continuing to process Aseprite's table-like JSON values. This is a precautionary workaround for the reported “C stack overflow”; it still needs confirmation on the affected guest PC. Automatic session-slot handling from 0.6.3 remains included. The **View → Collabsprite → Create / Join Server · Update · Info** menu remains unchanged. Update downloads a newer official `.aseprite-extension` file into Downloads and checks its GitHub SHA-256 digest. Open the downloaded file and confirm installation and the Aseprite restart.
+Version **0.6.5 beta** includes hosting and joining in **one installer**, with a bundled Windows x64 host runtime. No separate Node.js installation is needed. The archive now identifies itself correctly as Collabsprite, fixing the accidental “ws 8.21.3” installation prompt. Development-version updates are supported.
+
+**Diagnostics are included in every build.** Open **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren** after an error. The local `%TEMP%\Collabsprite-debug.log` survives restarts and is bounded to 512 KiB. It contains technical events, not image data or invitation codes. Use **Neues Protokoll** only before reproducing an error. Guards prevent nested timer dispatch during permission dialogs; the reported guest-PC “C stack overflow” still needs a retest on that PC.
 
 Collabsprite is an unofficial, open-source Aseprite extension for drawing together on the same pixel-art canvas. The host runs a small local server; everyone uses the **same** extension. Per-user undo/redo applies to synchronized pixel operations without removing newer contributions by someone else.
 
@@ -21,21 +23,27 @@ Collabsprite is an unofficial, open-source Aseprite extension for drawing togeth
 | --- | --- | --- |
 | Aseprite | Yes | Yes |
 | `Collabsprite.aseprite-extension` | Yes | Yes — same version |
-| [Node.js](https://nodejs.org/) 20+ | Yes | No |
+| Windows 10/11 x64 | Yes, host runtime bundled | Yes |
 | [Radmin VPN](https://www.radmin-vpn.com/) | Only across different networks | Only across different networks |
 
 The session server runs on the **host PC** (port `8766`). There is just **one workflow**: Create or Join. Separate PCs on the same Wi-Fi/LAN connect directly without Radmin. Across different networks, both users first join the same Radmin VPN network and then use the same buttons. No cloud account or public Collabsprite server is involved.
 
 ## Install on every computer
 
-1. On the [v0.6.4 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.4), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
+1. On the [v0.6.5 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.5), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
 2. In Aseprite, open **Edit → Preferences → Extensions → Add Extension** and select the file. Double-clicking the extension may work as well ([official Aseprite instructions](https://www.aseprite.org/docs/extensions/)).
 3. Restart Aseprite. Open **View → Collabsprite → Create / Join Server** (German UI: **Ansicht → Collabsprite → Server erstellen / beitreten**).
+
+## Updating an older installation
+
+Save the session copy and disconnect. Add the new **`Collabsprite.aseprite-extension`** in Aseprite's extension settings and confirm the update of **pixelkollab-native / Collabsprite** to **0.6.5**. Restart Aseprite on every participating PC and check **Ansicht → Collabsprite → Info**. The technical package ID stays the same for update compatibility.
+
+The **Update** menu downloads a verified installer into Downloads; then install that file as above. On a broken older build, download directly from GitHub. An older prompt for **“ws 8.21.3”** was caused by our archive layout, not by choosing the wrong file. Reinstall the corrected package. GitHub's source-code ZIP is not the installer.
 
 ## Host
 
 1. Open an RGB sprite. Collabsprite creates a **separate session copy**; the original file is not modified.
-2. Open **View/Ansicht → Collabsprite → Create / Join Server** (the label follows Aseprite's language), enter your name and select Create/Erstellen. If your friend is on a different network, start Radmin VPN and join your shared VPN network first.
+2. Open **View/Ansicht → Collabsprite → Create / Join Server** (the extension's controls currently use German labels), enter your name and select Create/Erstellen. If your friend is on a different network, start Radmin VPN and join your shared VPN network first.
 3. Click **Create session/Sitzung erstellen** and wait for **Connected/Verbunden**.
 4. Click **Copy invitation/Einladung kopieren** and privately send the full code to your friends.
 
@@ -63,9 +71,9 @@ The WebSocket connection has **no built-in end-to-end encryption**; use only a t
 
 ## Limitations and support
 
-RGB/RGBA raster layers are supported, with limits of 8 participants, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.6.4 still uses protocol 3; 0.5.0 sessions are incompatible.** See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
+RGB/RGBA raster layers are supported, with limits of 8 participants, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.6.5 still uses protocol 3; 0.5.0 sessions are incompatible.** See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
 
-Collabsprite is [MIT-licensed](LICENSE) and is not affiliated with Aseprite or Radmin VPN. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+The bundled, unmodified Node.js 24.21.0 runtime carries its full notices in `runtime/LICENSE`. Collabsprite is [MIT-licensed](LICENSE) and is not affiliated with Aseprite or Radmin VPN. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Logo
 

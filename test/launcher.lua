@@ -8,8 +8,9 @@ local plugin={path=root..'/extension',preferences={},
   newCommand=function(_,item) commands[#commands+1]=item end}
 local ok,err=pcall(function()
   init(plugin)
-  assert(#groups==0)
-  assert(#commands==1 and commands[1].group=='view_new' and commands[1].title=='Collabsprite...')
+  assert(#groups==1 and groups[1].title=='Collabsprite')
+  assert(#commands==4 and commands[1].group=='CollabspriteMenu' and commands[4].id=='CollabspriteDebugConsole')
+  commands[4].onclick()
   commands[1].onclick()
   local switched=false
   for i=1,32 do
@@ -23,6 +24,17 @@ local ok,err=pcall(function()
   assert(switched,'Ansicht-Umschaltung nicht gefunden')
   exit(plugin)
 end)
-print(ok and 'PASS: kompakter Collabsprite-Dialog und Ansicht-Menue initialisiert' or 'FAIL: '..tostring(err))
+print(ok and 'PASS: Collabsprite-Menue, Dialoge und Diagnosekonsole initialisiert' or 'FAIL: '..tostring(err))
 io.stdout:flush()
+local resultPath=app.params.result
+if not resultPath or resultPath=='' then
+  if os.getenv('TEMP') then
+  resultPath=app.fs.joinPath(os.getenv('TEMP'),'Collabsprite-ui-test-'..os.time()..'-'..math.random(100000,999999)..'.txt')
+  end
+end
+if resultPath then
+  local file=io.open(resultPath,'wb')
+  if file then file:write(ok and 'PASS' or ('FAIL: '..tostring(err)));file:flush();file:close()
+  else print('Could not write UI test result.') end
+end
 app.exit()
