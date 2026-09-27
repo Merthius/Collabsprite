@@ -75,4 +75,4 @@ end}
 timer:start()
 dialog=Dialog{title='Collabsprite Wiederverbindungstest'}
 dialog:label{id='status',text='Test mit neuen Bildern und absichtlichem Verbindungsabbruch ...'}
-dialog:show{wait=false}
+dialog:show{wait=true}

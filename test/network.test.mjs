@@ -28,7 +28,7 @@ async function connect(port,hello,address='127.0.0.1') {
     return new Promise((resolve,reject)=>{const p={type,resolve};p.timeout=setTimeout(()=>reject(Error('Timeout '+type)),4000);pending.push(p);});
   };
   await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
-  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:4,...hello});
+  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:5,...hello});
   return {ws,send,next};
 }
 async function waitFor(check,description) {
@@ -46,10 +46,38 @@ async function discover(port) {
       const timeout=setTimeout(()=>reject(Error('Timeout UDP discovery')),2000);
       socket.once('message',data=>{clearTimeout(timeout);resolve(JSON.parse(data.toString()));});
     });
-    socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V4'),port,'127.0.0.1');
+    socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V5'),port,'127.0.0.1');
     return await reply;
   } finally {socket.close();}
 }
+
+test('Shared notes: three peers, leases, late join, lost ack resume, host save and durable guest departure',async t=>{
+  const dataDir=await mkdtemp(join(tmpdir(),'collabsprite-notes-'));
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir,log:()=>{}});
+  t.after(async()=>{await service.close();await rm(dataDir,{recursive:true,force:true});});
+  const host=await connect(service.port,{mode:'host',name:'Host',snapshot:snapshot()});const hw=await host.next('welcome');await host.next('notes');
+  const [,room,token]=hw.invite.split('/');
+  const a=await connect(service.port,{mode:'join',room,token,name:'Gast A'});const aw=await a.next('welcome');await a.next('notes');
+  const id='c'.repeat(32),fields=['title','text','parent','x','y','color','status'];
+  const card={id,title:'Hexe',text:'',parent:'',x:10,y:20,color:'',status:'idea',versions:Object.fromEntries(fields.map(f=>[f,0]))};
+  a.send({type:'note',seq:1,action:'patch',patches:[{id,expected:false,value:card}]});assert.equal((await a.next('noteAck')).ok,true);
+  const state=await host.next('notes');assert.equal(state.board.cards[0].title,'Hexe');await a.next('notes');
+  const b=await connect(service.port,{mode:'join',room,token,name:'Gast B'});await b.next('welcome');assert.equal((await b.next('notes')).board.cards[0].title,'Hexe');
+  a.send({type:'noteLock',id,field:'text'});assert.equal((await b.next('noteLocks')).locks[0].author,aw.author);
+  b.send({type:'note',seq:1,action:'patch',patches:[{id,field:'text',expected:1,value:'blocked'}]});assert.equal((await b.next('noteAck')).ok,false);await b.next('notes');
+  a.send({type:'note',seq:2,action:'patch',patches:[{id,field:'text',expected:1,value:'Besen leuchtet'}]});
+  await host.next('notes'); // Do not consume A's acknowledgement: simulate its loss.
+  a.ws.terminate();await once(a.ws,'close');
+  const resumed=await connect(service.port,{mode:'resume',room,author:aw.author,resumeToken:aw.resumeToken});const rw=await resumed.next('welcome');
+  assert.equal(rw.snapshot.notes.cards[0].text,'Besen leuchtet');const ns=await resumed.next('notes');assert.equal(ns.history.undo,2);
+  resumed.send({type:'note',seq:2,action:'patch',patches:[{id,field:'text',expected:1,value:'Besen leuchtet'}]});
+  assert.equal((await resumed.next('noteAck')).ok,true);assert.equal((await resumed.next('notes')).board.revision,2);
+  host.send({type:'noteSaved',revision:2});assert.equal((await resumed.next('noteSaved')).revision,2);
+  resumed.send({type:'leave'});await once(resumed.ws,'close');await service.flush();
+  const saved=JSON.parse(await readFile(join(dataDir,room+'.json'),'utf8'));assert.equal(saved.snapshot.notes.cards[0].text,'Besen leuchtet');
+  host.send({type:'undo'});await host.next('history');assert.equal(service.rooms.get(room).core.notes.data.cards[0].text,'Besen leuchtet');
+  b.send({type:'noteSaved',revision:2});await b.next('error');
+});
 test('Authenticated reconnect retains identity, undo and pending sequence across a locked session',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});t.after(()=>service.close());
   const host=await connect(service.port,{mode:'host',snapshot:snapshot()});const hw=await host.next('welcome');
@@ -233,7 +261,7 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
   t.after(()=>service.close());
   assert.deepEqual(await (await fetch(`http://127.0.0.1:${service.port}/status`)).json(),
-    {app:'Collabsprite',protocol:4,localOnly:true,port:service.port});
+    {app:'Collabsprite',protocol:5,localOnly:true,port:service.port});
   const a=await connect(service.port,{mode:'host',name:'Local A',snapshot:snapshot()});
   const welcome=await a.next('welcome');
   assert.equal(welcome.localOnly,true);

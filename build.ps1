@@ -5,9 +5,9 @@ $stage = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) ('Collabsp
 $pluginBundle = Join-Path $stage 'plugin'
 try {
 New-Item -ItemType Directory -Force -Path $pluginBundle,(Join-Path $pluginBundle 'node_modules') | Out-Null
-$pluginFiles = @('client.lua','codec.lua','diagnostics.lua','json.lua','main.lua','package.json','Probe.ps1','Bootstrap.ps1','Update.ps1','Launcher.vbs','LICENSE')
+$pluginFiles = @('client.lua','codec.lua','notes.lua','notes-ui.lua','diagnostics.lua','json.lua','main.lua','package.json','Probe.ps1','Bootstrap.ps1','Update.ps1','Launcher.vbs','LICENSE')
 foreach ($name in $pluginFiles) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('extension\'+$name)) -Destination (Join-Path $pluginBundle $name) -Force }
-foreach ($name in @('server.mjs','core.mjs','network.mjs','firewall.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $pluginBundle $name) -Force }
+foreach ($name in @('server.mjs','core.mjs','notes.mjs','network.mjs','firewall.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $pluginBundle $name) -Force }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'node_modules\ws') -Destination (Join-Path $pluginBundle 'node_modules') -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'extension\Runtime.ps1') -Destination $pluginBundle
 # One installer for hosts and guests. Pin official, unmodified Node binaries.

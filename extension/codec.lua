@@ -1,5 +1,7 @@
 -- RGBA cel transport: compact runs on the wire, immutable byte strings locally.
 local M = {}
+local directory=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
+local Notes=dofile(app.fs.joinPath(directory,'notes.lua'))
 function M.key(layer, frame) return string.format('%d:%d', layer, frame) end
 local function integer(value,lo,hi)
   assert(type(value)=='number' and value==math.floor(value) and value>=lo and value<=hi,'Ungültige Bilddaten')
@@ -109,7 +111,7 @@ function M.capture(sprite)
   assert(#layers<=32 and #sprite.frames<=120 and raster>0, 'Maximal 32 Ebenen und 120 Frames; mindestens eine Rasterebene.')
   assert(raster*#sprite.frames*sprite.width*sprite.height<=4194304, 'Zu gross: maximal 4 Millionen Cel-Pixel pro Sitzung.')
   local s={format=1,name=app.fs.fileTitle(sprite.filename or '') or 'Gemeinsam',width=sprite.width,height=sprite.height,
-    layers=layers,frames={},cels={},palette={}}
+    layers=layers,frames={},cels={},palette={},notes=Notes.read(sprite)}
   for _,f in ipairs(sprite.frames) do s.frames[#s.frames+1]=math.max(1,math.floor(f.duration*1000+0.5)) end
   local scan=M.scan(sprite,mapping)
   for l,layer in ipairs(mapping) do if not layer.isGroup then
@@ -123,6 +125,7 @@ function M.capture(sprite)
   return s
 end
 function M.validate(s)
+  if s.notes then Notes.validate(s.notes) end
   assert(type(s)=='table' and s.format==1,'Unbekanntes Bildformat')
   integer(s.width,1,1024);integer(s.height,1,1024)
   assert(type(s.name)=='string' and #s.name<=400,'Ungültiger Bildname')
@@ -188,6 +191,7 @@ end
 -- guest restrictions, the open tab and event subscriptions remain attached.
 function M.replace(sprite,s,cells)
   M.validate(s)
+  if s.notes then Notes.write(sprite,s.notes) end
   assert(sprite.width==s.width and sprite.height==s.height,'Canvas-Größe stimmt nicht')
   local old={}
   for _,layer in ipairs(sprite.layers) do old[#old+1]=layer end
@@ -219,6 +223,7 @@ function M.create(s,cells)
   local initial=sprite.layers[1]
   local mapping={}
   app.transaction('Collabsprite Sitzungskopie',function()
+    if s.notes then Notes.write(sprite,s.notes) end
     for f=2,#s.frames do sprite:newEmptyFrame(f) end
     for f,ms in ipairs(s.frames) do sprite.frames[f].duration=ms/1000 end
     for i,meta in ipairs(s.layers) do

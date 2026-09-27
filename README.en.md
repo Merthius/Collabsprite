@@ -2,9 +2,9 @@
 
 # Collabsprite — English guide
 
-[Deutsch](README.md) · [Download v0.7.0 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.7.0/Collabsprite.aseprite-extension)
+[Deutsch](README.md) · [Download v0.8.0 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.8.0/Collabsprite.aseprite-extension)
 
-Version **0.7.0 beta** includes hosting and joining in **one installer**, with a bundled Windows x64 host runtime. No separate Node.js installation is needed. New: automatic reconnection with personal pixel history, deleted layer/frame recovery, and session safety improvements. **Everyone must update: protocol 4 is incompatible with 0.6.x.**
+Version **0.8.0 beta** includes hosting and joining in **one installer**, with a bundled Windows x64 host runtime. No separate Node.js installation is needed. New: a **shared idea board with connected cards, embedded in the artwork**. **Everyone must update: protocol 5 is incompatible with 0.7.x and earlier.**
 
 **Diagnostics are included in every build.** Open **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren** after an error. The local `%TEMP%\Collabsprite-debug.log` survives restarts and is bounded to 512 KiB. It contains technical events, not image data or invitation codes. Use **Neues Protokoll** only before reproducing an error. Guards prevent nested timer dispatch during permission dialogs; the reported guest-PC “C stack overflow” still needs a retest on that PC.
 
@@ -32,13 +32,13 @@ The session server runs on the **host PC** (port `8766`). There is just **one wo
 
 ## Install on every computer
 
-1. On the [v0.7.0 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.7.0), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
+1. On the [v0.8.0 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.8.0), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
 2. In Aseprite, open **Edit → Preferences → Extensions → Add Extension** and select the file. Double-clicking the extension may work as well ([official Aseprite instructions](https://www.aseprite.org/docs/extensions/)).
 3. Restart Aseprite. Open **View → Collabsprite → Create / Join Server** (German UI: **Ansicht → Collabsprite → Server erstellen / beitreten**).
 
 ## Updating an older installation
 
-Save the session copy and disconnect. Add the new **`Collabsprite.aseprite-extension`** in Aseprite's extension settings and confirm the update of **pixelkollab-native / Collabsprite** to **0.7.0**. Restart Aseprite on every participating PC and check **Ansicht → Collabsprite → Info**. The technical package ID stays the same for update compatibility.
+Save the session copy and disconnect. Add the new **`Collabsprite.aseprite-extension`** in Aseprite's extension settings and confirm the update of **pixelkollab-native / Collabsprite** to **0.8.0**. Restart Aseprite on every participating PC and check **Ansicht → Collabsprite → Info**. The technical package ID stays the same for update compatibility.
 
 The **Update** menu downloads a verified installer into Downloads; then install that file as above. On a broken older build, download directly from GitHub. An older prompt for **“ws 8.21.3”** was caused by our archive layout, not by choosing the wrong file. Reinstall the corrected package. GitHub's source-code ZIP is not the installer.
 
@@ -60,6 +60,16 @@ Collabsprite does not open Radmin automatically because it is unnecessary on a s
 
 An invitation may look like `192.168.1.10:8766,26.1.2.3:8766/ROOM/TOKEN`; without an active Radmin adapter, there is no `26.…` address. The entire code is a **session access key**. Never publish it in an issue or screenshot. If Radmin starts after the session, click **Copy invitation** again.
 
+## Shared idea board
+
+The board opens once when hosting/joining, or when opening a saved document with notes. Close it with **X** without deleting notes or closing anyone else's panel. Reopen through **View/Ansicht → Collabsprite → Gemeinsame Notizen**. Controls currently use German labels.
+
+- **+ Karte** adds a root card; right-click → **+ Unterkarte** adds a connected child. Example: Witch → Clothing → Dress, and Witch → Weapon → Broom.
+- Double-click to edit text, then **Übernehmen** to share it. Right-click for title, parent, HEX color and status. Drag cards; scroll to zoom; drag empty space to pan. Search, folding and automatic arrangement are included.
+- Host and guests can edit any card. Short field leases and revision checks protect concurrent edits. The separate note undo preserves other people's newer changes; a bounded trash restores deleted branches.
+- **The host saves the session copy as `.aseprite`**. Notes travel inside that file and its Save As copies; no separate note file is needed. PNG/spritesheets do not preserve notes.
+- Unconfirmed drafts stay in memory during this app session, not across a crash/restart. Changes are sent on **Apply/Übernehmen**, not every keystroke. All confirmed contributions survive guest departure. Limits: 128 cards, 512 KiB including trash, title 120 UTF-8 bytes, text 2048 bytes. [Full guide (German)](docs/shared-notes.md).
+
 ## Working together
 
 - Standard Aseprite drawing tools and **completed** selection, paste, fill, and move operations sync. A held stroke or floating selection is not streamed live.
@@ -79,7 +89,7 @@ The WebSocket connection has **no built-in end-to-end encryption**; use only a t
 
 ## Limitations and support
 
-RGB/RGBA raster layers are supported, with limits of 8 participants including reconnecting leases, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.7.0 uses protocol 4; earlier sessions are incompatible.** See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
+RGB/RGBA raster layers are supported, with limits of 8 participants including reconnecting leases, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.8.0 uses protocol 5; earlier sessions are incompatible.** See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
 
 The bundled, unmodified Node.js 24.21.0 runtime carries its full notices in `runtime/LICENSE`. Collabsprite is [MIT-licensed](LICENSE) and is not affiliated with Aseprite or Radmin VPN. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -7,6 +7,7 @@ import { mkdir, readdir, readFile, writeFile, rename, stat } from 'node:fs/promi
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Room, OperationRejected } from './core.mjs';
+import { NoteRejected } from './notes.mjs';
 
 const hash = value => createHash('sha256').update(String(value)).digest('hex');
 const isLocal = address => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
@@ -65,7 +66,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   const server = http.createServer((req, res) => {
     if (req.url === '/status' && allowedPeer(req.socket.remoteAddress, localOnly)) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 4, localOnly, port: server.address()?.port }));
+      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 5, localOnly, port: server.address()?.port }));
       return;
     }
     if (!allowedPeer(req.socket.remoteAddress, localOnly)) { res.writeHead(403); res.end(); return; }
@@ -96,6 +97,10 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
       send(client, { type: 'backup', state: room.backupError ? 'error' : 'saved', revision: room.savedRevision ?? 0 });
   };
   const presence = room => broadcast(room, { type: 'presence', members: [...room.clients].map(c => ({ name: c.name, author: c.author })) });
+  const noteState = (room, target) => {
+    for (const peer of target ? [target] : room.clients) send(peer, { type: 'notes', board: room.core.notes.snapshot(),
+      history: room.core.notes.history(peer.author), locks: room.core.notes.presence(), saved: room.notesSaved ?? -1 });
+  };
   const hasConnectedHost = () => [...rooms.values()].some(room =>
     [...room.clients].some(client => client.author === room.hostAuthor));
   const hasHostLease = () => [...rooms.values()].some(room => room.leases.has(room.hostAuthor));
@@ -106,6 +111,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
         room.leases.delete(author); if (author === room.hostAuthor) lostHost = true;
       }
       pruneUsers(room);
+      room.core.notes.prune([...room.leases.keys(), ...[...room.clients].map(c => c.author)]);
     }
     if (lostHost && !hasConnectedHost() && !hasHostLease()) server.emit('collabsprite:last-host-left');
   }
@@ -115,6 +121,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
       return socket.close(1008, 'Nur lokales Netzwerk oder Radmin VPN');
     socket._socket?.setNoDelay(true);
     const messageBudget = budget(2048, 256), byteBudget = budget(128 * MiB, 16 * MiB);
+    const noteBudget = budget(64, 24);
     socket.lastSeen = Date.now();
     socket.on('pong', () => { socket.lastSeen = Date.now(); });
     // Aseprite's native client sends its ws:// URL as Origin. Browser pages
@@ -133,9 +140,9 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
         if (!socket.room && !isLocal(request.socket.remoteAddress) && data.length > 8192) throw new Error('Anmeldung zu gross');
         const message = JSON.parse(data.toString());
         if (!message || typeof message !== 'object' || Array.isArray(message) || typeof message.type !== 'string') throw new Error('Ungueltige Nachricht');
-        if (socket.room && message.type !== 'paint' && data.length > 8192) throw new Error('Steuernachricht zu gross');
+        if (socket.room && message.type !== 'paint' && data.length > (message.type === 'note' ? 128 * 1024 : 8192)) throw new Error('Steuernachricht zu gross');
         if (!socket.room) {
-          if (message.type !== 'hello' || message.protocol !== 4) throw new Error('Unpassende Erweiterungsversion');
+          if (message.type !== 'hello' || message.protocol !== 5) throw new Error('Unpassende Erweiterungsversion');
           socket.name = String(message.name || 'Kuenstler').replace(/[\x00-\x1f]/g, '').slice(0, 30);
           socket.author = randomBytes(16).toString('hex');
           let room, code, token, resumeToken = randomBytes(32).toString('hex');
@@ -177,19 +184,35 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           socket.room = room; socket.code = code; room.clients.add(socket); room.core.user(socket.author);
           room.leases.set(socket.author, { tokenHash: hash(resumeToken), name: socket.name, socket, expires: Infinity });
           const actualPort = server.address().port;
-          send(socket, { type: 'welcome', protocol: 4, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision, structure: room.core.structure,
+          send(socket, { type: 'welcome', protocol: 5, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision, structure: room.core.structure,
             invite: token ? invite(localOnly ? [] : addresses(), actualPort, code, token) : undefined,
             localOnly, restored: room.restored, acceptingGuests: room.acceptingGuests !== false, snapshot: room.core.snapshot(),
             resumed: message.mode === 'resume', resumeToken, resumeMs, confirmedSeq: room.core.user(socket.author).seq });
-          histories(room); presence(room);
+          histories(room); presence(room); noteState(room, socket);
           log(`Sitzung ${code}: ${room.clients.size} Person(en) verbunden.`);
           return;
         }
         const room = socket.room;
+        if (['note','noteLock','noteSaved'].includes(message.type) && !noteBudget(1)) throw new Error('Zu viele Notizaktionen. Bitte langsamer bearbeiten.');
         if (['append', 'delete', 'deleteMany'].includes(message.type) && message.structure !== room.core.structure)
           throw new OperationRejected('Ebenen/Frames wurden inzwischen geändert. Bitte die Aktion erneut ausführen.');
         let event;
-        if (message.type === 'paint') event = room.core.paint(socket.author, message.seq, message.patches, message.structure);
+        if (message.type === 'note') {
+          const revision = room.core.notes.data.revision;
+          const result = room.core.notes.execute(socket.author, message);
+          send(socket, { type: 'noteAck', ...result });
+          if (room.core.notes.data.revision !== revision) { room.dirty = true; noteState(room); }
+          else noteState(room, socket);
+          return;
+        } else if (message.type === 'noteLock') {
+          try { room.core.notes.lock(socket.author, socket.name, message.id, message.field, message.release === true); }
+          catch (error) { if (!(error instanceof NoteRejected)) throw error; }
+          broadcast(room, { type: 'noteLocks', locks: room.core.notes.presence() }); return;
+        } else if (message.type === 'noteSaved') {
+          if (socket.author !== room.hostAuthor || !Number.isSafeInteger(message.revision) || message.revision < 0 || message.revision > room.core.notes.data.revision) throw new Error('Ungültige Notizspeicherbestätigung');
+          room.notesSaved = message.revision;
+          broadcast(room, { type: 'noteSaved', revision: room.notesSaved }); return;
+        } else if (message.type === 'paint') event = room.core.paint(socket.author, message.seq, message.patches, message.structure);
         else if (message.type === 'undo' || message.type === 'redo') event = room.core.undoRedo(socket.author, message.type === 'redo');
         else if (message.type === 'append') {
           if (message.structure !== room.core.structure) throw new Error('Dokumentstruktur hat sich geaendert; bitte neu verbinden');
@@ -248,6 +271,8 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
       if (socket.room && !socket.superseded) {
         const room = socket.room;
         room.clients.delete(socket);
+        room.core.notes.unlock(socket.author);
+        broadcast(room, { type: 'noteLocks', locks: room.core.notes.presence() });
         const lease = room.leases.get(socket.author);
         if (socket.intentionalLeave || socket.rejected || stopping) room.leases.delete(socket.author);
         else if (lease?.socket === socket) { lease.socket = null; lease.expires = Date.now() + resumeMs; }
@@ -307,7 +332,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   const discoveryBudget = budget(40, 20);
   discovery.on('message', (data, peer) => {
     if (stopping || !discoveryBudget(1)) return;
-    if (data.toString() !== 'COLLABSPRITE_DISCOVER_V4') return;
+    if (data.toString() !== 'COLLABSPRITE_DISCOVER_V5') return;
     if (!allowedPeer(peer.address, localOnly)) return;
     const address = replyAddress(peer.address, localOnly);
     if (!address) return;
@@ -318,7 +343,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
       visible.push({ name: room.hostName || 'Kuenstler', image: room.core.meta.name,
         invite: invite([address], server.address().port, code, room.discoveryToken) });
     }
-    const response = Buffer.from(JSON.stringify({ protocol: 4, rooms: visible }));
+    const response = Buffer.from(JSON.stringify({ protocol: 5, rooms: visible }));
     if (response.length <= 1200) discovery.send(response, peer.port, peer.address);
   });
   discovery.on('error', error => log(`Sitzungssuche: ${error.message}`));

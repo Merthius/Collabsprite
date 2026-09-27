@@ -1,6 +1,7 @@
 local directory=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local C=dofile(app.fs.joinPath(directory,'codec.lua'))
 local decodeJson=dofile(app.fs.joinPath(directory,'json.lua')).decode
+local Notes=dofile(app.fs.joinPath(directory,'notes.lua'))
 local Client={};Client.__index=Client
 local MAX_INBOX=2048
 local MAX_INBOX_BYTES=128*1024*1024
@@ -114,7 +115,7 @@ function Client:connect(url,hello)
 end
 function Client:host(sprite,name,port)
   local snapshot=C.capture(sprite)
-  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=4,mode='host',name=name,snapshot=snapshot})
+  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=5,mode='host',name=name,snapshot=snapshot})
 end
 function Client:join(invite,name)
   invite=invite:gsub('%s',''):gsub('^ws://','')
@@ -122,7 +123,7 @@ function Client:join(invite,name)
   assert(address and #code==8 and #token==32,'Bitte den gesamten Einladungscode vom Host einfuegen.')
   self:trace('session','join-requested; address and invite hidden')
   self.invite=invite
-  self:connect('ws://'..address,{type='hello',protocol=4,mode='join',name=name,room=code,token=token})
+  self:connect('ws://'..address,{type='hello',protocol=5,mode='join',name=name,room=code,token=token})
 end
 function Client:unfreeze()
   if not self.frozen then return end
@@ -198,6 +199,7 @@ function Client:leaveBarrier()
   job.sentCount=self.sentCount
 end
 function Client:requestLeave(onReady)
+  if self.notesCanLeave and not self.notesCanLeave() then return end
   if self.reconnecting then
     -- Never close an unconfirmed guest view or discard its pending edits.
     self:disconnect('Wiederverbindung abgebrochen. Lokale Ansicht bleibt offen.');return
@@ -222,7 +224,7 @@ function Client:finishLeave()
   end
   if not job.acknowledged then return end
   self:capture()
-  if #self.pending>0 or self.sentCount~=job.sentCount then self:leaveBarrier();return end
+  if #self.pending>0 or self.notePending or self.sentCount~=job.sentCount then self:leaveBarrier();return end
   self:trace('session','leave: all outgoing changes confirmed')
   self:disconnect()
   if job.onReady then job.onReady() end
@@ -423,6 +425,29 @@ function Client:receive(message)
     if self.connected then self:render() end
     self:disconnect(tostring(message.message or 'Serverfehler.'))
     return
+  elseif message.type=='notes' then
+    Notes.validate(message.board)
+    local changed=not Notes.equal(self.meta.notes,message.board)
+    self.noteHistory=message.history;self.noteLocks=message.locks;self.notesSaved=message.saved
+    self.noteSeq=math.max(self.noteSeq or 0,message.history.seq)
+    if changed then
+      self.applying=true
+      self:transaction('Collabsprite: Gemeinsame Notizen',function() Notes.write(self.sprite,message.board) end)
+      self.applying=false;self.meta.notes=message.board
+    end
+    -- Pending action survives a lost acknowledgement and is resent once the
+    -- resumed server state arrives. Duplicate sequence returns its same result.
+    if self.noteResend then self.noteResend=nil;if self.notePending then self:send(self.notePending) end end
+    if self.onNotes then self.onNotes(message) end
+  elseif message.type=='noteAck' then
+    if self.notePending and message.seq==self.notePending.seq then
+      self.notePending=nil;self.noteSeq=message.seq
+      if self.onNotes then self.onNotes(message) end
+    end
+  elseif message.type=='noteLocks' then
+    self.noteLocks=message.locks;if self.onNotes then self.onNotes(message) end
+  elseif message.type=='noteSaved' then
+    self.notesSaved=message.revision;if self.onNotes then self.onNotes(message) end
   elseif message.type=='pong' then
     if self.leaving and message.nonce==self.leaving.nonce then self.leaving.acknowledged=true end
   elseif message.type=='rejected' then
@@ -441,9 +466,10 @@ function Client:receive(message)
     end
   elseif message.type=='welcome' then
     assert(not self.connected,'Doppelte Anmeldung')
-    assert(message.protocol==nil or message.protocol==4,'Unpassende Erweiterungsversion')
+    assert(message.protocol==nil or message.protocol==5,'Unpassende Erweiterungsversion')
     local resumed=self.reconnecting
     if resumed then
+      self.noteResend=true
       assert(message.resumed and message.author==self.author and message.room==self.room and message.host==self.isHost,'Falsche Wiederverbindungsantwort')
       assert(type(message.confirmedSeq)=='number' and message.confirmedSeq>=0 and message.confirmedSeq<=self.seq,'Ungültige Wiederverbindungssequenz')
       self:replaceSnapshot(message.snapshot,message.confirmedSeq)
@@ -635,6 +661,22 @@ function Client:receive(message)
     self.applying=false;self.revision=message.revision
   end
 end
+function Client:noteAction(op)
+  assert(self.connected and not self.leaving,'Notizen warten auf eine Verbindung')
+  assert(not self.notePending,'Eine Notizänderung wird noch bestätigt')
+  local message=Notes.copy(op);message.type='note';message.seq=(self.noteSeq or 0)+1
+  assert(#json.encode(message)<=128*1024,'Notizänderung zu groß')
+  self.notePending=message;self:send(message)
+end
+function Client:noteLock(id,field,release)
+  if self.connected then self:send{type='noteLock',id=id,field=field,release=release==true} end
+end
+function Client:notesFileSaved()
+  if self.connected and self.isHost and not self.notePending and self.meta.notes and
+    not self.sprite.isModified and (self.sprite.filename:lower():match('%.aseprite$') or self.sprite.filename:lower():match('%.ase$')) then
+    self:send{type='noteSaved',revision=self.meta.notes.revision}
+  end
+end
 function Client:render()
   if not self.needsRender then return end
   local desired={}
@@ -681,7 +723,7 @@ function Client:tick()
       if os.time()>=self.resumeDeadline then self:disconnect('Wiederverbindung abgelaufen. Lokale Ansicht bleibt offen.');return end
       if self.connecting and os.time()-self.started>10 then self:suspend() end
       if not self.connecting and os.time()>=self.retryAt then
-        self:connect(self.url,{type='hello',protocol=4,mode='resume',room=self.room,author=self.author,resumeToken=self.resumeToken})
+        self:connect(self.url,{type='hello',protocol=5,mode='resume',room=self.room,author=self.author,resumeToken=self.resumeToken})
       end
     elseif self.connecting and os.time()-self.started>20 then error('Keine Verbindung: Host, LAN/Radmin und Firewall prüfen.') end
     if self.connected or self.reconnecting then

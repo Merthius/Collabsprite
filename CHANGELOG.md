@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0 beta — 2026-09-27
+
+- Shared idea board: native, nonmodal connected cards with child branches, text, HEX color, status, dragging, zoom/pan, search, folding and arrangement.
+- Host/guest field editing with short leases, per-field revisions, explicit Apply, retained in-memory drafts and conflict comparison. No note text in diagnostic logs.
+- Separate personal note undo/redo, bounded trash, idempotent note replay after a lost acknowledgement, late-join synchronization and durable guest contributions.
+- Embed notes in `.aseprite`/`.ase` properties, session copies and host backups. Preserve unrelated user/plugin properties; distinguish transmission from actual host file save. PNG/spritesheet warning.
+- Fix native sprite identity handling: fresh Lua wrappers for the same document no longer spawn repeated note windows or bypass the detached guest save guard. Avoid unnecessary dialog relayout and overlapping card text at reduced zoom.
+- Add card/tree/size/rate/history limits, atomic validation and expected conflict rejection without ending the session. A note panel error pauses its timer instead of killing pixel synchronization.
+- Protocol 5: all peers must update. One Windows x64 installer continues to include host, guest and diagnostics. Existing two-PC/Radmin and long-session limitations remain.
+
+Earlier 0.7.0 release details: [reconnection and deletion recovery](docs/releases/v0.7.0.md).
+
 ## 0.6.5 beta — 2026-09-26
 
 - Fix the installer manifest order: Aseprite previously detected the nested ws package (8.21.3) before Collabsprite. The root manifest is now first and covered by a package regression check.

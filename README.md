@@ -2,17 +2,17 @@
 
 # Collabsprite
 
-[![Version](https://img.shields.io/badge/version-0.7.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.7.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/badge/version-0.8.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.8.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
 
 **Gemeinsam Pixel-Art und Animationen direkt in Aseprite bearbeiten.** Eine Person hostet, die anderen treten bei. Alle nutzen dieselbe Erweiterung und dieselben Rasterebenen und Frames. `Strg+Z`/`Strg+Y` wirken auf die eigenen synchronisierten Pixelaktionen, ohne neuere fremde Pixel zu entfernen.
 
-**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.7.0/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.8.0/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
 
-Version **0.7.0 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Neu: automatische Wiederverbindung mit eigenem Pixel-Verlauf, Wiederherstellung gelöschter Ebenen/Frames und weitere Schutzmaßnahmen für die Sitzung.
+Version **0.8.0 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Neu: eine **gemeinsame Ideenwand aus verbundenen Notizkarten**, direkt am Bild gespeichert. [Notiz-Tutorial](docs/shared-notes.md).
 
 Die **Diagnosekonsole ist dauerhaft enthalten**: **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren**. Das lokale Protokoll unter `%TEMP%\Collabsprite-debug.log` bleibt nach einem Neustart erhalten und ist auf 512 KiB begrenzt. Es enthält technische Ereignisse und Fehler, keine Bilddaten oder Einladungscodes. **Neues Protokoll** leert die Aufnahme; nur **vor** dem erneuten Auslösen eines Fehlers verwenden. Schutz gegen wiederholte Timer-Aufrufe während Freigabedialogen wurde ergänzt. Ob dies den gemeldeten „C stack overflow“ auf dem betroffenen Freund-PC behebt, bleibt dort zu prüfen.
 
-**Alle Teilnehmenden müssen auf 0.7.0 aktualisieren**: Das neue Protokoll 4 ist nicht mit 0.6.x kompatibel. Enthalten sind auch die bisherigen lokalen Verbesserungen: Beitrittssperre, sichtbare Sicherungsfehler, Überlastungsschutz und beständiges Gast-Zeichnen nach dem Verlassen. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
+**Alle Teilnehmenden müssen auf 0.8.0 aktualisieren**: Protokoll **5** ist nicht mit 0.7.x oder früher kompatibel. Wiederverbindung, persönlicher Pixel-Verlauf, Löschwiederherstellung, Beitrittssperre und Diagnose bleiben enthalten. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
 
 ## Schnellstart
 
@@ -36,7 +36,7 @@ Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host
 
 ## Installation – auf jedem PC
 
-1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.7.0) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
+1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.8.0) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
 2. Öffne Aseprite → **Bearbeiten → Einstellungen → Erweiterungen → Erweiterung hinzufügen** und wähle die Datei. Ein Doppelklick auf die Datei kann ebenfalls funktionieren ([offizielle Aseprite-Anleitung](https://www.aseprite.org/docs/extensions/)).
 3. Starte Aseprite neu. Öffne **Ansicht → Collabsprite → Server erstellen / beitreten**.
 
@@ -45,8 +45,8 @@ Für Host und Gäste gilt exakt dieselbe Installationsdatei. Du kannst jederzeit
 ### Eine ältere Version aktualisieren
 
 1. Sitzungskopie speichern und die laufende Sitzung über **Trennen** beenden.
-2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.7.0** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
-3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Ansicht → Collabsprite → Info** muss **0.7.0** stehen.
+2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.8.0** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
+3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Ansicht → Collabsprite → Info** muss **0.8.0** stehen.
 
 **„Update“** im Collabsprite-Menü lädt das geprüfte Paket nach Downloads; danach wird es wie oben installiert. Es installiert sich nicht stillschweigend selbst. Bei sehr alten oder fehlerhaften Builds das Paket direkt von dieser Seite laden.
 
@@ -70,6 +70,17 @@ Radmin wird nicht automatisch geöffnet: Im LAN wird es nicht gebraucht, und fü
 4. Warte auf **Verbunden** und zeichne in der neuen Sitzungskopie.
 
 Der Einladungscode hat etwa die Form `192.168.1.10:8766,26.1.2.3:8766/RAUM/TOKEN`; ohne aktives Radmin fehlt die `26.…`-Adresse. Der ganze Code ist ein **Zugangsschlüssel**: nicht öffentlich posten oder in Issues/Screenshots zeigen. Wenn Radmin erst später gestartet wird, **Einladung kopieren** erneut anklicken.
+
+## Gemeinsam planen – die Ideenwand
+
+Beim Erstellen oder Beitreten öffnet sich eine schließbare **Ideenwand**. Host und Gäste bearbeiten dieselben verbundenen Karten; **X** schließt nur die eigene Ansicht. Wieder öffnen: **Ansicht → Collabsprite → Gemeinsame Notizen**.
+
+1. **+ Karte** erstellt eine Hauptidee, zum Beispiel „Hexe“.
+2. **Rechtsklick → + Unterkarte** verbindet „Kleidung“ → „Kleid“ und einen zweiten Zweig „Waffe“ → „Besen“.
+3. **Doppelklick** öffnet den Notiztext. Mit **Übernehmen** teilen; Farbe, Titel, Status und Zuordnung ändern sich per Rechtsklick. Karten ziehen, mit dem Mausrad zoomen.
+4. Der **Host speichert die Sitzungskopie als `.aseprite`**. Bild und Notizen bleiben zusammen, auch nach Umbenennen, Verschieben oder „Speichern unter“. PNG/Spritesheets enthalten keine Notizen.
+
+Eigener Notiz-Verlauf, kurzer Feldschutz gegen gleichzeitiges Überschreiben und Papierkorb sind enthalten. Nicht übernommene Entwürfe bleiben während der laufenden App erhalten; vor Schließen/Speichern fordert die Erweiterung zum Übernehmen oder Verwerfen auf. **Ein Programmabsturz kann unbestätigte Entwürfe verlieren.** [Bedienung und Grenzen](docs/shared-notes.md).
 
 ## Gemeinsam arbeiten und speichern
 
@@ -108,7 +119,7 @@ Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **o
 | **Aseprite reagiert nicht** | Speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
 | **Verbindung weg** | Bis zu zwei Minuten auf automatische Wiederverbindung warten und Netzwerk/Host prüfen. Bei Abbruch lokale Ansicht nicht voreilig schließen, Diagnose kopieren; Host speichert. Kein allgemeines Offline-Merging. |
 
-Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. **0.7.0 verwendet Protokoll 4; frühere Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
+Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. Ideenwand: bis 128 Karten und 512 KiB inklusive Papierkorb. **0.8.0 verwendet Protokoll 5; frühere Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
 
 ## Entwickeln und beitragen
 

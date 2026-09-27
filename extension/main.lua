@@ -9,6 +9,7 @@ local installedVersion='0.0.0'
 local PORT=8766
 local debugDialog=nil
 local callbackBusy=false
+local notesUI
 
 local function traceback(err)
   return debug and debug.traceback and debug.traceback(tostring(err),2) or tostring(err)
@@ -38,7 +39,8 @@ local function safely(action)
 end
 
 local function refresh(s)
-  if s.sprite then guarded[s.sprite]={guest=s.isHost==false} end
+  if s.sprite then guarded[s.sprite.id]={guest=s.isHost==false} end
+  if notesUI and s.sprite and not s.notesAttached then notesUI:attach(s);s.notesAttached=true end
   if not dialog then return end
   local busy=startup~=nil or s.reconnecting
   dialog:modify{id='status',text=s.reconnecting and 'Verbinde erneut ...' or busy and 'Vorbereitung ...' or s.connected and (s.syncStatus or 'Verbunden') or s.connecting and 'Verbinde ...' or 'Nicht verbunden'}
@@ -128,7 +130,7 @@ local function searchSessionsNow(output)
     local choices,seen={},{}
     for line in (output or ''):gmatch('[^\r\n]+') do
       local ok,result=pcall(function() return decodeJson(line) end)
-      if ok and result and result.protocol==4 then
+      if ok and result and result.protocol==5 then
         for _,room in ipairs(result.rooms or {}) do
           local invite=tostring(room.invite or '')
           local address=invite:match('^([^/]+)/') or ''
@@ -298,7 +300,7 @@ local function show()
     :entry{id='name',label='Dein Name',text=preferences.name or 'Kuenstler'}
     :button{id='startHost',text='Sitzung erstellen',onclick=function()
       if not app.sprite then alert('Bitte zuerst ein Bild öffnen');return end
-      if guarded[app.sprite] and guarded[app.sprite].guest then
+      if app.sprite and guarded[app.sprite.id] and guarded[app.sprite.id].guest then
         alert('Dieses Gast-Sitzungsbild kann nur der ursprüngliche Host speichern oder neu hosten.');return
       end
       safely(function()
@@ -361,12 +363,16 @@ function init(plugin)
   diagnostics=dofile(app.fs.joinPath(plugin.path,'diagnostics.lua')).new(logPath)
   decodeJson=dofile(app.fs.joinPath(plugin.path,'json.lua')).decode
   Client=dofile(app.fs.joinPath(plugin.path,'client.lua'))
+  notesUI=dofile(app.fs.joinPath(plugin.path,'notes-ui.lua')).new(function() return session end,
+    function(sprite) return sprite and guarded[sprite.id] and guarded[sprite.id].guest end,safely)
   preferences=plugin.preferences
   installedVersion=plugin.version and tostring(plugin.version) or '0.0.0'
   logDiagnostic('startup','Collabsprite '..installedVersion..'; Aseprite '..tostring(app.version or 'unknown')..'; log file ready')
   -- Aseprite exposes groups within existing menus, not a group on main_menu.
   plugin:newMenuGroup{id='CollabspriteMenu',title='Collabsprite',group='view_new'}
   plugin:newCommand{id='PixelKollabMultiplayer',title='Server erstellen / beitreten...',group='CollabspriteMenu',onclick=show}
+  plugin:newCommand{id='CollabspriteNotes',title='Gemeinsame Notizen...',group='CollabspriteMenu',
+    onclick=function() safely(function() notesUI.failed=nil;notesUI:show(app.sprite) end) end}
   plugin:newCommand{id='CollabspriteUpdate',title='Update...',group='CollabspriteMenu',onclick=update}
   plugin:newCommand{id='CollabspriteRestoreDeletion',title='Letzte Löschung wiederherstellen',group='CollabspriteMenu',
     onenabled=function() return session~=nil and session.connected and session.recovery~=nil end,
@@ -374,8 +380,17 @@ function init(plugin)
   plugin:newCommand{id='CollabspriteInfo',title='Info...',group='CollabspriteMenu',onclick=info}
   plugin:newCommand{id='CollabspriteDebugConsole',title='Diagnosekonsole...',group='CollabspriteMenu',onclick=showDiagnostics}
   commandListener=app.events:on('beforecommand',function(ev)
-    local protection=guarded[app.sprite]
+    local protection=app.sprite and guarded[app.sprite.id]
     if Client.blockGuestSave(ev,protection and protection.guest) then return end
+    if notesUI then
+      local targets={}
+      if ev.name=='CloseAllFiles' or ev.name=='Exit' then
+        for _,s in pairs(notesUI.states) do if s.sprite.isValid then targets[#targets+1]=s end end
+      elseif ev.name=='CloseFile' or ev.name=='SaveFile' or ev.name=='SaveFileAs' or ev.name=='SaveFileCopyAs' then
+        if app.sprite and notesUI.states[app.sprite.id] then targets[1]=notesUI.states[app.sprite.id] end
+      end
+      for _,s in ipairs(targets) do if not notesUI:canLeave(s) then ev.stopPropagation();return end end
+    end
     if session and (session.connected or session.connecting) then
       logDiagnostic('aseprite command',tostring(ev.name or 'unknown'))
     end
@@ -404,13 +419,20 @@ function init(plugin)
         session:disconnect(friendly(error))
       end
     end
-    if guarded[app.sprite] and not (session and session.connected and app.sprite==session.sprite) and
+    if protection and not (session and session.connected and app.sprite==session.sprite) and
       (ev.name=='Undo' or ev.name=='Redo' or ev.name=='UndoHistory') then
       ev.stopPropagation()
       app.tip('Multiplayer getrennt. Kopie speichern und neu oeffnen fuer lokales Undo.',5)
     end
   end)
   afterCommandListener=app.events:on('aftercommand',function(ev)
+    if session and (ev.name=='SaveFileAs' or ev.name=='SaveFile') then session:notesFileSaved() end
+    if notesUI and (ev.name=='SaveFileAs' or ev.name=='SaveFileCopyAs' or ev.name=='ExportSpriteSheet') then
+      local s=app.sprite and notesUI.states[app.sprite.id]
+      if s and #s.board.cards>0 then
+        app.tip('Ideenwand sichern: zusätzlich als .aseprite speichern. PNG/Spritesheets enthalten keine Notizen.',7)
+      end
+    end
     if session and session.connected and not session.applying and app.sprite==session.sprite then
       session.dirty=true
     end
@@ -422,6 +444,13 @@ function init(plugin)
       pollBootstrap()
       pollUpdate()
       if session then session:tick() end
+      if notesUI and not notesUI.failed then
+        local noteOk,noteError=xpcall(function() notesUI:tick() end,traceback)
+        if not noteOk then
+          notesUI.failed=true;logDiagnostic('Notes UI paused',noteError)
+          app.tip('Notizfenster pausiert. Diagnose prüfen und Gemeinsame Notizen erneut öffnen. Zeichnen bleibt möglich.',8)
+        end
+      end
       if debugDialog and os.time()~=debugDialog.lastPaint then
         debugDialog.lastPaint=os.time()
         debugDialog.dialog:repaint()
@@ -442,6 +471,7 @@ end
 function exit(plugin)
   if timer then timer:stop() end
   if session then session:disconnect() end
+  if notesUI then notesUI:close() end
   if dialog then dialog:close() end
   if debugDialog then debugDialog.dialog:close();debugDialog=nil end
   if commandListener then app.events:off(commandListener) end

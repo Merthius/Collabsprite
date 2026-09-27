@@ -1,6 +1,7 @@
 // Ordered pixel contributions. Undo toggles only the requesting author's operation.
 // It never applies a whole-image snapshot over another participant's work.
 import { randomBytes } from 'node:crypto';
+import { Notes, validateNotes } from './notes.mjs';
 const newId = () => randomBytes(16).toString('hex');
 export const LIMITS = { side: 1024, layers: 32, frames: 120, pixels: 4_194_304, changes: 1_048_576, history: 256, historyPixels: 500_000, recovery: 20, recoveryPixels: 4_194_304 };
 // Expected user-operation failures are nonfatal; malformed protocol data is not.
@@ -80,11 +81,12 @@ export function validateSnapshot(input) {
     return { layer, frame, runs: [...cel.runs], opacity: integer(cel.opacity ?? 255, 0, 255, 'Cel-Deckkraft'), z: integer(cel.z ?? 0, -32768, 32767, 'Cel-Z') };
   });
   const palette = Array.isArray(input.palette) ? input.palette.slice(0, 256).map(v => integer(v, 0, 0xffffffff, 'Palettenfarbe')) : [];
-  return { format: 1, name: String(input.name || 'Gemeinsam').slice(0, 100), width, height, layers, frames, frameIds, cels, palette };
+  return { format: 1, name: String(input.name || 'Gemeinsam').slice(0, 100), width, height, layers, frames, frameIds, cels, palette, notes: validateNotes(input.notes) };
 }
 export class Room {
   constructor(snapshot, options = {}) {
     this.meta = validateSnapshot(snapshot);
+    this.notes = new Notes(this.meta.notes);
     this.size = this.meta.width * this.meta.height;
     this.cells = new Map();
     this.users = new Map();
@@ -119,7 +121,7 @@ export class Room {
     for (const id of this.users.keys()) if (!retained.has(id)) this.users.delete(id);
   }
   snapshot() {
-    return { ...structuredClone(this.meta), cels: [...this.cells.values()].sort((a,b) => a.layer-b.layer || a.frame-b.frame).map(c => ({ layer: c.layer, frame: c.frame, opacity: c.opacity, z: c.z, runs: encodeRuns(c.pixels, true) })) };
+    return { ...structuredClone(this.meta), notes: this.notes.snapshot(), cels: [...this.cells.values()].sort((a,b) => a.layer-b.layer || a.frame-b.frame).map(c => ({ layer: c.layer, frame: c.frame, opacity: c.opacity, z: c.z, runs: encodeRuns(c.pixels, true) })) };
   }
   changesToPatches(touched) {
     const patches = [];

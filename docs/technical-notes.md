@@ -18,6 +18,56 @@ Die Diagnose ist Teil der regulären Beta. Dateizugriffe finden nicht im WebSock
 
 ## Synchronisationsmodell
 
+### 0.8.0 / Protokoll 5: gemeinsame Notizen
+
+`notes.mjs` verwaltet unabhängig vom Pixel-/Strukturverlauf einen Kartenbaum mit
+stabilen 128-Bit-IDs, Eltern-ID, Position, Titel/Text, optionalem HEX-Feld, Status
+und Feldrevisionen. Snapshots, Sitzungskopie und Backups enthalten `notes`.
+Eine Pixel-/Strukturwiederherstellung ersetzt diesen Zustand nicht.
+
+`note`-Aktionen werden atomar validiert und vom Server geordnet. Pro Client
+höchstens eine ausstehende Notizaktion; separate Sequenz und gespeicherte letzte
+Bestätigung erlauben idempotentes Wiederholen nach einem kurzen Resume.
+Erwartete Feldkonflikte liefern `noteAck/ok=false`, keinen Sitzungsabbruch.
+Der eigene Notizverlauf trägt Feldrevisionen: auch fremdes Ändern-und-zurück-Ändern
+berechtigt nicht zu einer veralteten Rücknahme. Eigene Umkehrungen aktualisieren
+nur die Erwartungen des eigenen Verlaufs. Ganze Zweiglöschungen verlangen den
+bekannten Board-Stand, damit keine inzwischen hinzugefügten Ideen übersehen werden.
+
+`noteLock` reserviert ein Feld 15 Sekunden, erneuert alle 5 Sekunden bei offenem
+Editor. Transportende löst Reservierungen; andere Felder/Karten bleiben frei.
+Geänderte Boards werden nach jeder bestätigten Aktion an die Teilnehmer gesendet,
+keine Vollbild-Pixelsnapshots. Textänderungen werden bewusst erst mit Übernehmen
+geteilt. Höchstens 64 Notiz-Steueraktionen Burst / 24 pro Sekunde je Verbindung;
+Notiz-Operationsnachricht maximal 128 KiB. 128 Karten, Tiefe 24, Titel 120 und Text
+2048 UTF-8-Bytes, 512 KiB inklusive Papierkorb. Je Person 32 Rücknahmen / 4 MiB
+Verlauf; Papierkorb bis 20 Löschgruppen innerhalb des Gesamtlimits. Älteste
+Papierkorbeinträge/Verlaufseinträge können beim Erreichen der Grenze entfallen.
+
+`extension/notes.lua` speichert JSON ausschließlich in
+`sprite.properties('Merthius/Collabsprite').board`. Native `.aseprite`-Roundtrips
+und Save As wurden in Aseprite 1.3.18.6 geprüft. Änderungen markieren das Sprite
+als ungespeichert; andere Namespaces und `sprite.data` bleiben unberührt.
+`noteSaved` bestätigt ausschließlich einen vom Host gespeicherten Board-Stand;
+Backup, Übertragung und manuelle Dateispeicherung sind verschiedene Zustände.
+PNG/Spritesheets enthalten die Metadaten nicht. Die Gast-Speichersperre ist
+weiterhin keine Sicherheits-/Kopierschutzgrenze.
+
+`notes-ui.lua` zeichnet die Karten in einem nichtmodalen `Dialog:canvas()`.
+Lokale Ansichtseinstellungen sind nicht im Board. Entwürfe bleiben nur im
+Arbeitsspeicher und werden vor normalen Speichern-/Schließen-/Trennen-Befehlen
+geprüft; bei hartem Abbruch ist Verlust möglich. Native Sprite-Wrapper sind zwar
+`==`, aber nicht `rawequal` und als Lua-Tabellenschlüssel verschieden: Zustände
+und die dauerhafte Gast-Rolle sind deshalb über `sprite.id` indiziert. Dies
+verhindert wiederholtes Aufpoppen und schließt eine bisherige Guard-Lücke.
+Dialog-Widgets werden nur bei Änderungen neu gesetzt; Notiz-UI-Fehler pausieren
+die betreffende Aktualisierung, ohne die Pixelsitzung zu trennen.
+
+Tests: 45 Node-Fälle einschließlich Drei-Peer-Notizen/Backups/Lease/Resume,
+native Dateispeicherung, eigene Note-/Pixelhistorie und drei echte native
+WebSockets in `test/native-notes.lua`. Die bisherigen Struktur-/Resume-Tests
+bestanden erneut. Ein Rechner ersetzt weiterhin keinen Zwei-PC/Radmin-Test.
+
 ### 0.7.0 / Protokoll 4: Wiederaufnahme und gelöschte Inhalte
 
 Die Erweiterung nutzt [Aseprites offizielle Plugin-API](https://www.aseprite.org/api/plugin#pluginnewcommand) für den zusätzlichen Wiederherstellungsbefehl. Beide Rollen bleiben in einem Installer; alle Teilnehmenden müssen aktualisieren.

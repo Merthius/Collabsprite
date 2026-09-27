@@ -3,8 +3,8 @@ local root=assert(app.params.root)
 local RealClient=dofile(root..'/extension/client.lua')
 local callbacks,controls,events,commands={}, {}, {}, {}
 local tick,client,notify,closed,continued=nil,nil,nil,0,0
-local owned={isValid=true,close=function() closed=closed+1 end}
-local other={}
+local owned={id=1,isValid=true,close=function() closed=closed+1 end}
+local other={id=2}
 local dlg={data={name='Test',manual='127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef'}}
 setmetatable(dlg,{__index=function(_,key) return function(self,item)
   if item and item.id then
@@ -36,10 +36,11 @@ local env=setmetatable({app=fakeApp,
   dofile=function(path)
     if path:find('client.lua',1,true) then return fakeClient end
     if path:find('json.lua',1,true) then return {decode=function() return {} end} end
+    if path:find('notes-ui.lua',1,true) then return {new=function() return {states={},attach=function() end,tick=function() end,close=function() end,show=function() end} end} end
     return {new=function() return {log=function() end} end}
   end},{__index=_G})
 assert(loadfile(root..'/extension/main.lua','t',env))()
-env.init{path='test',version='0.7.0',preferences={},newMenuGroup=function() end,
+env.init{path='test',version='0.8.0',preferences={},newMenuGroup=function() end,
   newCommand=function(_,item) callbacks[item.id]=item.onclick;commands[item.id]=item end}
 assert(not commands.CollabspriteRestoreDeletion.onenabled(),'Recovery enabled without session')
 callbacks.PixelKollabMultiplayer();controls.joinManual.onclick();tick()
@@ -61,6 +62,9 @@ assert(closed==0,'Closed guest before acknowledgement')
 client:disconnect();client.completeLeave()
 assert(closed==1 and continued==0,'Guest close resumed native Save dialog')
 assert(command('SaveFileAs'),'Disconnected guest save not blocked')
+fakeApp.sprite={id=owned.id,isValid=true}
+assert(command('SaveFileAs'),'Fresh native wrapper bypassed disconnected guest save guard')
+fakeApp.sprite=owned
 local previousClient=client
 controls.startHost.onclick();tick()
 assert(client==previousClient,'Guest document can be rehosted to bypass save guard')

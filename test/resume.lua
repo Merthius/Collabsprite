@@ -9,7 +9,7 @@ end
 local function client()
   local c=Client.new()
   c.ws={sendText=function() end,close=function() end}
-  c:receive{type='welcome',protocol=4,author='guest',host=false,room='TEST',resumeToken=string.rep('a',64),resumeMs=120000,
+  c:receive{type='welcome',protocol=5,author='guest',host=false,room='TEST',resumeToken=string.rep('a',64),resumeMs=120000,
     confirmedSeq=0,snapshot=snapshot(),revision=0,structure=0}
   return c
 end
@@ -20,7 +20,7 @@ assert(c.reconnecting and not c.mapping[1].isEditable)
 local stopped=false
 c:beforeCommand{name='NewFrame',stopPropagation=function() stopped=true end}
 assert(stopped,'Offline command not blocked')
-c:receive{type='welcome',protocol=4,resumed=true,author='guest',host=false,room='TEST',resumeToken=string.rep('a',64),
+c:receive{type='welcome',protocol=5,resumed=true,author='guest',host=false,room='TEST',resumeToken=string.rep('a',64),
   confirmedSeq=0,snapshot=snapshot(),revision=0,structure=0}
 assert(c.connected and c.sprite==same and c.mapping[1].isEditable)
 c:suspend()

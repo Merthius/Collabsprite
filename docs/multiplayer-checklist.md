@@ -1,6 +1,20 @@
 # Multiplayer: notwendige Funktionen und Codeprüfung
 
-Stand: 27.09.2026, **0.7.0 Beta**. Kein vollständiges Sicherheitsgutachten. Automatisierte Tests wurden an diesem Rechner ausgeführt; Aussagen über den betroffenen Freund-PC wären unbelegt. Die Härtungen aus 0.6.6/0.6.7 sind enthalten.
+Stand: 27.09.2026, **0.8.0 Beta**. Kein vollständiges Sicherheitsgutachten. Automatisierte Tests wurden an diesem Rechner ausgeführt; Aussagen über den betroffenen Freund-PC wären unbelegt. Die Härtungen aus 0.6.6/0.6.7/0.7.0 sind enthalten.
+
+## Ergänzungen 0.8.0 – Ideenwand
+
+- Gemeinsame verbundene Notizkarten, Host/Gast gleicher Zugriff, getrennte persönliche Ansicht und Notizhistorie, Papierkorb, kurze Feldreservierungen und konfliktgeprüfte Änderungen.
+- Datei-Einbettung, Sitzungskopie, späterer Beitritt, Gast-Austritt, Backup und deduplizierte Wiederverbindung. In-Memory-Entwürfe werden nicht als dauerhaft gespeichert dargestellt.
+- Korrigiert: Aseprite erzeugt wechselnde Lua-Wrapper für dasselbe Sprite. Stabile `sprite.id` statt Objekt-Tabellenschlüssel verhindert doppelte Dialoge und umgehbare Gast-Speichersperre nach Trennung. UI-Test hat den Fensterfehler aufgedeckt; Regressionstest mit frischen Wrappern ergänzt.
+- Korrigiert: eigene mehrfache Notiz-Rücknahmen dürfen nicht an ihren selbst erzeugten Revisionen scheitern; fremde Änderungen bleiben geschützt. Kartenbeschriftung überlappt bei kleinem Zoom nicht mehr. Lokaler Verlauf wird erst nach erfolgreicher Speicherung der Eigenschaften übernommen.
+- Schutz: 128 Karten/512 KiB, Baum-/Feld-/Revisionsvalidierung, kurze Leases, eigene Sequenz, 32 Aktionen/4 MiB Verlauf je Person, 20 Papierkorbgruppen und zusätzliches Notizratenlimit.
+- Erneut bestanden: **45 Node-Tests**, acht Batchskripte (`plain`, `codec`, `callbacks`, `lifecycle`, `controller`, `safety`, `resume`, `notes`), zusätzlicher Dateikopie-Test, drei echte native WebSocket-Testabläufe (`native-notes` mit drei Clients; `native-structure`, `native-reconnect` mit je zwei).
+- Computer-Use-Prüfung: Text schreiben/übernehmen/erneut öffnen, Karte samt Verbindungen ziehen, zoomen und Wand schließen. Native Dateitests prüfen Save As, unabhängige Kopie, neue Wrapper, unveränderte fremde Eigenschaften und empfangene Notizen speichern/neu öffnen.
+- Installer, erster Manifest-Eintrag, Hintergrundstart ohne globales Node, Portfreigabe, Updater/Hash und npm-Audit bestanden. **Reguläre lokale Installation wurde nicht geändert.**
+- Offen bleiben längere Praxis, weitere UI-Skalierungen, zwei physische PCs/Radmin und der gemeldete Stack-overflow auf dem konkreten Freund-PC. Unbestätigte Entwürfe sind nicht absturzfest. Kein allgemeines Struktur-/Metadaten-Undo und keine freie Graph-/Chatfunktion.
+
+Die folgenden Abschnitte bewahren die Befunde aus 0.7.0; aktuelle Notizgrenzen stehen in [Bedienung](shared-notes.md) und [Technik](technical-notes.md).
 
 ## Was Collabsprite unbedingt braucht
 
