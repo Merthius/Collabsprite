@@ -1,41 +1,35 @@
+-- One free surface: context insertion, inline text and magnetic pastel boxes.
 local dir=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local N=dofile(app.fs.joinPath(dir,'notes.lua'))
+local T=dofile(app.fs.joinPath(dir,'notes-input.lua'))
+local S=dofile(app.fs.joinPath(dir,'notes-stack.lua'))
+local F=dofile(app.fs.joinPath(dir,'notes-style.lua'))
+local I=dofile(app.fs.joinPath(dir,'notes-image.lua'))
 local UI={};UI.__index=UI
-local labels={title='Titel',text='Notiz',color='Farbe',status='Status',parent='Übergeordnete Karte'}
-local statuses={idea='Idee',decided='Festgelegt',done='Erledigt'}
-local W,H=168,78
-local function short(text,n)
-  text=(text or ''):gsub('[\r\n]',' ')
-  if utf8.len(text) and utf8.len(text)>n then return text:sub(1,utf8.offset(text,n+1)-1)..'…' end
-  return text
-end
+local function inside(r,x,y) return x>=r.x and y>=r.y and x<r.x+r.w and y<r.y+r.h end
+local function rect(x,y,w,h) return {x=x,y=y,w=w,h=h} end
+local function clamp(v) return math.floor(math.max(-10000,math.min(10000,v))) end
 function UI.new(getSession,guestGuard,safe)
   return setmetatable({states={},getSession=getSession,guestGuard=guestGuard,safe=safe},UI)
 end
 function UI:state(sprite)
-  -- app.sprite returns equal but distinct Lua userdata wrappers; table keys
-  -- must use the document's stable native ID, never the wrapper identity.
-  if not self.states[sprite.id] then self.states[sprite.id]={sprite=sprite,board=N.read(sprite),history={undo={},redo={}},collapsed={},zoom=1,ox=20,oy=20,drafts={},seen=false} end
+  if not self.states[sprite.id] then self.states[sprite.id]={sprite=sprite,board=N.read(sprite),history={undo={},redo={}},zoom=1,ox=24,oy=24,drafts={},seen=false,images={}} end
   return self.states[sprite.id]
 end
 function UI:session(s) local c=self.getSession();return c and c.sprite==s.sprite and (c.connected or c.connecting or c.reconnecting) and c or nil end
 function UI:editable(s)
-  local c=self:session(s)
-  if c then return c.connected and not c.leaving end
+  local c=self:session(s);if c then return c.connected and not c.leaving end
   return not self.guestGuard(s.sprite)
 end
 function UI:run(fn) self.safe(fn) end
 function UI:action(s,op,callback)
   assert(s.sprite.isValid and self:editable(s),'Notizen sind derzeit nur lesbar. Verbindung prüfen.')
   local c=self:session(s)
-  if c then
-    c:noteAction(op);s.ack=callback
+  if c then assert(not s.ack,'Eine Notizänderung wird noch bestätigt');c:noteAction(op);s.ack=callback or function() end
   else
-    local history=N.copy(s.history)
-    local next=N.localAction(s.board,history,op)
-    local previous,layer,frame=app.sprite,app.layer,app.frame
-    app.sprite=s.sprite
-    local ok,err=pcall(function() app.transaction('Collabsprite: Notizen',function() N.write(s.sprite,next) end) end)
+    local history=N.copy(s.history);local next=N.localAction(s.board,history,op)
+    local previous,layer,frame=app.sprite,app.layer,app.frame;app.sprite=s.sprite
+    local ok,err=pcall(function() app.transaction('Collabsprite: Ideenwand',function() N.write(s.sprite,next) end) end)
     app.sprite=previous;if previous then app.layer=layer;app.frame=frame end
     if not ok then error(err) end
     s.board=next;s.history=history;if callback then callback(true) end
@@ -48,311 +42,357 @@ function UI:attach(c)
   c.onNotes=function(message)
     if message.type=='notes' then
       s.board=N.copy(c.meta.notes)
-      if s.acceptedDraft then
-        local d=s.acceptedDraft;local card=N.card(s.board,d.id)
-        if card then d.base=N.copy(card);d.dirty=self:draftValue(d)~=card[d.field] end
-        s.acceptedDraft=nil
-      end
-    elseif message.type=='noteAck' then
-      local callback=s.ack;s.ack=nil
-      if callback then callback(message.ok,message.message) end
-    end
+      -- ACK precedes state: chain edits only after the authoritative revision.
+      if s.ackResult then local fn,result=s.ack,s.ackResult;s.ack=nil;s.ackResult=nil;if fn then fn(result.ok,result.message) end end
+    elseif message.type=='noteAck' then s.ackResult=message end
     self:refresh(s)
   end
   c.notesCanLeave=function() return self:canLeave(s) end
 end
 function UI:canLeave(s)
+  if s.inline and s.inline.dirty and not s.inline.error then self:finishInline(s) end
   for _,d in pairs(s.drafts) do if d.dirty then
-    app.tip('Notizentwurf noch offen. In Gemeinsame Notizen übernehmen oder verwerfen.',6)
-    self:show(s.sprite);self:edit(s,d.id,d.field);return false
+    app.tip('Notizentwurf noch offen. Rechtsklick auf das Element zum Vergleichen.',6)
+    self:show(s.sprite);self:edit(s,d.id);return false
   end end
   local c=self:session(s)
   if c and c.notePending then app.tip('Notizänderung wird noch bestätigt. Bitte kurz warten.',4);return false end
   return true
 end
-function UI:status(s)
-  local c=self:session(s)
-  for _,d in pairs(s.drafts) do if d.dirty then return 'Notizentwurf – noch nicht übernommen' end end
-  if c then
-    if c.notePending then return 'Wird übertragen …' end
-    if not c.connected then return 'Verbindung unterbrochen – Entwürfe bleiben offen' end
-    return c.notesSaved==s.board.revision and 'In Datei gespeichert (Host)' or 'Mit Host synchronisiert · Datei noch nicht gespeichert'
-  end
-  local file=s.sprite.filename:lower()
-  if #s.board.cards>0 and not file:match('%.aseprite$') and not file:match('%.ase$') then return 'Notizen nur hier · bitte als .aseprite speichern' end
-  return (s.sprite.isModified or not app.fs.isFile(s.sprite.filename)) and 'Notizen im Bild · Datei noch nicht gespeichert' or 'In Datei gespeichert'
-end
--- Repeated Dialog:modify() relayouts native modeless windows and can raise the
--- parent over a text editor. Update widgets only when a value really changes.
-local function modify(form,cache,id,values)
-  if N.equal(cache[id],values) then return end
-  cache[id]=N.copy(values);local args=N.copy(values);args.id=id;form:modify(args)
-end
 function UI:refresh(s)
-  local editing=false;for _,d in pairs(s.drafts) do if d.dialog then editing=true;break end end
-  if s.dialog and not editing then
-    s.rendered=s.rendered or {};local r=s.rendered
-    modify(s.dialog,r,'document',{text='Bild: '..short(app.fs.fileTitle(s.sprite.filename or 'Bild'),36)})
-    modify(s.dialog,r,'state',{text=self:status(s)})
-    modify(s.dialog,r,'selected',{enabled=s.selected~=nil})
-    local c=self:session(s);local h=c and c.noteHistory
-    modify(s.dialog,r,'undo',{enabled=self:editable(s) and (h and h.undo>0 or not c and #s.history.undo>0) or false})
-    modify(s.dialog,r,'redo',{enabled=self:editable(s) and (h and h.redo>0 or not c and #s.history.redo>0) or false})
-    local draft=false;for _,d in pairs(s.drafts) do if d.dirty then draft=true;break end end
-    modify(s.dialog,r,'draft',{visible=draft})
-    if s.lastBoard~=s.board or s.lastLocks~=(c and c.noteLocks) then
-      s.lastBoard=s.board;s.lastLocks=c and c.noteLocks;s.dialog:repaint()
-    end
+  if s.inline and s.inline.error and s.inline.error~=s.lastError then s.lastError=s.inline.error;app.tip(s.inline.error,5) end
+  if not s.inline or not s.inline.error then s.lastError=nil end
+  if s.cachedBoard~=s.board then
+    local images={}
+    for _,c in ipairs(s.board.cards) do if c.kind=='image' then
+      local old=s.images[c.id];images[c.id]=old and N.equal(old.data,c.image) and old or {data=c.image,image=I.unpack(c.image)}
+    end end
+    s.images=images;s.cachedBoard=s.board
   end
-  for _,d in pairs(s.drafts) do if d.dialog then
-    local c=self:session(s);local owner
-    for _,l in ipairs(c and c.noteLocks or {}) do if l.id==d.id and l.field==d.field then owner=l end end
-    local allowed=self:editable(s) and (not c or (owner and owner.author==c.author)) and not (c and c.notePending)
-    d.rendered=d.rendered or {}
-    modify(d.dialog,d.rendered,'apply',{enabled=allowed==true})
-    modify(d.dialog,d.rendered,'hint',{text=d.error or (owner and c and owner.author~=c.author and (owner.name..' bearbeitet dieses Feld') or 'Änderungen mit Übernehmen bestätigen')})
-  end end
-end
-function UI:add(s,parent,source)
-  local p=N.card(s.board,parent)
-  local c=N.newCard(source and source.title..' Kopie' or 'Neue Idee',p and p.id or '',p and p.x+210 or 30,p and p.y+100 or 30+#s.board.cards*12)
-  if source then c.text=source.text;c.color=source.color;c.status=source.status;c.x=source.x+30;c.y=source.y+90;c.parent=source.parent end
-  self:action(s,{action='patch',patches={{id=c.id,expected=false,value=c}}},function(ok) if ok then s.selected=c.id end end)
-end
-function UI:arrange(s)
-  local patches,stack={},{}
-  for i=#s.board.cards,1,-1 do local c=s.board.cards[i];if c.parent=='' then stack[#stack+1]={c,0} end end
-  local row=0
-  while #stack>0 do
-    local item=table.remove(stack);local c,depth=item[1],item[2]
-    patches[#patches+1]=N.patch(c,'x',30+depth*205);patches[#patches+1]=N.patch(c,'y',30+row*95);row=row+1
-    for i=#s.board.cards,1,-1 do local child=s.board.cards[i];if child.parent==c.id then stack[#stack+1]={child,depth+1} end end
-  end
-  if #patches>0 then self:action(s,{action='patch',patches=patches}) end
-end
-function UI:fit(s)
-  local minx,miny,maxx,maxy=0,0,350,200
-  for _,c in ipairs(s.board.cards) do minx=math.min(minx,c.x);miny=math.min(miny,c.y);maxx=math.max(maxx,c.x+W);maxy=math.max(maxy,c.y+H) end
-  s.zoom=math.max(0.25,math.min(1,(s.width or 440)/(maxx-minx+60),(s.height or 230)/(maxy-miny+60)))
-  s.ox=25-minx*s.zoom;s.oy=25-miny*s.zoom
   if s.dialog then s.dialog:repaint() end
 end
-function UI:visible(s)
-  local map={};for _,c in ipairs(s.board.cards) do map[c.id]=c end
-  local result={}
-  for _,c in ipairs(s.board.cards) do
-    local p=map[c.parent];local hidden=false
-    for _=1,24 do if not p then break end;if s.collapsed[p.id] then hidden=true;break end;p=map[p.parent] end
-    if not hidden then result[#result+1]=c end
+function UI:layout(s) return S.layout(s.board,s.inline,s.drag) end
+function UI:prepare(s) F.load();self:refresh(s) end
+function UI:fit(s)
+  local boxes=self:layout(s);if #boxes==0 then s.zoom=1;s.ox=24;s.oy=24;return end
+  local minx,miny,maxx,maxy=1e6,1e6,-1e6,-1e6
+  for _,b in ipairs(boxes) do minx=math.min(minx,b.x);miny=math.min(miny,b.y);maxx=math.max(maxx,b.x+b.w);maxy=math.max(maxy,b.y+b.h) end
+  s.zoom=math.max(0.25,math.min(1,((s.width or 660)-48)/(maxx-minx),((s.height or 410)-48)/(maxy-miny)))
+  s.ox=24-minx*s.zoom;s.oy=24-miny*s.zoom;self:refresh(s)
+end
+function UI:reveal(s,id,caret)
+  local _,map=self:layout(s);local b=map[id];if not b then return end
+  local x,y=s.ox+b.x*s.zoom,s.oy+b.y*s.zoom
+  if x<12 then s.ox=s.ox+12-x elseif x+b.w*s.zoom>(s.width or 660)-12 then s.ox=s.ox+(s.width or 660)-12-x-b.w*s.zoom end
+  if y<12 then s.oy=s.oy+12-y elseif y+math.min(b.h,160)*s.zoom>(s.height or 410)-12 then s.oy=s.oy+(s.height or 410)-12-y-math.min(b.h,160)*s.zoom end
+  if caret and s.inline then
+    local row=1;for i,v in ipairs(b.rows) do if s.inline.cursor>=v.start then row=i end end
+    local cy=s.oy+(b.y+14+(row-1)*b.lineHeight)*s.zoom
+    if cy<12 then s.oy=s.oy+12-cy elseif cy+b.lineHeight*s.zoom>(s.height or 410)-12 then s.oy=s.oy+(s.height or 410)-12-cy-b.lineHeight*s.zoom end
   end
-  return result
+end
+function UI:add(s,kind,style,point,image)
+  if s.inline then return self:finishInline(s,function() self:add(s,kind,style,point,image) end) end
+  point=point or {x=math.floor((40-s.ox)/s.zoom),y=math.floor((40-s.oy)/s.zoom)}
+  local c=N.newCard('','',clamp(point.x),clamp(point.y));c.kind=kind or 'text';c.listStyle=style or 'check';c.color=F.colors[c.kind=='image' and 7 or c.kind=='list' and 2 or 1];c.image=image or false
+  self:action(s,{action='patch',patches={{id=c.id,expected=false,value=c}}},function(ok,message)
+    if ok then s.selected=c.id;if c.kind~='image' then self:edit(s,c.id) end;self:reveal(s,c.id)
+    else app.tip(message or 'Element konnte nicht erstellt werden.',5) end
+  end)
+end
+function UI:import(s,point)
+  local picker=Dialog{title='Referenzbild auswählen'}
+  picker:file{id='path',title='Referenzbild',open=true,entry=false,filetypes={'png','jpg','jpeg','webp','gif','bmp'},onchange=function()
+    local path=picker.data.path
+    if path and path~='' then picker:close();self:run(function() self:add(s,'image',nil,point,I.load(path)) end) end
+  end}:button{text='Abbrechen'}:show{wait=false}
+end
+function UI:draftValue(d) return d.value end
+function UI:endInline(s,d)
+  local c=self:session(s);if c and c.connected then c:noteLock(d.id,d.field,true) end
+  s.drafts[d.id..':'..d.field]=nil;if s.inline==d then s.inline=nil end;self:refresh(s)
+end
+function UI:finishInline(s,after)
+  local d=s.inline;if not d then if after then after() end;return true end
+  if after then d.after=after end
+  if d.sending then return false end
+  if not d.dirty then local fn=d.after;self:endInline(s,d);if fn then fn() end;return true end
+  d.commitRequested=true
+  local c=self:session(s)
+  if not self:editable(s) then d.error='Verbindung fehlt · Entwurf bleibt hier.';d.commitRequested=false;return false end
+  if c then
+    if c.notePending or s.ack then return false end
+    local owner
+    for _,l in ipairs(c.noteLocks or {}) do if l.id==d.id and l.field==d.field then owner=l;break end end
+    if not owner then
+      if not d.requested or os.time()-d.requested>=3 then c:noteLock(d.id,d.field);d.requested=os.time() end
+      return false
+    end
+    if owner.author~=c.author then d.error=owner.name..' bearbeitet diesen Text.';d.commitRequested=false;return false end
+  end
+  local current=N.card(s.board,d.id)
+  if not current or current.versions.text~=d.base.versions.text or current.versions.title~=d.base.versions.title then
+    d.error='Text wurde geändert · Rechtsklick zum Vergleichen.';d.commitRequested=false;self:refresh(s);return false
+  end
+  if not N.field('text',d.value) or (current.kind=='list' and select(2,d.value:gsub('\n',''))>=128) then d.error='Text zu lang (4096 Bytes / 128 Listenpunkte).';d.commitRequested=false;return false end
+  local patches={N.patch(d.base,'text',d.value)}
+  if d.base.title~='' then patches[#patches+1]=N.patch(d.base,'title','') end
+  if current.kind=='list' then patches[#patches+1]=N.patch(current,'checks',S.checks(current,d.value)) end
+  d.sending=true;d.commitRequested=false
+  local ok,err=pcall(function() self:action(s,{action='patch',patches=patches},function(accepted,message)
+    d.sending=false
+    if not accepted then d.error=message or 'Entwurf bleibt erhalten.';d.after=nil;self:refresh(s);return end
+    local card=N.card(s.board,d.id)
+    if not card then d.error='Element gelöscht · Entwurf kopieren.';return end
+    d.base=N.copy(card);d.dirty=d.value~=S.text(card)
+    if d.dirty then d.commitRequested=true
+    else local fn=d.after;self:endInline(s,d);if fn then fn() end end
+  end) end)
+  if not ok then d.sending=false;d.error=tostring(err);d.after=nil;self:refresh(s) end
+  return not s.inline
+end
+function UI:edit(s,id)
+  if s.inline then if s.inline.id==id then return end;return self:finishInline(s,function() self:edit(s,id) end) end
+  local card=N.card(s.board,id);if not card or card.kind=='image' then return end
+  if not self:editable(s) then app.tip('Notizen sind gerade nur lesbar.',4);return end
+  local key=id..':text';local d=s.drafts[key]
+  if not d then d=T.new(S.text(card));d.id=id;d.field='text';d.base=N.copy(card);d.dirty=false;s.drafts[key]=d end
+  s.inline=d;s.selected=id
+  local c=self:session(s);if c then c:noteLock(id,'text');d.renewed=os.time() end
+  self:reveal(s,id);self:refresh(s)
+end
+function UI:inlineKey(s,ev)
+  local d=s.inline;if not d then return end;ev:stopPropagation()
+  if ev.code=='Escape' or ((ev.ctrlKey or ev.metaKey) and (ev.code=='Enter' or ev.code=='NumpadEnter')) then self:finishInline(s)
+  elseif ev.code=='Enter' or ev.code=='NumpadEnter' then
+    if not T.replace(d,'\n',4096) then d.error='Text zu lang.' end;d.dirty=d.value~=S.text(d.base)
+  elseif ev.code~='Tab' then
+    local previous=d.value;local err=T.key(d,ev,'text',app.clipboard)
+    if err then d.error=err elseif previous~=d.value then d.dirty=d.value~=S.text(d.base) end
+  end
+  if s.inline then self:reveal(s,s.inline.id,true) end;self:refresh(s)
+end
+function UI:toggle(s,id,index)
+  local c=assert(N.card(s.board,id));local value=c.checks..string.rep('0',math.max(0,index-#c.checks))
+  value=value:sub(1,index-1)..(value:sub(index,index)=='1' and '0' or '1')..value:sub(index+1)
+  self:action(s,{action='patch',patches={N.patch(c,'checks',value)}})
+end
+function UI:remove(s,id,tail)
+  local c=N.card(s.board,id);if c then self:action(s,{action='delete',id=id,versions=N.copy(c.versions),revision=s.board.revision,children=tail}) end
+end
+function UI:menu(s,id,x,y)
+  local items={};local function item(label,fn) items[#items+1]={label=label,fn=fn} end
+  local point={x=clamp((x-s.ox)/s.zoom),y=clamp((y-s.oy)/s.zoom)}
+  local c=id and N.card(s.board,id);local draft=s.inline
+  if draft and draft.error then
+    item('Entwurf kopieren',function() app.clipboard.text=draft.value end)
+    item('Gemeinsamen Text ansehen',function() local now=N.card(s.board,draft.id);app.alert{title='Gemeinsamer Text',text=now and S.text(now) or 'Element wurde gelöscht.'} end)
+    item('Meinen Text übernehmen',function()
+      local now=N.card(s.board,draft.id);if not now then return end
+      draft.base=N.copy(now);draft.error=nil;draft.dirty=draft.value~=S.text(now);self:finishInline(s)
+    end)
+    item('Entwurf verwerfen',function() if not draft.sending then self:endInline(s,draft) end end)
+  else
+    item('Text',function() self:add(s,'text',nil,point) end)
+    item('Checkliste',function() self:add(s,'list','check',point) end)
+    item('Punktliste',function() self:add(s,'list','bullet',point) end)
+    item('Nummerierte Liste',function() self:add(s,'list','number',point) end)
+    item('Referenzbild …',function() self:import(s,point) end)
+    if c then
+      items[#items+1]={colors=true,id=id}
+      if c.kind=='list' then
+        for _,style in ipairs({{'check','Als Checkliste'},{'bullet','Als Punktliste'},{'number','Als Nummerierung'}}) do item(style[2],function() self:action(s,{action='patch',patches={N.patch(N.card(s.board,id),'listStyle',style[1])}}) end) end
+      end
+      item('Element löschen',function() self:remove(s,id,false) end)
+      if #S.tail(s.board,id)>1 then item('Teilstapel löschen',function() self:remove(s,id,true) end) end
+    end
+    item('Rückgängig  ·  Strg+Z',function() self:action(s,{action='undo'}) end)
+    if #s.board.trash>0 then item('Letzte Löschung wiederherstellen',function() self:action(s,{action='restore',id=s.board.trash[#s.board.trash].id}) end) end
+    item('Alles ins Bild',function() self:fit(s) end)
+  end
+  s.menu={x=math.max(4,math.min(x,(s.width or 660)-254)),y=math.max(4,math.min(y,(s.height or 410)-#items*27-12)),items=items}
+  self:refresh(s)
 end
 function UI:paint(s,ev)
-  local gc=ev.context;s.width=gc.width;s.height=gc.height
-  gc.color=Color{r=31,g=33,b=39};gc:fillRect(Rectangle(0,0,gc.width,gc.height))
-  s.hits={};local positions={};local visible=self:visible(s)
-  for _,c in ipairs(visible) do
-    local x,y=c.x,c.y
-    if s.drag and s.drag.id==c.id then x,y=s.drag.x,s.drag.y end
-    positions[c.id]={x=math.floor(s.ox+x*s.zoom),y=math.floor(s.oy+y*s.zoom),w=math.floor(W*s.zoom),h=math.floor(H*s.zoom)}
-  end
-  gc.color=Color{r=104,g=112,b=134}
-  for _,c in ipairs(visible) do
-    local r,p=positions[c.id],positions[c.parent]
-    if p then
-      local mid=math.floor((p.x+p.w+r.x)/2);local y1,y2=math.floor(p.y+p.h/2),math.floor(r.y+r.h/2)
-      gc:fillRect(Rectangle(math.min(p.x+p.w,mid),y1,math.max(1,math.abs(mid-p.x-p.w)),2))
-      gc:fillRect(Rectangle(mid,math.min(y1,y2),2,math.max(1,math.abs(y2-y1))))
-      gc:fillRect(Rectangle(math.min(mid,r.x),y2,math.max(1,math.abs(r.x-mid)),2))
-    end
-  end
-  local query=(s.dialog and s.dialog.data.search or ''):lower()
-  for _,c in ipairs(visible) do
-    local r=positions[c.id];s.hits[#s.hits+1]={id=c.id,r=r}
-    local match=query~='' and (c.title..' '..c.text):lower():find(query,1,true)
-    gc.color=s.selected==c.id and Color{r=141,g=124,b=225} or match and Color{r=235,g=182,b=87} or Color{r=71,g=77,b=94}
-    gc:fillRect(Rectangle(r.x,r.y,r.w,r.h));gc.color=Color{r=47,g=50,b=60}
-    gc:fillRect(Rectangle(r.x+2,r.y+2,r.w-4,r.h-4))
-    if s.zoom>=0.4 then
-      gc.color=Color{r=236,g=235,b=242};gc:fillText(short(c.title,math.floor((r.w-14)/6)),r.x+7,r.y+7)
-      if r.h>=58 then gc.color=Color{r=177,g=182,b=196};gc:fillText(short(c.text,math.floor((r.w-14)/6)),r.x+7,r.y+23) end
-      if r.h>=42 then
-        gc.color=Color{r=131,g=202,b=183};gc:fillText((s.collapsed[c.id] and '+ ' or '')..statuses[c.status],r.x+7,r.y+r.h-17)
-        if c.color~='' then gc.color=Color{r=tonumber(c.color:sub(2,3),16),g=tonumber(c.color:sub(4,5),16),b=tonumber(c.color:sub(6,7),16)};gc:fillRect(Rectangle(r.x+r.w-19,r.y+r.h-19,11,11)) end
+  local gc=ev.context;s.width=gc.width;s.height=gc.height;s.hits={}
+  gc.opacity=255;gc.color=Color{r=36,g=39,b=44};gc:fillRect(Rectangle(0,0,gc.width,gc.height))
+  local function hit(id,kind,r,extra) s.hits[#s.hits+1]={id=id,kind=kind,r=r,extra=extra} end
+  local z=s.zoom;local boxes=self:layout(s)
+  for _,b in ipairs(boxes) do
+    local c=b.card;local x,y=s.ox+b.x*z,s.oy+b.y*z;local w,h=b.w*z,b.h*z
+    if x+w>0 and y+h>0 and x<gc.width and y<gc.height then
+      local d=s.inline and s.inline.id==c.id and s.inline or nil
+      F.box(gc,x+2,y+3,w,h,Color{r=23,g=25,b=29},7*z)
+      local border=d and d.error and '#CF6F7E' or s.selected==c.id and '#AAC6D4' or '#5D6268'
+      F.box(gc,x-1,y-1,w+2,h+2,F.color(border),8*z)
+      F.box(gc,x,y,w,h,F.paper(c.color),7*z)
+      hit(c.id,'drag',rect(x,y,w,h),b)
+      if c.kind=='image' then
+        local cached=s.images[c.id]
+        if cached then
+          local scale=math.min((b.w-24)/c.image.width,260/c.image.height)*z
+          local iw,ih=c.image.width*scale,c.image.height*scale
+          gc:drawImage(cached.image,Rectangle(0,0,c.image.width,c.image.height),Rectangle(math.floor(x+(w-iw)/2),math.floor(y+14*z),math.max(1,math.floor(iw)),math.max(1,math.floor(ih))))
+        end
+      else
+        local tx=x+(c.kind=='list' and 40 or 16)*z;local rows=b.rows
+        if d then d.draw={lines={},heading=b.heading,z=z} end
+        local a,finish=0,0;if d then a,finish=T.selection(d) end
+        for i,row in ipairs(rows) do
+          local ry=y+(14+(i-1)*b.lineHeight)*z;local text=row.text
+          if d then
+            local left=math.max(0,a-row.start);local right=math.min(T.length(text),finish-row.start)
+            if right>left then
+              gc.color=Color{r=113,g=156,b=187,a=100};gc:fillRect(Rectangle(math.floor(tx+F.measure(T.slice(text,0,left),b.heading)*z),math.floor(ry),math.max(1,math.floor((F.measure(T.slice(text,0,right),b.heading)-F.measure(T.slice(text,0,left),b.heading))*z)),math.floor(b.lineHeight*z)))
+            end
+            local widths={};for n=0,T.length(text) do widths[n]=F.measure(T.slice(text,0,n),b.heading)*z end
+            d.draw.lines[#d.draw.lines+1]={r=rect(tx,ry,(b.w-32)*z,b.lineHeight*z),widths=widths,start=row.start,length=T.length(text)}
+            if d.cursor>=row.start and d.cursor<=row.start+T.length(text) then
+              local cx=tx+widths[d.cursor-row.start];gc.color=Color{r=43,g=66,b=82};gc:fillRect(Rectangle(math.floor(cx),math.floor(ry+3*z),math.max(1,math.floor(z)),math.floor((b.lineHeight-5)*z)))
+            end
+          end
+          if c.kind=='list' and row.first then
+            if c.listStyle=='check' then
+              local done=c.checks:sub(row.index,row.index)=='1';local cr=rect(x+16*z,ry+4*z,13*z,13*z)
+              F.box(gc,cr.x,cr.y,cr.w,cr.h,F.color(done and '#7EAC97' or '#839A8D'),3*z)
+              if not done then F.box(gc,cr.x+z,cr.y+z,cr.w-2*z,cr.h-2*z,F.paper(c.color),2*z)
+              else gc.color=Color{r=250,g=255,b=251};gc:beginPath();gc:moveTo(cr.x+3*z,cr.y+6*z);gc:lineTo(cr.x+6*z,cr.y+9*z);gc:lineTo(cr.x+11*z,cr.y+3*z);gc:stroke() end
+              hit(c.id,'check',cr,row.index)
+            elseif c.listStyle=='number' then F.draw(gc,row.index..'.',x+16*z,ry,z,false)
+            else F.box(gc,x+20*z,ry+9*z,4*z,4*z,F.color('#526559'),2*z) end
+          end
+          if text=='' and #rows==1 then text=c.kind=='list' and 'Listenpunkt …' or 'Text …';gc.opacity=110 end
+          F.draw(gc,text,tx,ry,z,b.heading);gc.opacity=255
+        end
+        hit(c.id,'text',rect(tx,y+12*z,w-(tx-x)-14*z,h-24*z),b)
       end
-      local session=self:session(s)
-      for _,l in ipairs(session and session.noteLocks or {}) do if l.id==c.id and l.author~=session.author then
-        gc.color=Color{r=240,g=187,b=100};gc:fillText(short(l.name,18)..' …',r.x+7,r.y+r.h+2);break
-      end end
+      if s.selected==c.id or s.hover==c.id then F.box(gc,x+w/2-10*z,y+4*z,20*z,2*z,Color{r=103,g=114,b=121,a=100},z) end
+      if d and (d.error or d.sending) then F.box(gc,x+w-10*z,y+7*z,4*z,4*z,F.color(d.error and '#B74158' or '#7295AB'),2*z) end
     end
   end
-  if #visible==0 then
-    gc.color=Color{r=199,g=199,b=214};gc:fillText('Eure Ideen haben hier Platz.',28,35)
-    gc.color=Color{r=146,g=152,b=170};gc:fillText('Mit + Karte beginnen. Rechtsklick verbindet und ordnet.',28,57)
+  if s.drag and s.drag.target then local b=s.drag.target;F.box(gc,s.ox+b.x*z,s.oy+(b.y+b.h+2)*z,S.width*z,3*z,F.color('#B7DBC7'),z) end
+  if s.menu then
+    local m=s.menu;F.box(gc,m.x+3,m.y+4,250,#m.items*27+10,Color{r=17,g=20,b=24},8)
+    F.box(gc,m.x,m.y,250,#m.items*27+10,F.color('#EFF0EB'),7)
+    for i,item in ipairs(m.items) do
+      local r=rect(m.x+5,m.y+5+(i-1)*27,240,27)
+      if item.colors then
+        for n,color in ipairs(F.colors) do local cr=rect(r.x+6+(n-1)*32,r.y+4,25,19);F.box(gc,cr.x,cr.y,cr.w,cr.h,F.color(color),4);hit(item.id,'color',cr,color) end
+      else
+        if s.menuHover==i then F.box(gc,r.x,r.y,r.w,r.h,F.color('#D5DED9'),4) end
+        F.draw(gc,item.label,r.x+8,r.y+3,1,false);hit(nil,'menu',r,item.fn)
+      end
+    end
   end
 end
 function UI:hit(s,x,y)
-  for i=#(s.hits or {}),1,-1 do local h=s.hits[i];local r=h.r;if x>=r.x and y>=r.y and x<r.x+r.w and y<r.y+r.h then return h.id end end
+  for i=#(s.hits or {}),1,-1 do local h=s.hits[i];if inside(h.r,x,y) then return h.id,h end end
 end
-function UI:menu(s,id)
-  local c=N.card(s.board,id);if not c then return end
-  s.selected=id;local d=Dialog{title=short(c.title,28)}
-  local function button(text,fn) d:button{text=text,onclick=function() d:close();self:run(fn) end}:newrow() end
-  button('+ Unterkarte',function() self:add(s,id) end)
-  for _,f in ipairs({'title','text','color','status','parent'}) do button(labels[f]..' ändern',function() self:edit(s,id,f) end) end
-  button(s.collapsed[id] and 'Zweig ausklappen' or 'Zweig einklappen',function() s.collapsed[id]=not s.collapsed[id];self:refresh(s) end)
-  button('Karte duplizieren',function() self:add(s,'',c) end)
-  button('Karte löschen …',function()
-    local answer=app.alert{title='Notiz löschen',text='Unterkarten behalten oder den ganzen Zweig löschen?',buttons={'Unterkarten behalten','Ganzen Zweig löschen','Abbrechen'}}
-    if answer==1 or answer==2 then self:action(s,{action='delete',id=id,versions=N.copy(c.versions),revision=s.board.revision,children=answer==2}) end
-  end)
-  d:button{text='Schließen'};d:show{wait=false}
+function UI:placeCaret(d,x,y)
+  if not d.draw then return end
+  local rows=d.draw.lines;local row=rows[#rows]
+  for _,r in ipairs(rows) do if y<r.r.y+r.r.h then row=r;break end end
+  local pos=0;for n=1,row.length do if x-row.r.x>=(row.widths[n-1]+row.widths[n])/2 then pos=n else break end end
+  d.cursor=row.start+pos
 end
-function UI:draftValue(d)
-  if not d.dialog then return d.value end
-  local data=d.dialog.data
-  if d.field=='text' then local lines={};for i=1,6 do lines[i]=data['line'..i] or '' end;return table.concat(lines,'\n'):gsub('\n+$','') end
-  if d.field=='status' then for k,v in pairs(statuses) do if data.value==v then return k end end end
-  if d.field=='parent' then return d.parents[data.value] or '' end
-  return data.value or ''
+function UI:pointerDown(s,ev)
+  s.pointerDown=true;local id,h=self:hit(s,ev.x,ev.y)
+  if ev.button==MouseButton.RIGHT then
+    if s.inline and not s.inline.error then self:finishInline(s,function() self:menu(s,id,ev.x,ev.y) end)
+    else self:menu(s,id,ev.x,ev.y) end;return
+  end
+  if s.menu then
+    s.menu=nil
+    if h and h.kind=='menu' then h.extra();self:refresh(s);return
+    elseif h and h.kind=='color' then local c=N.card(s.board,h.id);if c then self:action(s,{action='patch',patches={N.patch(c,'color',h.extra)}}) end;return end
+    self:refresh(s);return
+  end
+  if ev.button==MouseButton.MIDDLE then s.drag={startX=ev.x,startY=ev.y,ox=s.ox,oy=s.oy};return end
+  if ev.button~=MouseButton.LEFT then return end
+  local d=s.inline
+  if d and id==d.id and h.kind=='text' then self:placeCaret(d,ev.x,ev.y);if not ev.shiftKey then d.anchor=d.cursor end;s.selecting=true;self:refresh(s);return end
+  local function activate()
+    if not s.pointerDown then return end
+    s.selected=id
+    if h and h.kind=='text' then self:edit(s,id);return end
+    if h and h.kind=='check' then self:toggle(s,id,h.extra);return end
+    if id and self:editable(s) then local b=h.extra;s.drag={id=id,board=N.copy(s.board),startX=ev.x,startY=ev.y,x=b.x,y=b.y,baseX=b.x,baseY=b.y}
+    elseif not id then s.drag={startX=ev.x,startY=ev.y,ox=s.ox,oy=s.oy} end
+    self:refresh(s)
+  end
+  if d then self:finishInline(s,activate) else activate() end
 end
-function UI:edit(s,id,field)
-  local key=id..':'..field;local d=s.drafts[key]
-  local c=N.card(s.board,id) or (d and d.base);if not c then return end
-  if d and d.dialog then return end
-  if not d then d={id=id,field=field,base=N.copy(c),value=c[field],dirty=false};s.drafts[key]=d end
-  local session=self:session(s)
-  if session then session:noteLock(id,field);d.renewed=os.time() end
-  local form
-  form=Dialog{title=labels[field]..' – '..short(c.title,22),onclose=function()
-    d.value=self:draftValue(d);d.dirty=d.value~=d.base[field];d.dialog=nil
-    if session then session:noteLock(id,field,true) end
-    if not d.dirty then s.drafts[key]=nil end;self:refresh(s)
-  end}
-  d.dialog=form;d.rendered={}
-  local function changed() d.dirty=true;d.value=self:draftValue(d);self:refresh(s) end
-  if field=='text' then
-    local lines={};for line in (d.value..'\n'):gmatch('(.-)\n') do lines[#lines+1]=line end
-    -- Six native entry rows retain normal text/clipboard behavior. Keep any
-    -- additional imported lines together in the last row, never silently cut.
-    if #lines>6 then lines[6]=table.concat(lines,'\n',6) end
-    for i=1,6 do form:entry{id='line'..i,label=i==1 and 'Notiz' or '',text=lines[i] or '',onchange=changed}:newrow() end
-  elseif field=='status' then form:combobox{id='value',options={'Idee','Festgelegt','Erledigt'},option=statuses[d.value],onchange=changed}
-  elseif field=='parent' then
-    d.parents={['(Hauptkarte)']=''};local choices={'(Hauptkarte)'};local selected='(Hauptkarte)'
-    for i,v in ipairs(s.board.cards) do if v.id~=id then local label=i..' · '..short(v.title,28);d.parents[label]=v.id;choices[#choices+1]=label;if v.id==d.value then selected=label end end end
-    form:combobox{id='value',options=choices,option=selected,onchange=changed}
-  else form:entry{id='value',label=field=='color' and '#RRGGBB / leer' or labels[field],text=d.value,onchange=changed} end
-  form:newrow():label{id='hint',text='Änderungen mit Übernehmen bestätigen'}:newrow()
-    :button{id='apply',text='Übernehmen',onclick=function() self:run(function()
-      local value=self:draftValue(d);assert(N.field(field,value),'Text zu lang oder ungültiger Wert (Titel 120, Notiz 2048 UTF-8-Bytes).')
-      if value==d.base[field] then d.dirty=false;form:close();return end
-      self:action(s,{action='patch',patches={N.patch(d.base,field,value)}},function(ok,message)
-        if ok then
-          if self:draftValue(d)==value then
-            d.base[field]=value;d.value=value;d.dirty=false
-            form:close();s.drafts[key]=nil
-          else s.acceptedDraft=d end
-        else d.error=message or 'Entwurf bitte mit aktuellem Stand vergleichen.';d.dirty=true;self:refresh(s) end
-      end)
-    end) end}
-    :button{text='Stand vergleichen',onclick=function()
-      local current=N.card(s.board,id)
-      if current then
-        local choice=app.alert{title='Aktueller gemeinsamer Stand',text={short(current[field],100),'Dein Entwurf bleibt erhalten. Auf diesem Stand weiterarbeiten?'},buttons={'Ja, Entwurf behalten','Abbrechen'}}
-        if choice==1 then d.base=N.copy(current);d.error=nil;if session then session:noteLock(id,field) end end
-      else app.alert{title='Karte gelöscht',text='Entwurf kopieren oder verwerfen. Er wird nicht still gelöscht.'} end
-    end}
-    :newrow():button{text='Entwurf kopieren',onclick=function() app.clipboard.text=self:draftValue(d);app.tip('Notizentwurf kopiert.',3) end}
-    :button{text='Verwerfen',onclick=function()
-      if app.alert{title='Entwurf verwerfen?',text='Nur deinen unbestätigten Entwurf verwerfen?',buttons={'Verwerfen','Abbrechen'}}==1 then
-        d.value=d.base[field];d.dirty=false;d.dialog=nil;s.drafts[key]=nil;form:close()
-      end
-    end}
-    :button{text='Später',onclick=function() form:close() end}
-  form:show{wait=false};self:refresh(s)
+function UI:pointerMove(s,ev)
+  if s.pointerDown and s.selecting and s.inline then self:placeCaret(s.inline,ev.x,ev.y);self:refresh(s);return end
+  local a=s.drag
+  if a then
+    if a.id then
+      a.x=clamp(a.baseX+(ev.x-a.startX)/s.zoom);a.y=clamp(a.baseY+(ev.y-a.startY)/s.zoom)
+      a.moved=a.moved or math.abs(ev.x-a.startX)+math.abs(ev.y-a.startY)>4
+      if a.moved then a.target=S.target(a.board,self:layout(s),a) end
+    else s.ox=a.ox+ev.x-a.startX;s.oy=a.oy+ev.y-a.startY end
+  end
+  s.hover=self:hit(s,ev.x,ev.y);if s.menu then s.menuHover=math.floor((ev.y-s.menu.y-5)/27)+1 end
+  self:refresh(s)
+end
+function UI:pointerUp(s)
+  local a=s.drag;s.drag=nil;s.pointerDown=false;s.selecting=false
+  if a and a.id and a.moved then
+    local b=a.target
+    self:action(s,S.move(a.board,a.id,b and b.x or a.x,b and b.y+b.h+S.gap or a.y,b and b.card.id or nil),function(ok,message) if not ok then app.tip(message or 'Stapel wurde inzwischen verändert.',5) end end)
+  end
+  self:refresh(s)
 end
 function UI:show(sprite)
-  assert(sprite,'Bitte zuerst ein Bild öffnen')
-  local s=self:state(sprite);s.seen=true
-  if s.dialog then return end
-  s.rendered={};s.dialog=Dialog{title='Ideenwand',onclose=function() s.dialog=nil end}
+  sprite=sprite or app.sprite;if not sprite then app.tip('Bitte zuerst ein Bild öffnen.',4);return end
+  local s=self:state(sprite);s.seen=true;if s.dialog then return end
+  self:prepare(s)
+  s.dialog=Dialog{title='Ideenwand · '..app.fs.fileTitle(sprite.filename~='' and sprite.filename or 'Bild'),onclose=function()
+    s.dialog=nil;s.pointerDown=false;s.selecting=false;s.drag=nil;s.menu=nil;self:run(function() self:finishInline(s) end)
+  end}
   local d=s.dialog
-  d:label{id='document',text='Bild: '..short(app.fs.fileTitle(sprite.filename or 'Bild'),36)}:newrow()
-    :button{text='+ Karte',onclick=function() self:run(function() self:add(s,'') end) end}
-    :button{text='Alles anzeigen',onclick=function() s.collapsed={};self:fit(s) end}
-    :button{text='Anordnen',onclick=function() self:run(function() self:arrange(s);self:fit(s) end) end}
-    :newrow():entry{id='search',text='',label='Suche',onchange=function() d:repaint() end}
-    :newrow():canvas{id='board',width=440,height=230,autoscaling=true,
-      onpaint=function(ev) self:paint(s,ev) end,
-      onmousedown=function(ev)
-        local id=self:hit(s,ev.x,ev.y);s.selected=id
-        if ev.button==MouseButton.RIGHT and id then self:menu(s,id);return end
-        local c=N.card(s.board,id)
-        s.drag=c and {id=id,startX=ev.x,startY=ev.y,x=c.x,y=c.y,base=N.copy(c)} or {startX=ev.x,startY=ev.y,ox=s.ox,oy=s.oy}
-        self:refresh(s)
-      end,
-      onmousemove=function(ev)
-        local a=s.drag;if not a then return end
-        if a.id then a.x=math.max(-10000,math.min(10000,math.floor(a.base.x+(ev.x-a.startX)/s.zoom)));a.y=math.max(-10000,math.min(10000,math.floor(a.base.y+(ev.y-a.startY)/s.zoom)))
-        else s.ox=a.ox+ev.x-a.startX;s.oy=a.oy+ev.y-a.startY end
-        d:repaint()
-      end,
-      onmouseup=function()
-        local a=s.drag;s.drag=nil
-        if a and a.id and (a.x~=a.base.x or a.y~=a.base.y) then self:run(function()
-          self:action(s,{action='patch',patches={N.patch(a.base,'x',a.x),N.patch(a.base,'y',a.y)}})
-        end) end;d:repaint()
-      end,
-      ondblclick=function(ev) local id=self:hit(s,ev.x,ev.y);if id then self:edit(s,id,'text') end end,
-      onwheel=function(ev)
-        local old=s.zoom;s.zoom=math.max(0.25,math.min(2,s.zoom*(ev.deltaY>0 and 0.85 or 1.18)))
-        s.ox=ev.x-(ev.x-s.ox)*s.zoom/old;s.oy=ev.y-(ev.y-s.oy)*s.zoom/old;d:repaint()
-      end,
-      onkeydown=function(ev)
-        if ev.ctrlKey and (ev.code=='KeyZ' or ev.code=='KeyY') then ev:stopPropagation();self:run(function() self:action(s,{action=ev.code=='KeyY' and 'redo' or 'undo'}) end) end
-      end}
-    :newrow():button{id='selected',text='Karte bearbeiten …',onclick=function() self:menu(s,s.selected) end}
-    :button{id='undo',text='Notiz zurück',onclick=function() self:run(function() self:action(s,{action='undo'}) end) end}
-    :button{id='redo',text='Vor',onclick=function() self:run(function() self:action(s,{action='redo'}) end) end}
-    :button{text='Papierkorb',onclick=function()
-      local choices,map={},{}
-      for i,t in ipairs(s.board.trash) do local name=i..' · '..short(t.cards[1].title,28);choices[#choices+1]=name;map[name]=t.id end
-      if #choices==0 then app.tip('Keine gelöschten Notizen.',3);return end
-      local bin=Dialog{title='Gelöschte Notizkarten'}
-      bin:combobox{id='item',options=choices}:button{text='Wiederherstellen',onclick=function() self:run(function() self:action(s,{action='restore',id=map[bin.data.item]});bin:close() end) end}:button{text='Schließen'}:show{wait=false}
+  d:canvas{id='board',width=660,height=410,autoscaling=true,focus=true,
+    onpaint=function(ev) self:paint(s,ev) end,
+    onmousedown=function(ev) self:run(function() self:pointerDown(s,ev) end) end,
+    onmousemove=function(ev) self:pointerMove(s,ev) end,
+    onmouseup=function() self:run(function() self:pointerUp(s) end) end,
+    onwheel=function(ev)
+      s.menu=nil
+      if ev.shiftKey then s.oy=s.oy-ev.deltaY*30
+      else local old=s.zoom;s.zoom=math.max(0.25,math.min(2,s.zoom*(ev.deltaY>0 and 0.85 or 1.18)));s.ox=ev.x-(ev.x-s.ox)*s.zoom/old;s.oy=ev.y-(ev.y-s.oy)*s.zoom/old end
+      self:refresh(s)
+    end,
+    onkeydown=function(ev)
+      ev:stopPropagation()
+      self:run(function()
+        if ev.code=='Escape' and s.menu then s.menu=nil;self:refresh(s);return end
+        if s.inline then self:inlineKey(s,ev);return end
+        if ev.ctrlKey or ev.metaKey then
+          if ev.code=='KeyZ' or ev.code=='KeyY' then self:action(s,{action=(ev.code=='KeyY' or ev.shiftKey) and 'redo' or 'undo'}) end
+        elseif (ev.code=='Delete' or ev.code=='Backspace') and s.selected then self:remove(s,s.selected,false)
+        elseif ev.code=='Enter' and s.selected then self:edit(s,s.selected) end
+      end)
     end}
-    :button{id='draft',text='Entwurf weiter …',visible=false,onclick=function() for _,draft in pairs(s.drafts) do if draft.dirty then self:edit(s,draft.id,draft.field);break end end end}
-    :newrow():label{id='state',text=self:status(s)}
   self:fit(s);d:show{wait=false};self:refresh(s)
 end
 function UI:tick()
   if self.failed then return end
   self.ticks=(self.ticks or 0)+1;if self.ticks%6~=0 then return end
   local current=app.sprite
-  if current then
-    local s=self:state(current)
-    local c=self:session(s)
-    if not s.seen and ((c and c.connected) or #s.board.cards>0) then self:show(current) end
-  end
-  for _,s in pairs(self.states) do
-    local sprite=s.sprite
-    if not sprite.isValid then
-      if s.dialog then s.dialog:close() end
-      -- Keep unsent text reachable until the user explicitly discards it.
-      for _,d in pairs(s.drafts) do if d.dialog then d.error='Bild geschlossen – Entwurf kopieren';d.dialog:modify{id='apply',enabled=false} end end
+  if current then local s=self:state(current);local c=self:session(s);if not s.seen and ((c and c.connected) or #s.board.cards>0) then self:show(current) end end
+  for id,s in pairs(self.states) do
+    if not s.sprite.isValid then if s.dialog then s.dialog:close() end;if not next(s.drafts) then self.states[id]=nil end
     else
       local c=self:session(s)
-      if not c then
-        local board=N.read(sprite)
-        if not N.equal(board,s.board) then s.board=board;s.history={undo={},redo={}} end
+      if not c then local raw=s.sprite.properties(N.key).board
+        if raw~=s.raw then s.raw=raw;local board=N.read(s.sprite);if not N.equal(board,s.board) then s.board=board;s.history={undo={},redo={}} end end
       end
-      for _,d in pairs(s.drafts) do if d.dialog and c and c.connected and os.time()-(d.renewed or 0)>=5 then c:noteLock(d.id,d.field);d.renewed=os.time() end end
-      self:refresh(s)
+      local d=s.inline
+      if d and c and c.connected and os.time()-(d.renewed or 0)>=5 then c:noteLock(d.id,d.field);d.renewed=os.time() end
+      if d and d.commitRequested and not d.sending then self:finishInline(s) end
+      if s.renderedBoard~=s.board or (c and s.renderedLocks~=c.noteLocks) then s.renderedBoard=s.board;s.renderedLocks=c and c.noteLocks;self:refresh(s) end
     end
   end
 end
-function UI:close()
-  for _,s in pairs(self.states) do if s.dialog then s.dialog:close() end;for _,d in pairs(s.drafts) do if d.dialog then d.dialog:close() end end end
-end
+function UI:close() for _,s in pairs(self.states) do if s.dialog then s.dialog:close() end end end
 return UI

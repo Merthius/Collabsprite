@@ -1,68 +1,72 @@
-# Gemeinsame Ideenwand
+# Ideenwand: freie Elemente und magnetische Stapel
 
-Ab **Collabsprite 0.8.0 Beta** planen Host und Gäste am selben Bild. Kein Chat, kein zusätzlicher Dienst: verbundene Karten halten eure Ideen fest.
+Diese Anleitung beschreibt den **Release 0.10.0 Beta / Protokoll 7**. Sie ersetzt die Karten-/Unterpunkt-Bedienung aus 0.8.x. Host und Gäste benötigen denselben neuen Installer.
 
-```mermaid
-flowchart LR
-    A[Hexe] --> B[Kleidung]
-    B --> C[Kleid]
-    C --> D[Farbe: Dunkelviolett]
-    A --> E[Waffe / Werkzeug]
-    E --> F[Besen]
-    F --> G[Krummes Holz]
-    F --> H[Leuchtet beim Fliegen]
-```
+## Eine freie Fläche
 
-*Schematisches Beispiel, kein Screenshot. Mehrere unabhängige Hauptkarten sind möglich.*
+Die Wand hat keine Suchleiste, Werkzeugleiste oder dauerhaften Aktionsbuttons. Öffnen über **Ansicht → Collabsprite → Gemeinsame Notizen**. Der Fenstertitel nennt das zugehörige Bild. **X** schließt nur diese Ansicht, nicht die Sitzung.
 
-## In fünf Schritten
+Rechtsklick auf die freie Fläche:
 
-1. Beide Seiten installieren dieselbe **0.8.0**, starten Aseprite neu und erstellen/öffnen eine Sitzung. Die Ideenwand öffnet sich einmal automatisch.
-2. **+ Karte** wählen. Rechtsklick auf die Karte → **Titel ändern** → „Hexe“ → **Übernehmen**.
-3. Rechtsklick → **+ Unterkarte** für „Kleidung“. Darunter „Kleid“ ergänzen. An „Hexe“ einen zweiten Unterzweig für „Besen“ hinzufügen. Die Verbindung entsteht automatisch.
-4. **Doppelklick** auf eine Karte öffnet den Texteditor mit sechs Eingabezeilen. **Übernehmen** sendet den Text gemeinsam; **Später** behält den Entwurf lokal. Titel, HEX-Farbe, Status oder übergeordnete Karte per Rechtsklick ändern. Ein anderer Elternknoten ordnet die Karte neu zu; Kreisverbindungen werden abgelehnt.
-5. Der Host speichert **die Sitzungskopie als `.aseprite`**. Öffnet er diese Datei später, gehört die richtige Wand wieder dazu. Beim Start einer neuen Sitzung erhalten neue Gäste diese gespeicherten Notizen.
+- **Text**: eine leere Box erscheint, direkt losschreiben.
+- **Checkliste**, **Punktliste**, **Nummerierte Liste**: jede Zeile ist ein Listenpunkt; bei Checklisten Kästchen anklicken.
+- **Referenzbild …**: im Dateidialog PNG, JPG/JPEG, WebP, GIF oder BMP auswählen. Bei Animationen wird das erste Bild verwendet.
 
-## Übersicht behalten
+Text anklicken, um ihn zu ändern. **Enter** setzt eine neue Zeile. **Strg+Enter**, **Escape**, Klick daneben oder normales Schließen übernimmt den Entwurf. Escape verwirft keinen Text. Strg+A/C/X/V und Auswahl per Maus funktionieren im Textfeld. Lange Zeilen umbrechen automatisch.
 
-| Aktion | Bedienung |
+## Stapel verbinden und trennen
+
+Eine Box **am Rand bzw. am kleinen oberen Griff** ziehen. Der Textbereich dient zum Schreiben. Bildboxen lassen sich auch innen greifen.
+
+Die Unterkante eines freien Stapels ist magnetisch: die gezogene Box nahe darunter bewegen. Eine helle Linie zeigt die Andockstelle; loslassen verbindet die Boxen.
+
+| Gegriffenes Element | Was sich bewegt |
 | --- | --- |
-| Karte verschieben | Karte ziehen; neue Position wird geteilt |
-| Ausschnitt bewegen | Leere Fläche ziehen |
-| Vergrößern/verkleinern | Mausrad über der Wand |
-| Gesamte Wand sehen | **Alles anzeigen** |
-| Karten verteilen | **Anordnen**; Positionen werden gemeinsam geändert |
-| Idee finden | **Suche** hebt passende Titel/Texte hervor |
-| Zweig verbergen | Rechtsklick → **Zweig einklappen**; nur eigene Ansicht |
-| Text vollständig lesen | Doppelklick; verkleinerte Karten zeigen weniger Vorschau |
-| Farbe/Status | Rechtsklick → **Farbe ändern** / **Status ändern**; `#RRGGBB` oder leer, Idee/Festgelegt/Erledigt |
-| Wieder öffnen | **Ansicht → Collabsprite → Gemeinsame Notizen** |
+| Ganz oben | Der gesamte Stapel |
+| In der Mitte | Dieses Element und alle darunter; der obere Teil bleibt stehen |
+| Ganz unten | Nur das letzte Element |
 
-Die Wand ist ein schließbares, nicht angedocktes Aseprite-Fenster. **X löscht nichts und trennt niemanden.** Das Zeichnen bleibt möglich. Die Zeile **Bild:** ordnet die Wand ihrem Bild zu. Jedes Bild hat einen eigenen Zustand; Zoom, Suche und eingeklappte Zweige sind persönlich.
+Jede Box kann genau eine Box unter sich haben. Kreise und widersprüchliche Verbindungen werden abgewiesen. Ein **Text am Stapelanfang ist automatisch größer und fett**; weiter unten normal. Es gibt keine separate Titel-Einstellung.
 
-## Ohne gegenseitiges Überschreiben
+Rechtsklick auf eine Box zeigt **sieben Pastellfarben**. Die Farbe gehört nur dieser Box, nicht dem gesamten Stapel. Bei Listen lässt sich dort auch die Listenart umstellen.
 
-Alle dürfen alle Karten bearbeiten. Beim Öffnen eines Feldes reserviert Collabsprite nur dieses Feld kurzzeitig. Ein kleiner Name zeigt fremde Bearbeitung an; andere Felder bleiben frei. Die Reservierung wird während des Schreibens erneuert und endet beim Schließen, Trennen oder nach höchstens 15 Sekunden ohne Erneuerung.
+## Auf der Wand bewegen
 
-Veraltete Änderungen werden abgelehnt, nicht still über fremden Text geschrieben. Der Entwurf bleibt offen: **Stand vergleichen** zeigt den gemeinsamen Wert; danach bewusst übernehmen, kopieren oder verwerfen. Wurde die ganze Karte gelöscht, lässt sich der Entwurf weiterhin kopieren. Bestätigte Kartenänderungen werden sofort an alle übertragen; Text wird erst mit **Übernehmen**, nicht bei jedem Tastendruck, geteilt.
+- Leere Fläche ziehen oder mittlere Maustaste: Ausschnitt verschieben.
+- Mausrad: um den Mauszeiger zoomen. Umschalt+Mausrad: vertikal verschieben.
+- Rechtsklick → **Alles ins Bild**: alle Elemente sichtbar machen.
+- Rechtsklick → **Element löschen**: nur diese Box löschen; der verbleibende Stapel wird wieder verbunden.
+- **Teilstapel löschen** entfernt zusätzlich alles darunter.
+- **Entf/Rücktaste** bei ausgewählter, nicht bearbeiteter Box löscht nur diese.
+- **Strg+Z/Y**: eigener Notizverlauf. Während der Texteingabe zunächst nur Eingabe-Undo. Rechtsklick bietet Rückgängig und die letzte Löschwiederherstellung.
 
-**Notiz zurück / Vor** betreffen nur deinen Notizverlauf, nicht die Zeichnung. Mit Fokus auf der Kartenfläche gehen auch `Strg+Z`/`Strg+Y`. Neuere fremde Änderungen werden nicht überschrieben; eine widersprechende Rücknahme wird abgelehnt. Bis 32 eigene Aktionen und 4 MiB Verlauf je Person, nur während der laufenden Sitzung bzw. lokalen Notizbearbeitung.
+## Gemeinsam bearbeiten
 
-Beim Löschen wählt ihr **Unterkarten behalten** oder **Ganzen Zweig löschen**. Der **Papierkorb** behält bis zu 20 Löschgruppen im Rahmen des Gesamtlimits und wird mitgespeichert. Wiederherstellung fügt fehlende Karten zurück. Bereits anderweitig wiederhergestellte Karten werden nicht überschrieben. Ist die frühere Elternkarte nicht mehr vorhanden, wird die Karte zur Hauptkarte.
+Alle dürfen Elemente erstellen, ändern und verschieben. Bestätigte Änderungen werden geteilt. Text wird beim Übernehmen gesendet, nicht bei jedem Buchstaben.
 
-## Was gespeichert ist – und was noch nicht
+Kurze Feldreservierungen und Revisionsprüfungen verhindern stilles Überschreiben. Bei einem Konflikt bleibt der lokale Entwurf erhalten; ein roter Rand/Punkt markiert ihn. **Rechtsklick** bietet gemeinsamen Text ansehen, eigenen Text übernehmen, kopieren oder Entwurf verwerfen. Ein Übernehmen erfolgt nie automatisch über fremden Text.
 
-- **Entwurf:** nur in der laufenden App, noch nicht gemeinsam. Vor normalem Trennen, Schließen oder Speichern erst übernehmen oder ausdrücklich verwerfen. **Kein Schutz vor Verlust durch Absturz oder erzwungenes Beenden.**
-- **Wird übertragen:** wartet auf den Host. Kurze Wiederverbindung sendet eine ausstehende Aktion mit derselben Kennung; bereits bestätigte Aktionen werden nicht doppelt angewendet.
-- **Mit Host synchronisiert:** Teil des gemeinsamen Zustands und des nächsten Host-Backups, aber nicht automatisch Teil eurer manuell gespeicherten Bilddatei.
-- **In Datei gespeichert (Host):** der Host hat diese Notizversion mit dem Bild gespeichert. Neue Notizänderungen machen diesen Stand wieder ungespeichert.
+Eine kurz unterbrochene Sitzung kann ausstehende Aktionen wiederholen, ohne sie doppelt anzuwenden. Gastbeiträge bleiben beim Host nach dem Verlassen. Bild-Undo und Notiz-Undo bleiben getrennt.
 
-**`.aseprite` / `.ase` enthalten die Wand innerhalb der Datei.** Umbenennen, Verschieben und „Speichern unter“ erhalten die Notizen. Unabhängige Dateikopien werden nicht dauerhaft miteinander gekoppelt. Fremde Erweiterungseigenschaften werden nicht überschrieben. PNG, GIF und Spritesheets sind Bildexporte; zusätzlich `.aseprite` behalten. Der Host speichert, Gäste behalten die bisherige normale Speicher-/Exportsperre – weiterhin kein Kopierschutz.
+## Am Bild gespeichert
 
-Bestätigte Gastbeiträge bleiben beim Host, wenn der Gast geht. Lokale Notizen funktionieren auch ohne aktive Sitzung. Aseprites gewöhnliches lokales Dokument-Undo kann dabei ebenfalls gespeicherte Eigenschaftsänderungen zurücknehmen; dann verwirft die Ideenwand ihren nicht mehr passenden lokalen Zusatzverlauf. In einer aktiven Sitzung bleiben Pixel- und Notiz-Undo getrennt.
+**Host: die Sitzungskopie als .aseprite oder .ase speichern.** Text, Listen, Farben, Verbindungen und Referenzbild-Pixel liegen in der Datei. Es werden keine externen Bildpfade gespeichert. Referenzen bleiben deshalb nach Umbenennen, Verschieben oder auf einem anderen PC sichtbar.
 
-## Grenzen und Teststand
+Ohne aktive Sitzung lassen sich eigene Bildnotizen ebenfalls bearbeiten. Beim Öffnen einer Datei mit Notizen erscheint die Wand automatisch einmal; nach bewusstem Schließen bleibt sie bis zum erneuten Öffnen geschlossen. Eine leere Datei öffnet nicht ungefragt die Wand.
 
-128 Karten, 24 Hierarchieebenen, insgesamt 512 KiB einschließlich Papierkorb. Titel maximal 120 UTF-8-Bytes, Notiztext 2048 Bytes; Umlaute benötigen mehr als ein Byte. Die Texte werden nicht als Code ausgeführt und nicht ins Diagnoseprotokoll geschrieben. Die erste Version enthält keine Anhänge, frei gezeichneten Verbindungen, zusätzlichen Kommentare oder Chat.
+PNG, GIF und Spritesheets enthalten keine Ideenwand. Die native Arbeitsdatei zusätzlich behalten. Bei Gästen gilt die bestehende Speicher-/Exportsperre, aber weiterhin **kein Kopierschutz**: zum gemeinsamen Arbeiten empfängt der Gast die Daten.
 
-Geprüft: drei echte native Aseprite-WebSockets auf einem Rechner, parallele Felder, Reservierungen, eigener Verlauf, späterer Beitritt, verlorene Bestätigung/Resume und Gast-Austritt. Separat native Datei-Roundtrips, Save As, unveränderte Fremd-Eigenschaften, Bildkopie und UI-Bedienung. **Zwei physische PCs/Radmin und längere Praxis bleiben offene Tests.** [Vollständiger Prüfstand](multiplayer-checklist.md).
+## Alte Notizen und Grenzen
+
+Alte Karten werden beim Lesen übernommen: pro Hauptkarte entsteht ein Stapel in bisheriger Reihenfolge, Unterzweige werden hintereinander angeordnet. IDs, Titel, Notiztexte, Farben und alte Status-Metadaten bleiben erhalten. Alte Status-/Hierarchie-Bedienelemente existieren nicht mehr. Die ursprüngliche Datei wird erst beim Speichern aktualisiert. Vor dem ersten Speichern mit dieser Beta eine Dateikopie behalten; ältere Collabsprite-Versionen können Format 2 nicht bearbeiten.
+
+- Maximal **128 Boxen**, **4096 UTF-8-Bytes Text pro Box** und **128 Listenpunkte**.
+- Referenzen werden proportional auf höchstens **512 × 512** verkleinert; Originaldateien bleiben unverändert. Sehr große Quellen über 8192 × 8192 werden abgewiesen.
+- Insgesamt **8 MiB** inklusive bis zu 20 Löschgruppen im Papierkorb. Bilder benötigen den meisten Platz.
+- Persönlicher Notizverlauf: bis 32 Aktionen / 16 MiB pro Person während der laufenden Sitzung. Das Gesamtlimit kann große Löschgruppen aus dem Papierkorb verdrängen.
+- Unbestätigte Entwürfe existieren nur in der laufenden App. **Ein Absturz oder erzwungenes Beenden kann sie verlieren.**
+- Gemeinsame Bestätigung ist noch keine manuelle Dateispeicherung durch den Host.
+- Die gebündelte Schrift deckt vor allem lateinische Zeichen ab. Nicht unterstützte Zeichen werden als Ersatzzeichen dargestellt; der gespeicherte Unicode-Text bleibt unverändert.
+- Das ist ein frei bewegliches Aseprite-Fenster, keine fest angedockte Editorleiste.
+
+Die Schrift basiert auf **Atkinson Hyperlegible** vom Braille Institute, SIL Open Font License 1.1. Lizenz: `extension/notes-font-OFL.txt`; reproduzierbarer Atlas: `tools/build-notes-font.py`.

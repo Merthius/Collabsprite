@@ -1,8 +1,8 @@
 -- File storage and bounded local editing. No network, UI or private text logs.
 local dir=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local decode=dofile(app.fs.joinPath(dir,'json.lua')).decode
-local N={key='Merthius/Collabsprite',fields={'title','text','parent','x','y','color','status'}}
-function N.empty() return {format=1,revision=0,cards={},trash={}} end
+local N={key='Merthius/Collabsprite',bytes=8*1024*1024,fields={'title','text','parent','x','y','color','status','kind','listStyle','checks','image'}}
+function N.empty() return {format=2,revision=0,cards={},trash={}} end
 function N.copy(v)
   if type(v)~='table' then return v end
   local r={};for k,x in pairs(v) do r[k]=N.copy(x) end;return r
@@ -17,26 +17,61 @@ local function integer(v,lo,hi) return type(v)=='number' and v%1==0 and v>=lo an
 local function id(v) return type(v)=='string' and #v==32 and v:match('^[a-f0-9]+$') end
 function N.uid() return tostring(Uuid()):gsub('-',''):lower() end
 function N.field(f,v)
-  if f=='title' or f=='text' then return type(v)=='string' and #v<=(f=='title' and 120 or 2048) and not v:find('[%z\1-\8\11-\31]') end
+  if f=='title' or f=='text' then return type(v)=='string' and #v<=(f=='title' and 120 or 4096) and not v:find('[%z\1-\8\11-\31]') end
   if f=='parent' then return v=='' or id(v) end
   if f=='x' or f=='y' then return integer(v,-10000,10000) end
   if f=='color' then return type(v)=='string' and (v=='' or (#v==7 and v:match('^#%x+$'))) end
   if f=='status' then return v=='idea' or v=='decided' or v=='done' end
+  if f=='kind' then return v=='text' or v=='list' or v=='image' end
+  if f=='listStyle' then return v=='check' or v=='bullet' or v=='number' end
+  if f=='checks' then return type(v)=='string' and #v<=128 and not v:find('[^01]') end
+  if f=='image' then
+    if v==false then return true end
+    if type(v)~='table' or not integer(v.width,1,512) or not integer(v.height,1,512) or type(v.pixels)~='string' then return false end
+    local count=0;for _ in pairs(v) do count=count+1 end
+    return count==3 and #v.pixels==v.width*v.height*8 and not v.pixels:find('[^a-f0-9]')
+  end
   return false
 end
+function N.migrate(b)
+  b=N.copy(b)
+  local groups={b.cards};for _,t in ipairs(b.trash or {}) do groups[#groups+1]=t.cards end
+  for _,cards in ipairs(groups) do
+    assert(type(cards)=='table' and #cards<=128,'Ungültige alte Notizen')
+    local map,children,seen={},{},{}
+    for _,c in ipairs(cards) do map[c.id]=c;children[c.parent]=children[c.parent] or {};table.insert(children[c.parent],c) end
+    for _,root in ipairs(cards) do if root.parent=='' or not map[root.parent] then
+      local previous=''
+      local function walk(c)
+        assert(not seen[c.id],'Ungültige alte Notizverbindung');seen[c.id]=true
+        c.parent=previous;previous=c.id
+        for _,child in ipairs(children[c.id] or {}) do walk(child) end
+      end
+      walk(root)
+    end end
+    for _,c in ipairs(cards) do assert(seen[c.id],'Ungültige alte Notizverbindung') end
+  end
+  b.format=2;return b
+end
 function N.validate(b)
-  assert(type(b)=='table' and b.format==1 and integer(b.revision,0,1e12),'Unbekanntes Notizformat')
+  if type(b)=='table' and b.format==1 then b=N.migrate(b) end
+  assert(type(b)=='table' and b.format==2 and integer(b.revision,0,1e12),'Unbekanntes Notizformat')
   assert(type(b.cards)=='table' and #b.cards<=128 and type(b.trash)=='table' and #b.trash<=20,'Notizwand ist zu groß')
   local function card(c)
     assert(type(c)=='table' and id(c.id) and type(c.versions)=='table','Ungültige Notizkarte')
+    for f,v in pairs({kind='text',listStyle='check',checks='',image=false}) do if c[f]==nil then c[f]=v;c.versions[f]=0 end end
     for _,f in ipairs(N.fields) do assert(N.field(f,c[f]) and integer(c.versions[f],0,b.revision),'Ungültiges Notizfeld') end
+    assert(c.kind~='image' or c.image,'Referenzbild fehlt')
+    assert(c.kind~='list' or select(2,c.text:gsub('\n',''))<128,'Höchstens 128 Listenpunkte')
   end
   local map={}
   for _,c in ipairs(b.cards) do card(c);assert(not map[c.id],'Doppelte Notizkarte');map[c.id]=c end
+  local attached={}
   for _,c in ipairs(b.cards) do
+    assert(c.parent=='' or not attached[c.parent],'An dieser Box hängt bereits ein Element');attached[c.parent]=true
     local seen,count={},0
     while c do
-      count=count+1;assert(count<=24 and not seen[c.id],'Ungültige Notizverbindung')
+      count=count+1;assert(count<=128 and not seen[c.id],'Ungültige Notizverbindung')
       seen[c.id]=true;assert(c.parent=='' or map[c.parent],'Übergeordnete Notiz fehlt');c=map[c.parent]
     end
   end
@@ -45,23 +80,23 @@ function N.validate(b)
     assert(id(t.id) and not seen[t.id] and type(t.cards)=='table' and #t.cards>0 and #t.cards<=128,'Ungültiger Notizpapierkorb');seen[t.id]=true
     local ids={};for _,c in ipairs(t.cards) do card(c);assert(not ids[c.id],'Doppelte Notizkarte');ids[c.id]=true end
   end
-  assert(#json.encode(b)<=524288,'Notizwand ist voll (512 KiB)')
+  assert(#json.encode(b)<=N.bytes,'Ideenwand ist voll (8 MiB inklusive Papierkorb)')
   return b
 end
 function N.read(sprite)
   local value=sprite.properties(N.key).board
   if value==nil or value=='' then return N.empty() end
-  assert(type(value)=='string' and #value<=524288,'Ungültige gespeicherte Notizen')
+  assert(type(value)=='string' and #value<=N.bytes,'Ungültige gespeicherte Notizen')
   return N.validate(decode(value))
 end
 function N.write(sprite,board)
-  N.validate(board)
+  board=N.validate(board)
   local encoded=json.encode(board)
   if sprite.properties(N.key).board~=encoded then sprite.properties(N.key).board=encoded end
 end
 function N.card(board,id) for _,c in ipairs(board.cards) do if c.id==id then return c end end end
 function N.newCard(title,parent,x,y)
-  local c={id=N.uid(),title=title or 'Neue Idee',text='',parent=parent or '',x=x or 30,y=y or 30,color='',status='idea',versions={}}
+  local c={id=N.uid(),title=title or '',text='',parent=parent or '',x=x or 30,y=y or 30,color='',status='idea',kind='text',listStyle='check',checks='',image=false,versions={}}
   for _,f in ipairs(N.fields) do c.versions[f]=0 end
   return c
 end
@@ -113,7 +148,7 @@ function N.localAction(board,history,op)
       assert(board.revision==op.revision and N.equal(c.versions,op.versions),'Wand wurde geändert')
       local ids={[c.id]=true}
       if op.children then
-        for _=1,24 do for _,v in ipairs(board.cards) do if ids[v.parent] then ids[v.id]=true end end end
+        for _=1,128 do for _,v in ipairs(board.cards) do if ids[v.parent] then ids[v.id]=true end end end
       end
       patches={};local removed={}
       for _,v in ipairs(board.cards) do
@@ -122,7 +157,7 @@ function N.localAction(board,history,op)
       end
       next,inverse=N.commit(board,patches)
       next.trash[#next.trash+1]={id=N.uid(),cards=removed}
-      while #next.trash>20 or #json.encode(next)>524288 do table.remove(next.trash,1) end
+      while #next.trash>20 or #json.encode(next)>N.bytes do table.remove(next.trash,1) end
     elseif op.action=='restore' then
       local removed
       for _,t in ipairs(board.trash) do if t.id==op.id then removed=t end end
@@ -135,7 +170,7 @@ function N.localAction(board,history,op)
     else next,inverse=N.commit(board,patches) end
     history.undo[#history.undo+1]=inverse;if #history.undo>32 then table.remove(history.undo,1) end;history.redo={}
   end
-  while #json.encode({history.undo,history.redo})>4*1024*1024 do
+  while #json.encode({history.undo,history.redo})>16*1024*1024 do
     if #history.undo>0 then table.remove(history.undo,1) else table.remove(history.redo,1) end
   end
   return N.validate(next)

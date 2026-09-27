@@ -76,6 +76,8 @@ local captures=0
 host.capture=function() captures=captures+1 end
 host.inbox={{type='presence',members={}}};host:tick()
 assert(captures==0,'Presence triggered a pixel rescan without a completed change')
+for _=1,35 do host:tick() end
+assert(captures==0,'Idle metadata timer sampled a transient held stroke')
 -- Final data and connection-close in one tick must render before detach.
 host.needsRender=true
 host.cells['1:1'].bytes=Codec.applyRuns(host.cells['1:1'].bytes,{6,1,0xff010203})

@@ -3,6 +3,7 @@ local root=assert(app.params.root)
 local RealClient=dofile(root..'/extension/client.lua')
 local callbacks,controls,events,commands={}, {}, {}, {}
 local tick,client,notify,closed,continued=nil,nil,nil,0,0
+local notesShown,notesTicks,groups=nil,0,{}
 local owned={id=1,isValid=true,close=function() closed=closed+1 end}
 local other={id=2}
 local dlg={data={name='Test',manual='127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef'}}
@@ -34,14 +35,18 @@ local env=setmetatable({app=fakeApp,
   os={time=os.time,getenv=function() return 'test-temp' end,execute=function() return true end,remove=function() end},
   io={open=function() return {read=function() return 'READY 127.0.0.1:8766' end,close=function() end} end},
   dofile=function(path)
+    if path:find('update-ui.lua',1,true) then return {new=function() return {tick=function() end,close=function() end} end} end
     if path:find('client.lua',1,true) then return fakeClient end
     if path:find('json.lua',1,true) then return {decode=function() return {} end} end
-    if path:find('notes-ui.lua',1,true) then return {new=function() return {states={},attach=function() end,tick=function() end,close=function() end,show=function() end} end} end
+    if path:find('notes-ui.lua',1,true) then return {new=function() return {states={},attach=function() end,tick=function() notesTicks=notesTicks+1 end,close=function() end,show=function(_,sprite) notesShown=sprite end} end} end
     return {new=function() return {log=function() end} end}
   end},{__index=_G})
 assert(loadfile(root..'/extension/main.lua','t',env))()
-env.init{path='test',version='0.8.0',preferences={},newMenuGroup=function() end,
+env.init{path='test',version='0.8.0',preferences={},newMenuGroup=function(_,item) groups[item.id]=item end,
   newCommand=function(_,item) callbacks[item.id]=item.onclick;commands[item.id]=item end}
+assert(groups.CollabspriteMenu.group=='view_new' and commands.CollabspriteNotes.group=='CollabspriteMenu','Notes command missing from View > Collabsprite')
+callbacks.CollabspriteNotes();assert(notesShown==other and client==nil,'Notes require a multiplayer session')
+tick();assert(notesTicks==1 and client==nil,'Automatic notes polling requires a multiplayer session')
 assert(not commands.CollabspriteRestoreDeletion.onenabled(),'Recovery enabled without session')
 callbacks.PixelKollabMultiplayer();controls.joinManual.onclick();tick()
 client.recovery='test-recovery'
@@ -57,6 +62,10 @@ local function command(name)
 end
 fakeApp.sprite=owned
 assert(command('SaveFileAs'),'Connected guest save not blocked')
+local recovered={id=3,isValid=true}
+client.recoverySprites={recovered};notify(client);fakeApp.sprite=recovered
+assert(command('SaveFileAs'),'Conflict draft bypassed guest save guard')
+fakeApp.sprite=owned
 assert(command('CloseFile'),'CloseFile did not wait for host acknowledgement')
 assert(closed==0,'Closed guest before acknowledgement')
 client:disconnect();client.completeLeave()

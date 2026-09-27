@@ -41,7 +41,7 @@ local sent,problem=pcall(function() c:send{type='paint',seq=1,structure=0,patche
 assert(not sent and tostring(problem):find('unbestätigte',1,true),'Unconfirmed outbound budget missing')
 
 local host=Client.new()
-host:receive{type='welcome',protocol=5,host=true,author='host',room='test',snapshot=copy(),revision=0,structure=0}
+host:receive{type='welcome',protocol=7,host=true,author='host',room='test',snapshot=copy(),revision=0,structure=0}
 host.ws={sendText=function() end,close=function() end}
 host:receive{type='admission',open=false}
 assert(host:syncStatusText():find('Beitritt gesperrt',1,true),'Admission status missing')

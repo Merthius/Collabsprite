@@ -28,7 +28,7 @@ async function connect(port,hello,address='127.0.0.1') {
     return new Promise((resolve,reject)=>{const p={type,resolve};p.timeout=setTimeout(()=>reject(Error('Timeout '+type)),4000);pending.push(p);});
   };
   await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
-  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:5,...hello});
+  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:7,...hello});
   return {ws,send,next};
 }
 async function waitFor(check,description) {
@@ -46,10 +46,26 @@ async function discover(port) {
       const timeout=setTimeout(()=>reject(Error('Timeout UDP discovery')),2000);
       socket.once('message',data=>{clearTimeout(timeout);resolve(JSON.parse(data.toString()));});
     });
-    socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V5'),port,'127.0.0.1');
+    socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V7'),port,'127.0.0.1');
     return await reply;
   } finally {socket.close();}
 }
+
+test('Document history cannot be bypassed by legacy property or structure messages',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});t.after(()=>service.close());
+  const host=await connect(service.port,{mode:'host',snapshot:snapshot()});const hw=await host.next('welcome');
+  const [,room,token]=hw.invite.split('/');const guest=await connect(service.port,{mode:'join',room,token});await guest.next('welcome');
+  const before=structuredClone(hw.snapshot),after=structuredClone(before);after.layers[0].name='Protected';
+  host.send({type:'document',requestId:'a'.repeat(32),before,after});await host.next('document');await guest.next('document');
+  for(const message of [{type:'property',kind:'layer',index:1,field:'name',value:'Bypass'},
+    {type:'append',kind:'frame'},{type:'delete',kind:'frame',index:1},{type:'restore',recovery:'a'.repeat(32)},
+    {type:'celProperty',layer:1,frame:1,field:'opacity',value:80},{type:'palette',colors:[42]}]) {
+    guest.send({...message,structure:1});assert.match((await guest.next('rejected')).message,/normalen Aseprite/);
+  }
+  assert.equal(service.rooms.get(room).core.meta.layers[0].name,'Protected');
+  guest.send({type:'ping',nonce:123});assert.equal((await guest.next('pong')).nonce,123);
+  host.send({type:'undo'});assert.equal((await guest.next('document')).snapshot.layers[0].name,before.layers[0].name);
+});
 
 test('Shared notes: three peers, leases, late join, lost ack resume, host save and durable guest departure',async t=>{
   const dataDir=await mkdtemp(join(tmpdir(),'collabsprite-notes-'));
@@ -78,6 +94,20 @@ test('Shared notes: three peers, leases, late join, lost ack resume, host save a
   host.send({type:'undo'});await host.next('history');assert.equal(service.rooms.get(room).core.notes.data.cards[0].text,'Besen leuchtet');
   b.send({type:'noteSaved',revision:2});await b.next('error');
 });
+test('Magnetic reference image reaches peers, persists, survives late join and personal undo',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});t.after(()=>service.close());
+  const host=await connect(service.port,{mode:'host',snapshot:snapshot()});const hw=await host.next('welcome');await host.next('notes');
+  const [,room,token]=hw.invite.split('/');const guest=await connect(service.port,{mode:'join',room,token});await guest.next('welcome');await guest.next('notes');
+  const id='d'.repeat(32),fields=['title','text','parent','x','y','color','status','kind','listStyle','checks','image'];
+  const ref={id,title:'',text:'',parent:'',x:20,y:30,color:'#D6E4F4',status:'idea',kind:'image',listStyle:'check',checks:'',image:{width:512,height:512,pixels:'1a2b3cff'.repeat(512*512)},versions:Object.fromEntries(fields.map(f=>[f,0]))};
+  guest.send({type:'note',seq:1,action:'patch',patches:[{id,expected:false,value:ref}]});assert.equal((await guest.next('noteAck')).ok,true);
+  assert.deepEqual((await host.next('notes')).board.cards[0].image,ref.image);await guest.next('notes');
+  const late=await connect(service.port,{mode:'join',room,token});await late.next('welcome');assert.deepEqual((await late.next('notes')).board.cards[0].image,ref.image);
+  guest.send({type:'note',seq:2,action:'undo'});assert.equal((await guest.next('noteAck')).ok,true);assert.equal((await host.next('notes')).board.cards.length,0);await guest.next('notes');
+  guest.send({type:'note',seq:3,action:'redo'});assert.equal((await guest.next('noteAck')).ok,true);assert.deepEqual((await host.next('notes')).board.cards[0].image,ref.image);
+  guest.send({type:'leave'});await once(guest.ws,'close');assert.deepEqual(service.rooms.get(room).core.snapshot().notes.cards[0].image,ref.image);
+});
+
 test('Authenticated reconnect retains identity, undo and pending sequence across a locked session',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});t.after(()=>service.close());
   const host=await connect(service.port,{mode:'host',snapshot:snapshot()});const hw=await host.next('welcome');
@@ -261,7 +291,7 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
   t.after(()=>service.close());
   assert.deepEqual(await (await fetch(`http://127.0.0.1:${service.port}/status`)).json(),
-    {app:'Collabsprite',protocol:5,localOnly:true,port:service.port});
+    {app:'Collabsprite',protocol:7,localOnly:true,port:service.port});
   const a=await connect(service.port,{mode:'host',name:'Local A',snapshot:snapshot()});
   const welcome=await a.next('welcome');
   assert.equal(welcome.localOnly,true);

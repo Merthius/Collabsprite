@@ -1,40 +1,75 @@
 // Shared ideas, deliberately separate from the pixel contribution history.
 import { randomBytes } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-export const NOTE_LIMITS = { cards: 128, title: 120, text: 2048, bytes: 524288, history: 32, historyBytes: 4 * 1024 * 1024, trash: 20, depth: 24 };
-export const FIELDS = ['title', 'text', 'parent', 'x', 'y', 'color', 'status'];
+export const NOTE_LIMITS = { cards: 128, title: 120, text: 4096, bytes: 8 * 1024 * 1024, history: 32, historyBytes: 16 * 1024 * 1024, trash: 20, depth: 128 };
+// title/status remain storage-only migration metadata, not old card controls.
+export const FIELDS = ['title', 'text', 'parent', 'x', 'y', 'color', 'status', 'kind', 'listStyle', 'checks', 'image'];
+const defaults = { kind: 'text', listStyle: 'check', checks: '', image: false };
 export class NoteRejected extends Error {}
 const reject = text => { throw new NoteRejected(text); };
 const clone = value => structuredClone(value);
 const idOK = id => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id);
 const int = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
 const same = isDeepStrictEqual;
-export function emptyNotes() { return { format: 1, revision: 0, cards: [], trash: [] }; }
+export function emptyNotes() { return { format: 2, revision: 0, cards: [], trash: [] }; }
 function fieldOK(field, v) {
   if (field === 'title' || field === 'text') return typeof v === 'string' && Buffer.byteLength(v) <= NOTE_LIMITS[field] && !/[\x00-\x08\x0b-\x1f]/.test(v);
   if (field === 'parent') return v === '' || idOK(v);
   if (field === 'x' || field === 'y') return int(v, -10000, 10000);
   if (field === 'color') return typeof v === 'string' && /^(|#[0-9A-Fa-f]{6})$/.test(v);
   if (field === 'status') return ['idea', 'decided', 'done'].includes(v);
+  if (field === 'kind') return ['text', 'list', 'image'].includes(v);
+  if (field === 'listStyle') return ['check', 'bullet', 'number'].includes(v);
+  if (field === 'checks') return typeof v === 'string' && /^[01]{0,128}$/.test(v);
+  if (field === 'image') return v === false || (v && int(v.width, 1, 512) && int(v.height, 1, 512) && typeof v.pixels === 'string' && v.pixels.length === v.width * v.height * 8 && /^[a-f0-9]+$/.test(v.pixels) && Object.keys(v).length === 3);
   return false;
 }
 function card(input, revision) {
   if (!input || !idOK(input.id)) reject('Ungültige Notizkennung.');
   const c = { id: input.id, versions: {} };
   for (const f of FIELDS) {
-    if (!fieldOK(f, input[f]) || !int(input.versions?.[f], 0, revision)) reject('Ungültige Notizfelder oder Versionen.');
-    c[f] = input[f]; c.versions[f] = input.versions[f];
+    const value = input[f] ?? defaults[f], version = input.versions?.[f] ?? (f in defaults ? 0 : undefined);
+    if (!fieldOK(f, value) || !int(version, 0, revision)) reject('Ungültige Notizfelder oder Versionen.');
+    c[f] = clone(value); c.versions[f] = version;
   }
+  if (c.kind === 'image' && !c.image) reject('Referenzbild fehlt.');
+  if (c.kind === 'list' && c.text.split('\n').length > 128) reject('Höchstens 128 Listenpunkte.');
   return c;
+}
+// Old branching cards become ordered stacks. IDs and every text/status/color
+// survive; the original .aseprite file changes only on an explicit save.
+function migrate(input) {
+  const b = clone(input);
+  for (const cards of [b.cards, ...(b.trash || []).map(t => t.cards)]) {
+    if (!Array.isArray(cards) || cards.length > 128) reject('Ungültige alte Notizen.');
+    const ids = new Set(cards.map(c => c.id)), visited = new Set();
+    for (const root of cards.filter(c => !c.parent || !ids.has(c.parent))) {
+      let previous = '';
+      const walk = c => {
+        if (visited.has(c.id)) reject('Ungültige alte Notizverbindung.');
+        visited.add(c.id);
+        const children = cards.filter(v => v.parent === c.id);
+        c.parent = previous; previous = c.id;
+        for (const child of children) walk(child);
+      };
+      walk(root);
+    }
+    if (visited.size !== cards.length) reject('Ungültige alte Notizverbindung.');
+  }
+  b.format = 2; return b;
 }
 export function validateNotes(input) {
   if (input == null) return emptyNotes();
-  if (input.format !== 1 || !int(input.revision, 0, 1e12) || !Array.isArray(input.cards) || input.cards.length > NOTE_LIMITS.cards ||
+  if (input.format === 1) input = migrate(input);
+  if (input.format !== 2 || !int(input.revision, 0, 1e12) || !Array.isArray(input.cards) || input.cards.length > NOTE_LIMITS.cards ||
       !Array.isArray(input.trash) || input.trash.length > NOTE_LIMITS.trash) reject('Notizformat oder Größenlimit stimmt nicht.');
-  const output = { format: 1, revision: input.revision, cards: input.cards.map(c => card(c, input.revision)), trash: [] };
+  const output = { format: 2, revision: input.revision, cards: input.cards.map(c => card(c, input.revision)), trash: [] };
   const map = new Map(output.cards.map(c => [c.id, c]));
   if (map.size !== output.cards.length) reject('Doppelte Notizkennung.');
+  const attached = new Set();
   for (const c of output.cards) {
+    if (c.parent && attached.has(c.parent)) reject('An dieser Box hängt bereits ein Element.');
+    if (c.parent) attached.add(c.parent);
     let current = c, depth = 0;
     const seen = new Set();
     while (current) {
@@ -52,7 +87,7 @@ export function validateNotes(input) {
     if (new Set(cards.map(c => c.id)).size !== cards.length) reject('Doppelte gelöschte Karte.');
     output.trash.push({ id: t.id, cards });
   }
-  if (Buffer.byteLength(JSON.stringify(output)) > NOTE_LIMITS.bytes) reject('Notizwand ist voll (512 KiB).');
+  if (Buffer.byteLength(JSON.stringify(output)) > NOTE_LIMITS.bytes) reject('Ideenwand ist voll (8 MiB inklusive Papierkorb).');
   return output;
 }
 export class Notes {

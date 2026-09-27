@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.10.0 beta — 2026-09-27
+
+First public release after 0.8.0; includes the previously unpublished 0.8.1–0.9.0 work below. All peers need protocol 7.
+
+- Replace the old card/outline UI with a single toolbar-free, search-free canvas. Right-click inserts text, checklists, bullet/numbered lists and local reference images; edit directly on the surface. Seven pastel presets and bundled OFL proportional typography.
+- Magnetic vertical stacks: drag any box edge to move that box and everything below. Moving a middle/bottom box detaches exactly that tail. Snap preview, single-child/cycle validation, optimistic link guards and personal undo. Root text becomes larger and bold automatically.
+- Embed references as bounded RGBA data (at most 512 × 512, first frame) in native file properties and shared snapshots. No local paths or remote image URLs. PNG/JPEG/WebP/GIF/BMP import, image aspect ratio preserved. Board limit 8 MiB including trash; note history 16 MiB per author.
+- Migrate format-1 branching notes into ordered format-2 stacks without discarding IDs, text, colors or legacy status metadata. Original files change only when saved. Protocol 7 requires all participants to update; no silent downgrade.
+- Preserve direct UTF-8 editing, leases, stale-draft protection and ACK-before-state handling. Enter creates a line; Ctrl+Enter, click outside or normal close commits. Network, geometry, native persistence and native-render regressions added.
+
+
+## 0.9.0 development milestone — first shipped in 0.10.0
+
+- Enable native layer/group organization, middle-frame insertion and frame reordering, linked cels at the same position, animation tags, canvas resize/crop and raster-layer merging for hosts and guests.
+- Add validated, server-ordered three-way document transactions. Keep stable layer/frame identities and surviving pixel stacks; preserve unrelated concurrent edits and note history. Conflicts keep a separate local native draft, without disconnecting the session or bypassing guest save guards.
+- Extend per-author undo/redo to structure and metadata. Protect newer foreign edits, including change-and-change-back. Refuse destructive inverses rather than deleting peer work; retain pre-transform pixel history when the original structure is restored. Bound document-history memory.
+- Protocol 6 requires every participant to update. Native cel tracking handles insertion/reordering without assuming that Aseprite's positional Frame wrapper is an identity. Recreate real native links, not just identical pixel copies. Tags retain ranges, names, colors, animation direction and repeat counts.
+- Add server, native batch and two-controller/production-WebSocket integration regressions. Keep unsupported offset linked cels and in-flight structural reconnect limitations explicit. Includes the updater and inline-note foundations below.
+
+## 0.8.2 development milestone — first shipped in 0.10.0
+
+- Simplify the idea board: create an empty card and type its title directly, with nested properties inside freely positioned root cards. Add points with inline + / Tab, siblings with Shift+Tab; commit with Enter or clicking away. Multiline notes, UTF-8 editing, selection, clipboard and input undo stay on the board.
+- Preserve existing note IDs, text, saved coordinates, per-field leases, personal history and file persistence; no data migration or protocol change. Keep advanced color/status/parent controls in the options menu.
+- Wait for the authoritative note snapshot after acknowledgement before starting chained edits. Preserve in-flight typing and conflicting drafts instead of overwriting newer peer text. Block board keys from affecting the drawing canvas.
+- Add native inline-edit, persistence, conflict and acknowledgement-order regression tests. Contains the 0.8.1 updater foundation below; the old inline hierarchy UI was replaced in 0.10.0.
+
+## 0.8.1 development milestone — first shipped in 0.10.0
+
+- Update now shows a nonmodal phase window and hands the verified download directly to Aseprite's native installer. No browsing for the downloaded file; Aseprite still asks for installation/update confirmation. Restart after installation, without forcing an app exit.
+- Distinguish current, downloading, verification, installation, cancellation and verified installed states. Prevent duplicate updates, recursive callbacks and updates during an active session or unapplied note edit. Closing the progress window before installation cancels installation (an in-flight download may finish).
+- Verify package identity/version, root manifest order and safe paths in addition to the GitHub SHA-256 digest. Back up installed code/preferences and check for locked host files before handing over; do not modify live code in the worker. Session data is excluded and left untouched.
+- Avoid dependency on Get-FileHash module discovery in the Windows worker. Add updater and UI-controller regression tests. Protocol remains 5.
+
 ## 0.8.0 beta — 2026-09-27
 
 - Shared idea board: native, nonmodal connected cards with child branches, text, HEX color, status, dragging, zoom/pan, search, folding and arrangement.

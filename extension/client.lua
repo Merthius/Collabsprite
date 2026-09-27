@@ -16,7 +16,7 @@ local blocked={}
 local guestSaveCommands={SaveFile=true,SaveFileAs=true,SaveFileCopyAs=true,
   ExportSpriteSheet=true,ExportTileset=true,RepeatLastExport=true,
   DuplicateSprite=true,NewSpriteFromSelection=true}
-for name in ('DuplicateSprite FlattenLayers FlattenVisibleLayers MergeDownLayer LayerFromBackground BackgroundFromLayer SpriteProperties SpriteSize CanvasSize ChangePixelFormat CropSprite TrimSprite RotateCanvas ReverseFrames MoveLayer LinkCels UnlinkCel ColorQuantization ImportSpriteSheet NewSpriteFromSelection'):gmatch('%S+') do blocked[name]=true end
+for name in ('DuplicateSprite LayerFromBackground BackgroundFromLayer ChangePixelFormat ColorQuantization ImportSpriteSheet NewSpriteFromSelection'):gmatch('%S+') do blocked[name]=true end
 function Client.new(notify,log)
   return setmetatable({notify=notify or function() end,log=log or function() end,inbox={},pending={},seq=0,connected=false,connecting=false,
     applying=false,dirty=false,ticks=0,undoCount=0,redoCount=0,status='Nicht verbunden',revision=0,structure=0},Client)
@@ -59,6 +59,7 @@ function Client:syncStatusText()
   if self.reconnecting then return 'Verbindung unterbrochen · verbinde erneut ...' end
   if self.leaving then return 'Warte auf Bestätigung ...' end
   if self.backupError and self.isHost then return 'Sicherung fehlgeschlagen' end
+  if self.documentPending then return 'Strukturänderung wird abgeglichen ...' end
   if self.lastReceived and os.time()-self.lastReceived>15 then return 'Host antwortet nicht ...' end
   if #self.pending>0 then return 'Verbunden · '..#self.pending..' Pixelaktionen offen' end
   return self.acceptingGuests==false and 'Verbunden · Beitritt gesperrt' or 'Verbunden'
@@ -66,6 +67,7 @@ end
 function Client:send(message)
   assert(self.ws,'Keine Verbindung')
   local bytes=json.encode(message)
+  assert(#bytes<=64*1024*1024,'Änderung zu groß für eine einzelne Übertragung. Lokale Fassung bleibt erhalten.')
   if message.type=='paint' and not message.wireBytes then
     assert((self.pendingBytes or 0)+#bytes<=64*1024*1024 and #self.pending<=2048,'Zu viele unbestätigte Änderungen. Lokale Kopie bleibt erhalten.')
     self.pendingBytes=(self.pendingBytes or 0)+#bytes
@@ -115,7 +117,7 @@ function Client:connect(url,hello)
 end
 function Client:host(sprite,name,port)
   local snapshot=C.capture(sprite)
-  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=5,mode='host',name=name,snapshot=snapshot})
+  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=7,mode='host',name=name,snapshot=snapshot})
 end
 function Client:join(invite,name)
   invite=invite:gsub('%s',''):gsub('^ws://','')
@@ -123,7 +125,7 @@ function Client:join(invite,name)
   assert(address and #code==8 and #token==32,'Bitte den gesamten Einladungscode vom Host einfuegen.')
   self:trace('session','join-requested; address and invite hidden')
   self.invite=invite
-  self:connect('ws://'..address,{type='hello',protocol=5,mode='join',name=name,room=code,token=token})
+  self:connect('ws://'..address,{type='hello',protocol=7,mode='join',name=name,room=code,token=token})
 end
 function Client:unfreeze()
   if not self.frozen then return end
@@ -136,6 +138,9 @@ function Client:unfreeze()
   self.applying=false;self.frozen=nil
 end
 function Client:suspend()
+  if self.documentPending then
+    self:disconnect('Verbindung während einer Strukturänderung unterbrochen. Lokale Fassung bleibt offen; vor erneutem Beitritt prüfen.');return
+  end
   if not self.resumeToken or not self.sprite then self:disconnect('Keine Verbindung. Host, LAN/Radmin und Firewall prüfen.');return end
   if self.leaving then self.leaving=nil end
   if self.connected then self:render() end
@@ -165,14 +170,30 @@ function Client:disconnect(reason)
   if self.ws then pcall(function() self.ws:close() end);self.ws=nil end
   self:unfreeze()
   if self.sprite and self.changeListener then pcall(function() self.sprite.events:off(self.changeListener) end) end
+  for _,listener in ipairs(self.metadataListeners or {}) do pcall(function() self.sprite.events:off(listener) end) end
+  self.metadataListeners={}
   self.changeListener=nil;self.inbox={};self.inboxBytes=0
   self:statusText(reason or (self.isHost and 'Getrennt. Sitzungskopie beim Host speichern.' or 'Getrennt. Bestätigte Beiträge bleiben beim Host.'))
   if reason and wasActive then app.tip('Collabsprite getrennt: '..tostring(reason):sub(1,95),8) end
 end
 function Client:capture()
-  if not self.connected or self.applying then return end
-  C.checkTopology(self.sprite,self.mapping,self.meta)
-  self:properties()
+  if not self.connected or self.applying or self.documentPending then return end
+  local valid,description,mapping=pcall(C.describe,self.sprite,self.identity)
+  if not valid then
+    self:preserveDraft();self:replaceSnapshot(self:localSnapshot())
+    app.tip('Diese Struktur ist noch nicht übertragbar (Größenlimit, Ebenenart oder versetzte verknüpfte Cels). Lokale Fassung bleibt im Extra-Tab.',8)
+    return
+  end
+  if self:documentChanged(description) then
+    local before=self:localSnapshot()
+    local after=C.capture(self.sprite,self.identity)
+    after.name=self.meta.name
+    local requestId=tostring(Uuid()):gsub('-',''):lower()
+    self.documentPending={before=before,after=after,requestId=requestId}
+    self:trackIdentity(mapping,after)
+    self:send{type='document',requestId=requestId,before=before,after=after}
+    self.dirty=false;return
+  end
   local scan=C.scan(self.sprite,self.mapping,self.baseline)
   local patches={}
   for key,current in pairs(scan) do
@@ -184,12 +205,52 @@ function Client:capture()
     end
   end
   self.baseline=scan;self.dirty=false
+  self:trackIdentity(self.mapping,self.meta)
   if #patches>0 then
     self.seq=self.seq+1
-    local op={type='paint',seq=self.seq,structure=self.structure,patches=patches}
+    local op={type='paint',seq=self.seq,structure=self.structure,patches=patches,width=self.meta.width,height=self.meta.height}
     self.pending[#self.pending+1]=op
     self:send(op)
   end
+end
+function Client:trackIdentity(mapping,meta)
+  local applying=self.applying
+  self.applying=true
+  local ok,err=pcall(function()
+    self:transaction('Collabsprite: Frame-Kennungen erhalten',function()
+      self.identity=C.track(self.sprite,mapping,meta,true)
+    end)
+  end)
+  self.applying=applying
+  if not ok then error(err,0) end
+end
+function Client:documentChanged(s)
+  for _,field in ipairs{'width','height','layers','frames','frameIds','palette','tags'} do
+    if not equal(s[field] or {},self.meta[field] or {}) then return true end
+  end
+  for _,c in ipairs(s.cels) do
+    local old=self.cells[C.key(c.layer,c.frame)]
+    if not old or old.opacity~=c.opacity or old.z~=c.z or old.link~=c.link then return true end
+  end
+  return false
+end
+function Client:localSnapshot()
+  local s=decodeJson(json.encode(self.meta));s.cels={}
+  for _,c in pairs(self.cells) do
+    s.cels[#s.cels+1]={layer=c.layer,frame=c.frame,opacity=c.opacity,z=c.z,link=c.link,
+      runs=C.runs(self.baseline[C.key(c.layer,c.frame)].bytes)}
+  end
+  table.sort(s.cels,function(a,b) return a.layer<b.layer or (a.layer==b.layer and a.frame<b.frame) end)
+  return s
+end
+function Client:preserveDraft()
+  local previous=app.sprite
+  local copy=Sprite(self.sprite)
+  copy.filename='Collabsprite - nicht synchronisierte Fassung.aseprite'
+  self.recoverySprites=self.recoverySprites or {};self.recoverySprites[#self.recoverySprites+1]=copy
+  self.notify(self)
+  app.sprite=previous
+  app.tip('Gleichzeitige Änderung: Deine lokale Fassung ist in einem zusätzlichen Tab erhalten. Die Sitzung bleibt verbunden.',8)
 end
 function Client:leaveBarrier()
   local job=assert(self.leaving)
@@ -224,58 +285,17 @@ function Client:finishLeave()
   end
   if not job.acknowledged then return end
   self:capture()
-  if #self.pending>0 or self.notePending or self.sentCount~=job.sentCount then self:leaveBarrier();return end
+  if #self.pending>0 or self.notePending or self.documentPending or self.sentCount~=job.sentCount then self:leaveBarrier();return end
   self:trace('session','leave: all outgoing changes confirmed')
   self:disconnect()
   if job.onReady then job.onReady() end
 end
 function Client:properties()
-  if not self.connected or self.applying then return end
-  C.checkTopology(self.sprite,self.mapping,self.meta)
-  local fields={'name','opacity','blend','visible','editable','continuous'}
-  for i,layer in ipairs(self.mapping) do
-    local old=self.meta.layers[i]
-    local current={name=layer.name,opacity=layer.opacity or 255,blend=layer.blendMode or BlendMode.NORMAL,
-      visible=layer.isVisible,editable=layer.isEditable,continuous=not layer.isGroup and layer.isContinuous or false}
-    for _,field in ipairs(fields) do
-      if current[field]~=old[field] then
-        old[field]=current[field]
-        self:send{type='property',kind='layer',index=i,field=field,value=current[field],structure=self.structure}
-      end
-    end
-  end
-  for f,frame in ipairs(self.sprite.frames) do
-    local ms=math.max(1,math.floor(frame.duration*1000+0.5))
-    if ms~=self.meta.frames[f] then
-      self.meta.frames[f]=ms
-      self:send{type='property',kind='frame',index=f,field='duration',value=ms,structure=self.structure}
-    end
-  end
-  for key,cell in pairs(self.cells) do
-    local cel=self.mapping[cell.layer]:cel(cell.frame)
-    local currentOpacity=cel and cel.opacity or 255
-    local currentZ=cel and cel.zIndex or 0
-    if currentOpacity~=cell.opacity then
-      cell.opacity=currentOpacity
-      self:send{type='celProperty',layer=cell.layer,frame=cell.frame,field='opacity',value=currentOpacity,structure=self.structure}
-    end
-    if currentZ~=cell.z then
-      cell.z=currentZ
-      self:send{type='celProperty',layer=cell.layer,frame=cell.frame,field='z',value=currentZ,structure=self.structure}
-    end
-  end
-  local palette={}
-  local pal=self.sprite.palettes[1]
-  if pal then for i=0,math.min(#pal,256)-1 do palette[#palette+1]=pal:getColor(i).rgbaPixel end end
-  local changed=#palette~=#self.meta.palette
-  if not changed then for i,value in ipairs(palette) do if value~=self.meta.palette[i] then changed=true;break end end end
-  if changed then
-    self.meta.palette=palette
-    self:send{type='palette',colors=palette}
-  end
+  self:capture()
 end
 function Client:action(kind)
   if not self.connected then return end
+  if self.documentPending then app.tip('Strukturänderung wird noch bestätigt. Gleich erneut versuchen.',3);return end
   local ok,err=pcall(function() self:capture(); self:send{type=kind} end)
   if not ok then self:disconnect(tostring(err)) end
 end
@@ -304,48 +324,13 @@ function Client:beforeCommand(ev)
     ev.stopPropagation();app.tip('Collabsprite verbindet erneut. Bearbeitung ist kurz pausiert.',3);return
   end
   if not self.connected or app.sprite~=self.sprite or self.applying then return end
+  if self.documentPending then
+    ev.stopPropagation();app.tip('Strukturänderung wird abgeglichen ...',2);return
+  end
   if ev.name=='Undo' or ev.name=='Redo' then
     ev.stopPropagation();self:action(ev.name=='Undo' and 'undo' or 'redo')
-  elseif ev.name=='DuplicateLayer' then
-    ev.stopPropagation()
-    local selected=app.layer
-    if selected and selected.isGroup then
-      app.tip('Collabsprite: Gruppen duplizieren ist noch nicht unterstuetzt.',5)
-      return
-    end
-    local source=nil
-    for i,layer in ipairs(self.mapping) do if layer==selected then source=i;break end end
-    if source then self:append('layer',selected.name..' Kopie',source) end
-  elseif ev.name=='NewLayer' then
-    ev.stopPropagation()
-    local params=ev.params or {}
-    if params.group or params.reference or params.tilemap or params.fromFile or params.fromClipboard or params.viaCut or params.viaCopy then
-      app.tip('Collabsprite: Diese besondere Ebenenart oder Auswahl-Operation wird noch nicht synchronisiert.',5)
-    else
-      self:append('layer',params.name,nil)
-    end
-  elseif ev.name=='NewFrame' then
-    ev.stopPropagation()
-    local params=ev.params or {}
-    local source=nil
-    if params.content~='empty' then source=app.frame and app.frame.frameNumber or #self.meta.frames end
-    self:append('frame',nil,source)
-  elseif ev.name=='RemoveLayer' or ev.name=='RemoveFrame' then
-    ev.stopPropagation()
-    local kind=ev.name=='RemoveLayer' and 'layer' or 'frame'
-    local selected=kind=='layer' and app.range.layers or app.range.frames
-    local indices={}
-    if selected and #selected>0 then
-      for _,item in ipairs(selected) do
-        if kind=='frame' then indices[#indices+1]=item.frameNumber
-        else for i,layer in ipairs(self.mapping) do if layer==item then indices[#indices+1]=i;break end end end
-      end
-    else
-      if kind=='frame' and app.frame then indices[1]=app.frame.frameNumber
-      elseif kind=='layer' then for i,layer in ipairs(self.mapping) do if layer==app.layer then indices[1]=i;break end end end
-    end
-    if #indices==1 then self:delete(kind,indices[1])
-    elseif #indices>1 then self:deleteMany(kind,indices) end
+  elseif ev.name=='NewLayer' and ((ev.params or {}).reference or (ev.params or {}).tilemap) then
+    ev.stopPropagation();app.tip('Referenz-/Tilemapebenen werden nicht synchronisiert. Bitte Rasterebenen verwenden.',5)
   elseif ev.name=='UndoHistory' or blocked[ev.name] then
     ev.stopPropagation()
     app.tip('Collabsprite: Diese Strukturaktion ist in der gemeinsamen Sitzung noch nicht unterstuetzt.',5)
@@ -368,7 +353,8 @@ function Client:rebasePending(meta,confirmedSeq)
       assert(layer and frame,'Ziel einer eigenen Pixelaktion wurde gelöscht. Lokale Ansicht bleibt unverändert offen.')
       patches[#patches+1]={layer=layer,frame=frame,layerId=p.layerId,frameId=p.frameId,runs=p.runs}
     end
-    result[#result+1]={type='paint',seq=op.seq,structure=self.structure,patches=patches,wireBytes=op.wireBytes}
+    assert(not op.width or (op.width==meta.width and op.height==meta.height),'Arbeitsfläche wurde bei einer unbestätigten Pixelaktion geändert. Lokale Fassung bleibt erhalten.')
+    result[#result+1]={type='paint',seq=op.seq,structure=self.structure,patches=patches,wireBytes=op.wireBytes,width=meta.width,height=meta.height}
   end end
   return result
 end
@@ -396,6 +382,7 @@ function Client:replaceSnapshot(meta,confirmedSeq)
   self.meta=meta;self.cells=cells;self.pending=pending;self.pendingBytes=0
   for _,op in ipairs(pending) do self.pendingBytes=self.pendingBytes+(op.wireBytes or 0) end
   self.baseline=C.scan(self.sprite,self.mapping);self.dirty=false;self.needsRender=false
+  self.identity=C.track(self.sprite,self.mapping,self.meta)
   self.frozen=nil;self.frozenSnapshot=nil;self.applying=false
   if app.sprite==self.sprite then
     for i,l in ipairs(meta.layers) do if l.id==selectedLayer then app.layer=self.mapping[i] end end
@@ -417,6 +404,14 @@ function Client:receive(message)
   elseif messageType=='invite' then summary='invite received; code hidden'
   elseif messageType=='error' then summary='server error (details omitted for privacy)' end
   self:trace('websocket receive',summary)
+  -- A local native structural edit stays visible until its own ordered reply.
+  -- Earlier broadcasts are included in that reply's authoritative snapshot.
+  if self.documentPending and message.revision and
+    ({patch=true,append=true,delete=true,restore=true,property=true,celProperty=true,palette=true,document=true})[message.type] and
+    not (message.type=='document' and message.author==self.author and message.requestId==self.documentPending.requestId) then
+    assert(message.revision==(self.deferredRevision or self.revision)+1,'Synchronisationsfolge unterbrochen')
+    self.deferredRevision=message.revision;return
+  end
   if message.type=='_open' then self:send(self.hello);self.hello=nil
   elseif message.type=='_lost' then self:suspend();return
   elseif message.type=='error' or message.type=='ended' then
@@ -425,6 +420,19 @@ function Client:receive(message)
     if self.connected then self:render() end
     self:disconnect(tostring(message.message or 'Serverfehler.'))
     return
+  elseif message.type=='document' or message.type=='documentAck' or message.type=='documentRejected' then
+    if self.documentPending then
+      assert(message.requestId==self.documentPending.requestId,'Falsche Strukturbestätigung')
+      local current=C.capture(self.sprite,self.identity);current.name=self.meta.name
+      current.notes=self.documentPending.after.notes
+      if message.type=='documentRejected' or not equal(current,self.documentPending.after) then self:preserveDraft() end
+      self.documentPending=nil;self.deferredRevision=nil
+    else
+      assert(message.type=='document' and message.revision==self.revision+1,'Strukturfolge unterbrochen')
+    end
+    self:replaceSnapshot(message.snapshot,(message.author==self.author or message.type=='documentRejected') and message.confirmedSeq or nil)
+    self.revision=message.revision;self.structure=message.structure
+    self.identity=C.track(self.sprite,self.mapping,self.meta)
   elseif message.type=='notes' then
     Notes.validate(message.board)
     local changed=not Notes.equal(self.meta.notes,message.board)
@@ -466,7 +474,7 @@ function Client:receive(message)
     end
   elseif message.type=='welcome' then
     assert(not self.connected,'Doppelte Anmeldung')
-    assert(message.protocol==nil or message.protocol==5,'Unpassende Erweiterungsversion')
+    assert(message.protocol==nil or message.protocol==7,'Unpassende Erweiterungsversion')
     local resumed=self.reconnecting
     if resumed then
       self.noteResend=true
@@ -483,10 +491,17 @@ function Client:receive(message)
       self.applying=true
       self.sprite,self.mapping=C.create(self.meta,self.cells)
       self.baseline=C.scan(self.sprite,self.mapping)
+      self.identity=C.track(self.sprite,self.mapping,self.meta)
       self.applying=false
       self.changeListener=self.sprite.events:on('change',function()
         if not self.applying then self.dirty=true end
       end)
+      self.metadataListeners={}
+      for _,event in ipairs{'layerblendmode','layername','layeropacity','layervisibility'} do
+        self.metadataListeners[#self.metadataListeners+1]=self.sprite.events:on(event,function()
+          if not self.applying then self.dirty=true end
+        end)
+      end
     end
     self.resumeToken=message.resumeToken;self.resumeMs=message.resumeMs
     self.revision=message.revision;self.structure=message.structure or 0;self.connected=true;self.connecting=false
@@ -570,10 +585,11 @@ function Client:receive(message)
       cell.opacity=cel.opacity or 255;cell.z=cel.z or 0
     end
     self.baseline=C.scan(self.sprite,self.mapping)
+    self.identity=C.track(self.sprite,self.mapping,self.meta)
     self.applying=false;self.revision=message.revision;self.structure=message.structure;self.needsRender=true
   elseif message.type=='delete' then
     assert(message.revision==self.revision+1 and message.structure==self.structure+1,'Strukturfolge unterbrochen')
-    local nextMeta={layers=message.kind=='layer' and message.layers or self.meta.layers,frameIds={}}
+    local nextMeta={layers=message.kind=='layer' and message.layers or self.meta.layers,frameIds={},width=self.meta.width,height=self.meta.height}
     for i,id in ipairs(self.meta.frameIds or {}) do
       if message.kind~='frame' or i~=message.index then nextMeta.frameIds[#nextMeta.frameIds+1]=id end
     end
@@ -660,12 +676,14 @@ function Client:receive(message)
     end)
     self.applying=false;self.revision=message.revision
   end
+  if self.sprite and self.connected and not self.documentPending and
+    ({append=true,delete=true,restore=true})[message.type] then self.identity=C.track(self.sprite,self.mapping,self.meta) end
 end
 function Client:noteAction(op)
   assert(self.connected and not self.leaving,'Notizen warten auf eine Verbindung')
   assert(not self.notePending,'Eine Notizänderung wird noch bestätigt')
   local message=Notes.copy(op);message.type='note';message.seq=(self.noteSeq or 0)+1
-  assert(#json.encode(message)<=128*1024,'Notizänderung zu groß')
+  assert(#json.encode(message)<=9*1024*1024,'Notizänderung zu groß')
   self.notePending=message;self:send(message)
 end
 function Client:noteLock(id,field,release)
@@ -678,7 +696,7 @@ function Client:notesFileSaved()
   end
 end
 function Client:render()
-  if not self.needsRender then return end
+  if not self.needsRender or self.documentPending then return end
   local desired={}
   for key,c in pairs(self.cells) do desired[key]=c.bytes end
   -- Keep local, unacknowledged strokes visible while server-ordered patches arrive.
@@ -723,7 +741,7 @@ function Client:tick()
       if os.time()>=self.resumeDeadline then self:disconnect('Wiederverbindung abgelaufen. Lokale Ansicht bleibt offen.');return end
       if self.connecting and os.time()-self.started>10 then self:suspend() end
       if not self.connecting and os.time()>=self.retryAt then
-        self:connect(self.url,{type='hello',protocol=5,mode='resume',room=self.room,author=self.author,resumeToken=self.resumeToken})
+        self:connect(self.url,{type='hello',protocol=7,mode='resume',room=self.room,author=self.author,resumeToken=self.resumeToken})
       end
     elseif self.connecting and os.time()-self.started>20 then error('Keine Verbindung: Host, LAN/Radmin und Firewall prüfen.') end
     if self.connected or self.reconnecting then
@@ -737,8 +755,7 @@ function Client:tick()
       -- Do not scan while the mouse is held: Aseprite can expose a transient
       -- cel position mid-stroke, which looks like the whole image jumping
       -- on peers. Sprite.change / aftercommand mark completed edits instead.
-      if self.dirty then self:capture()
-      elseif self.ticks%30==0 then self:properties() end
+      if self.dirty then self:capture() end
       if os.time()-(self.lastPing or 0)>=5 then self.lastPing=os.time();self:send{type='ping',nonce=self.ticks} end
     end
     -- Yield back to Aseprite between bounded batches; a busy peer must not

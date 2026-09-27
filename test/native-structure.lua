@@ -53,13 +53,16 @@ timer=Timer{interval=0.04,ontick=function()
     elseif stage==3 and pixel(a,2,1,9)==0xff0000ff and #b.pending==0 then
       app.sprite=b.sprite;app.range:clear();app.layer=b.mapping[1]
       assert(app.command.RemoveLayer(),'RemoveLayer nicht verfuegbar')
-      assert(#b.mapping==2,'Lokal geloescht statt synchronisiert')
+      assert(#b.sprite.layers==1,'Native Ebenenloeschung wurde blockiert')
       stage=4
     elseif stage==4 and #a.mapping==1 and #b.mapping==1 then
       assert(pixel(a,1,1,9)==0xff0000ff and pixel(b,1,1,9)==0xff0000ff,'Cel nach Ebenenloeschung verloren')
       app.sprite=b.sprite;app.command.Undo();stage=5
-    elseif stage==5 and a.revision>=4 and b.revision>=4 and pixel(a,1,1,9)==0 then
-      a:append('frame');stage=6
+    elseif stage==5 and #a.mapping==2 and #b.mapping==2 then
+      assert(pixel(a,2,1,9)==0xff0000ff,'Struktur-Undo verlor vorherige Pixel')
+      b:action('undo');stage=5.5
+    elseif stage==5.5 and pixel(a,2,1,9)==0 and #b.pending==0 then
+      app.sprite=a.sprite;app.command.NewFrame{content='empty'};stage=6
     elseif stage==6 and #b.sprite.frames==2 then
       app.sprite=a.sprite;app.range:clear();app.frame=a.sprite.frames[1]
       assert(app.command.RemoveFrame(),'RemoveFrame nicht verfuegbar')
@@ -85,14 +88,13 @@ timer=Timer{interval=0.04,ontick=function()
       b.mapping[1].blendMode==BlendMode.MULTIPLY and b.mapping[1].isContinuous and
       b.mapping[1]:cel(1).opacity==127 and b.mapping[1]:cel(1).zIndex==2 and #b.sprite.palettes[1]==2 and
       math.floor(b.sprite.frames[1].duration*1000+0.5)==250 then
-      a:append('frame');stage=9
+      app.sprite=a.sprite;app.command.NewFrame{content='empty'};stage=9
     elseif stage==9 and #a.sprite.frames==2 and #b.sprite.frames==2 then
-      a:append('frame');stage=10
+      app.sprite=a.sprite;app.command.NewFrame{content='empty'};stage=10
     elseif stage==10 and #a.sprite.frames==3 and #b.sprite.frames==3 then
       app.sprite=b.sprite;app.range.frames={1,2}
-      -- A modal test dialog can collapse the native timeline range. Exercise
-      -- the same client operation explicitly for a deterministic live test.
-      b:deleteMany('frame',{1,2})
+      -- Exercise native multi-delete inside one completed transaction.
+      app.transaction(function() b.sprite:deleteFrame(2);b.sprite:deleteFrame(1) end)
       stage=11
     elseif stage==11 and #a.sprite.frames==1 and #b.sprite.frames==1 then
       b.mapping[1].isVisible=true;b.mapping[1].isEditable=true
@@ -109,11 +111,11 @@ timer=Timer{interval=0.04,ontick=function()
       stage=12
     elseif stage==12 and b.closed and pixel(a,1,1,27)==0xff7f3f1f then
       app.sprite=a.sprite
-      a:action('undo') -- Host has no pixel actions; guest's pixel must remain.
+      a:action('undo') -- Host's structural/property undo must preserve guest pixels.
       stage=13
     elseif stage==13 and #a.inbox==0 and a.ticks%10==0 then
       assert(pixel(a,1,1,27)==0xff7f3f1f,'Gast-Pixel nach Verlassen/Host-Undo verloren')
-      a:delete('frame',1);stage=14
+      a:delete('frame',1);stage=14 -- Deliberately rejected legacy request.
     elseif stage==14 and rejections>0 then
       assert(a.connected and #a.sprite.frames==1,'Abgelehnte Aktion beendet Sitzung')
       finish('PASS native: Struktur, Verlauf, Metadaten, Gast-Trennen/Host-Undo, Beitrittssperre, letzte-Frame-Ablehnung.')

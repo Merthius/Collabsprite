@@ -31,6 +31,7 @@ local env=setmetatable({app=fakeApp,
   Dialog=function() return fakeDialog end,
   Timer=function(item) tick=item.ontick;return {start=function() end,stop=function() end} end,
   dofile=function(path)
+    if path:find('update-ui.lua',1,true) then return {new=function() return {tick=function() end,close=function() end} end} end
     if path:find('notes-ui.lua',1,true) then return {new=function() return {states={},attach=function() end,tick=function() end,close=function() end} end} end
     if path:find('diagnostics.lua',1,true) then return {new=function() return {log=function() end} end} end
     if path:find('json.lua',1,true) then return {decode=function() return {} end} end

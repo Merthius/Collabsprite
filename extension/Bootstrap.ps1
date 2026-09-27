@@ -39,7 +39,7 @@ try {
             if (-not $private) { continue }
             try {
                 $status = Invoke-RestMethod -Uri ('http://' + $candidate + '/status') -TimeoutSec 1 -UseBasicParsing
-                if ($status.app -eq 'Collabsprite' -and $status.protocol -eq 5 -and $status.port -eq $candidatePort) {
+                if ($status.app -eq 'Collabsprite' -and $status.protocol -eq 7 -and $status.port -eq $candidatePort) {
                     Report ('READY ' + $candidate); exit 0
                 }
             } catch { }
@@ -52,7 +52,7 @@ try {
     if (-not (Test-Path -LiteralPath $serverFile)) { Fail 'Serverdateien fehlen. Collabsprite neu installieren.' }
     $status = ServerStatus
     if ($status) {
-        if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 5 -or [bool]$status.localOnly -ne ($Mode -eq 'Test')) {
+        if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 7 -or [bool]$status.localOnly -ne ($Mode -eq 'Test')) {
             Fail ('Port ' + $Port + ' ist durch einen anderen Server belegt.')
         }
         Report ('READY ' + $Port); exit 0
@@ -79,7 +79,7 @@ try {
     while ([DateTime]::UtcNow -lt $deadline) {
         Start-Sleep -Milliseconds 150
         $status = ServerStatus
-        if ($status -and $status.app -eq 'Collabsprite' -and $status.protocol -eq 5 -and [bool]$status.localOnly -eq ($Mode -eq 'Test')) {
+        if ($status -and $status.app -eq 'Collabsprite' -and $status.protocol -eq 7 -and [bool]$status.localOnly -eq ($Mode -eq 'Test')) {
             Report ('READY ' + $Port); exit 0
         }
         if ($serverProcess.HasExited) { break }

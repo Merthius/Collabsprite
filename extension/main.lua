@@ -4,7 +4,7 @@ local copyInvite,disconnect
 local pane='host'
 local discoveredCount=0
 local startup,startupCounter=nil,0
-local updateJob,updateCounter=nil,0
+local updater
 local installedVersion='0.0.0'
 local PORT=8766
 local debugDialog=nil
@@ -40,6 +40,7 @@ end
 
 local function refresh(s)
   if s.sprite then guarded[s.sprite.id]={guest=s.isHost==false} end
+  for _,sprite in ipairs(s.recoverySprites or {}) do if sprite.isValid then guarded[sprite.id]={guest=s.isHost==false} end end
   if notesUI and s.sprite and not s.notesAttached then notesUI:attach(s);s.notesAttached=true end
   if not dialog then return end
   local busy=startup~=nil or s.reconnecting
@@ -67,6 +68,7 @@ local function newSession()
 end
 
 local function beginBootstrap(action,endpoints,onReady)
+  assert(not (updater and updater.busy),'Bitte zuerst das Update abschließen oder abbrechen.')
   assert(not startup,'Verbindung wird bereits vorbereitet.')
   logDiagnostic('bootstrap','start action='..tostring(action))
   local temp=os.getenv('TEMP') or os.getenv('TMP')
@@ -130,7 +132,7 @@ local function searchSessionsNow(output)
     local choices,seen={},{}
     for line in (output or ''):gmatch('[^\r\n]+') do
       local ok,result=pcall(function() return decodeJson(line) end)
-      if ok and result and result.protocol==5 then
+      if ok and result and result.protocol==7 then
         for _,room in ipairs(result.rooms or {}) do
           local invite=tostring(room.invite or '')
           local address=invite:match('^([^/]+)/') or ''
@@ -165,55 +167,7 @@ local function searchSessions()
 end
 
 local function update()
-  safely(function()
-    if updateJob then app.tip('Collabsprite prüft bereits auf Updates.',4);return end
-    local temp=os.getenv('TEMP') or os.getenv('TMP')
-    assert(temp and temp~='','Windows-Temp-Verzeichnis fehlt.')
-    updateCounter=updateCounter+1
-    local id=string.format('%d-%d-%d',os.time(),updateCounter,math.random(100000,999999))
-    local resultPath=app.fs.joinPath(temp,'Collabsprite-start-'..id..'.status')
-    local script=app.fs.joinPath(extensionPath,'Launcher.vbs')
-    local command='wscript.exe //B //Nologo "'..script..'" Update Network '..PORT..' "'..resultPath..'" "'..installedVersion..'"'
-    local launched=os.execute(command)
-    assert(launched==true or launched==0,'Update-Prüfung konnte nicht gestartet werden.')
-    updateJob={path=resultPath,started=os.time()}
-    app.tip('Collabsprite prüft GitHub im Hintergrund auf Updates.',5)
-  end)
-end
-
-local function pollUpdate()
-  if not updateJob then return end
-  if os.time()-updateJob.started>160 then
-    updateJob=nil
-    alert('Update-Prüfung hat zu lange gedauert. Internetverbindung prüfen.')
-    return
-  end
-  local file=io.open(updateJob.path,'rb')
-  if not file then
-    return
-  end
-  local reply=file:read('*a') or ''
-  if reply=='QUEUED' then file:close();return end
-  file:close();os.remove(updateJob.path)
-  updateJob=nil
-  local problem=reply:match('^ERROR ([^\r\n]+)')
-  local current=reply:match('^CURRENT ([^\r\n]+)')
-  local version,path=reply:match('^DOWNLOADED (v[%d%.]+)|([^\r\n]+)')
-  if problem then alert(problem)
-  elseif current then alert('Keine neuere Version veröffentlicht. Installiert: '..current)
-  elseif version and path then
-    local filename=path:match('([^\\/]+)$') or 'Collabsprite.aseprite-extension'
-    local downloaded=Dialog{title='Collabsprite - Update'}
-    downloaded:label{text='Neue Version '..version..' heruntergeladen.'}
-      :newrow()
-      :label{label='Downloads',text=filename}
-      :newrow()
-      :label{text='Datei oeffnen, Installation bestaetigen,'}
-      :newrow()
-      :label{text='Aseprite danach neu starten.'}
-      :button{text='OK'}
-    downloaded:show{wait=false}
-  else alert('Update-Prüfung fehlgeschlagen.') end
+  safely(function() updater:start() end)
 end
 
 local function info()
@@ -367,6 +321,18 @@ function init(plugin)
     function(sprite) return sprite and guarded[sprite.id] and guarded[sprite.id].guest end,safely)
   preferences=plugin.preferences
   installedVersion=plugin.version and tostring(plugin.version) or '0.0.0'
+  updater=dofile(app.fs.joinPath(plugin.path,'update-ui.lua')).new{
+    path=extensionPath,version=installedVersion,decode=decodeJson,safely=safely,log=logDiagnostic,
+    blocked=function()
+      if startup or (session and (session.connected or session.connecting or session.reconnecting)) then
+        return 'Bitte die Multiplayer-Sitzung vor dem Update über Trennen beenden.'
+      end
+      if notesUI then
+        for _,s in pairs(notesUI.states) do
+          if s.sprite.isValid and not notesUI:canLeave(s) then return 'Bitte zuerst den Notizentwurf übernehmen oder verwerfen.' end
+        end
+      end
+    end}
   logDiagnostic('startup','Collabsprite '..installedVersion..'; Aseprite '..tostring(app.version or 'unknown')..'; log file ready')
   -- Aseprite exposes groups within existing menus, not a group on main_menu.
   plugin:newMenuGroup{id='CollabspriteMenu',title='Collabsprite',group='view_new'}
@@ -442,7 +408,13 @@ function init(plugin)
     callbackBusy=true
     local ok,err=xpcall(function()
       pollBootstrap()
-      pollUpdate()
+      if updater then
+        -- An update problem must not disconnect a drawing session.
+        local updateOk,installed=xpcall(function() return updater:tick() end,traceback)
+        if not updateOk then
+          updater:finish('error','Update fehlgeschlagen. Diagnose prüfen.');logDiagnostic('update error',installed)
+        elseif installed then return end
+      end
       if session then session:tick() end
       if notesUI and not notesUI.failed then
         local noteOk,noteError=xpcall(function() notesUI:tick() end,traceback)
@@ -458,7 +430,7 @@ function init(plugin)
     end,traceback)
     if not ok then
       -- Do not repeat a failed protected file operation every 33 ms.
-      startup=nil;updateJob=nil
+      startup=nil
       logDiagnostic('FATAL main timer',err)
       if session then pcall(function() session:disconnect('Diagnoseprotokoll bitte kopieren.') end) end
       pcall(function() refresh(session or {});app.tip('Collabsprite: Fehler. Diagnoseprotokoll bitte kopieren.',8) end)
@@ -470,6 +442,7 @@ end
 
 function exit(plugin)
   if timer then timer:stop() end
+  if updater then updater:close() end
   if session then session:disconnect() end
   if notesUI then notesUI:close() end
   if dialog then dialog:close() end

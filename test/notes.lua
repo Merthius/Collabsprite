@@ -29,8 +29,29 @@ app.sprite=copy
 local changed=N.localAction(b,h,{action='patch',patches={N.patch(N.card(b,c2.id),'color','#5E3A79')}})
 app.transaction('Notizen',function() N.write(copy,changed) end)
 assert(copy.isModified and N.equal(N.read(s),b),'Independent file was changed')
+-- Reopening a saved image must show its notes without a server or a guest.
+-- Exercise the real polling/persistence logic; replace only native painting.
+local offline=UI.new(function() return nil end,function() return false end,function(fn) fn() end)
+local opened={}
+function offline:show(sprite)
+  local state=self:state(sprite);state.seen=true
+  opened[#opened+1]={id=sprite.id,board=N.copy(state.board)}
+end
+local function poll() for _=1,12 do offline:tick() end end
+app.sprite=s;poll()
+assert(#opened==1 and opened[1].id==s.id and N.equal(opened[1].board,b),'Saved notes did not auto-open offline')
+poll();assert(#opened==1,'Closed notes window reopened every tick')
+app.sprite=copy;poll()
+assert(#opened==2 and opened[2].id==copy.id and N.equal(opened[2].board,changed),'Different image displayed the wrong notes')
+app.sprite=s;poll();assert(#opened==2,'Switching tabs ignored dismissed notes window')
+local reopened=app.open(file);poll()
+assert(#opened==3 and opened[3].id==reopened.id and N.equal(opened[3].board,b),'Reopening image did not restore automatic notes')
+reopened:close()
+local empty=Sprite(4,4,ColorMode.RGB);poll()
+assert(#opened==3,'Unannotated image opened an unwanted empty popup')
+offline:show(empty);assert(#opened==4,'Empty image cannot open notes manually');empty:close()
 local client=Client.new()
-client:receive{type='welcome',protocol=5,host=true,author='host',room='test',snapshot=snap,revision=0,structure=0}
+client:receive{type='welcome',protocol=7,host=true,author='host',room='test',snapshot=snap,revision=0,structure=0}
 client.ws={sendText=function() end,close=function() end}
 client:receive{type='notes',board=changed,history={seq=0,undo=0,redo=0},locks={},saved=-1}
 assert(N.equal(N.read(client.sprite),changed),'Received notes not embedded')
@@ -46,5 +67,5 @@ assert(stopped and sent[1]:find('undo'),'Pixel undo routing was changed')
 local corrupt=N.copy(changed);corrupt.cards[1].parent=corrupt.cards[1].id
 assert(not pcall(N.validate,corrupt),'Cycle accepted')
 client:disconnect();client.sprite:close();copy:close();s:close()
-print('PASS notes: .aseprite roundtrip, Save As, independent copy, custom userdata, session copy, dirty state, pixel undo isolation, validation')
+print('PASS notes: .aseprite roundtrip, offline automatic reopening, per-file notes, dismissal, empty image, Save As, independent copy, custom userdata, session copy, dirty state, pixel undo isolation, validation')
 io.stdout:flush();app.exit()

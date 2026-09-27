@@ -66,7 +66,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   const server = http.createServer((req, res) => {
     if (req.url === '/status' && allowedPeer(req.socket.remoteAddress, localOnly)) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 5, localOnly, port: server.address()?.port }));
+      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 7, localOnly, port: server.address()?.port }));
       return;
     }
     if (!allowedPeer(req.socket.remoteAddress, localOnly)) { res.writeHead(403); res.end(); return; }
@@ -140,9 +140,9 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
         if (!socket.room && !isLocal(request.socket.remoteAddress) && data.length > 8192) throw new Error('Anmeldung zu gross');
         const message = JSON.parse(data.toString());
         if (!message || typeof message !== 'object' || Array.isArray(message) || typeof message.type !== 'string') throw new Error('Ungueltige Nachricht');
-        if (socket.room && message.type !== 'paint' && data.length > (message.type === 'note' ? 128 * 1024 : 8192)) throw new Error('Steuernachricht zu gross');
+        if (socket.room && !['paint','document'].includes(message.type) && data.length > (message.type === 'note' ? 9 * 1024 * 1024 : 8192)) throw new Error('Steuernachricht zu gross');
         if (!socket.room) {
-          if (message.type !== 'hello' || message.protocol !== 5) throw new Error('Unpassende Erweiterungsversion');
+          if (message.type !== 'hello' || message.protocol !== 7) throw new Error('Unpassende Erweiterungsversion');
           socket.name = String(message.name || 'Kuenstler').replace(/[\x00-\x1f]/g, '').slice(0, 30);
           socket.author = randomBytes(16).toString('hex');
           let room, code, token, resumeToken = randomBytes(32).toString('hex');
@@ -184,7 +184,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           socket.room = room; socket.code = code; room.clients.add(socket); room.core.user(socket.author);
           room.leases.set(socket.author, { tokenHash: hash(resumeToken), name: socket.name, socket, expires: Infinity });
           const actualPort = server.address().port;
-          send(socket, { type: 'welcome', protocol: 5, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision, structure: room.core.structure,
+          send(socket, { type: 'welcome', protocol: 7, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision, structure: room.core.structure,
             invite: token ? invite(localOnly ? [] : addresses(), actualPort, code, token) : undefined,
             localOnly, restored: room.restored, acceptingGuests: room.acceptingGuests !== false, snapshot: room.core.snapshot(),
             resumed: message.mode === 'resume', resumeToken, resumeMs, confirmedSeq: room.core.user(socket.author).seq });
@@ -193,6 +193,12 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           return;
         }
         const room = socket.room;
+        // Legacy fragment/property messages cannot safely address linked cels,
+        // tags or the new inverse-operation history. Current native clients
+        // use document transactions; never let an old message bypass them.
+        if (['append','delete','deleteMany','restore','property','celProperty','palette'].includes(message.type) &&
+            (room.core.hasDocumentTransactions || room.core.meta.tags.length || [...room.core.cells.values()].some(c=>c.link)))
+          throw new OperationRejected('Bitte den normalen Aseprite-Befehl bzw. eigenes Rückgängig mit der aktuellen Erweiterung verwenden.');
         if (['note','noteLock','noteSaved'].includes(message.type) && !noteBudget(1)) throw new Error('Zu viele Notizaktionen. Bitte langsamer bearbeiten.');
         if (['append', 'delete', 'deleteMany'].includes(message.type) && message.structure !== room.core.structure)
           throw new OperationRejected('Ebenen/Frames wurden inzwischen geändert. Bitte die Aktion erneut ausführen.');
@@ -212,7 +218,20 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           if (socket.author !== room.hostAuthor || !Number.isSafeInteger(message.revision) || message.revision < 0 || message.revision > room.core.notes.data.revision) throw new Error('Ungültige Notizspeicherbestätigung');
           room.notesSaved = message.revision;
           broadcast(room, { type: 'noteSaved', revision: room.notesSaved }); return;
-        } else if (message.type === 'paint') event = room.core.paint(socket.author, message.seq, message.patches, message.structure);
+        } else if (message.type === 'document') {
+          if (typeof message.requestId !== 'string' || !/^[a-f0-9]{32}$/.test(message.requestId)) throw new Error('Ungültige Transaktion');
+          try { event = room.core.document(socket.author, message.before, message.after, message.requestId); }
+          catch (error) {
+            if (!(error instanceof OperationRejected)) throw error;
+            send(socket,{type:'documentRejected',requestId:message.requestId,message:error.message,
+              snapshot:room.core.snapshot(),revision:room.core.revision,structure:room.core.structure,confirmedSeq:room.core.user(socket.author).seq});
+            return;
+          }
+        } else if (message.type === 'paint') {
+          if (message.width != null && (message.width !== room.core.meta.width || message.height !== room.core.meta.height))
+            throw new Error('Arbeitsfläche bei einer unbestätigten Pixelaktion geändert. Lokale Fassung bleibt erhalten.');
+          event = room.core.paint(socket.author, message.seq, message.patches, message.structure);
+        }
         else if (message.type === 'undo' || message.type === 'redo') event = room.core.undoRedo(socket.author, message.type === 'redo');
         else if (message.type === 'append') {
           if (message.structure !== room.core.structure) throw new Error('Dokumentstruktur hat sich geaendert; bitte neu verbinden');
@@ -250,7 +269,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           send(socket, { type: 'pong', nonce: message.nonce }); return;
         }
         else throw new Error('Unbekannte Nachricht');
-        if (event?.type === 'ack') send(socket, event);
+        if (event?.type === 'ack' || event?.type === 'documentAck') send(socket, event);
         else if (event) {
           broadcast(room, event); room.dirty = true;
         }
@@ -332,7 +351,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   const discoveryBudget = budget(40, 20);
   discovery.on('message', (data, peer) => {
     if (stopping || !discoveryBudget(1)) return;
-    if (data.toString() !== 'COLLABSPRITE_DISCOVER_V5') return;
+    if (data.toString() !== 'COLLABSPRITE_DISCOVER_V7') return;
     if (!allowedPeer(peer.address, localOnly)) return;
     const address = replyAddress(peer.address, localOnly);
     if (!address) return;
@@ -343,7 +362,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
       visible.push({ name: room.hostName || 'Kuenstler', image: room.core.meta.name,
         invite: invite([address], server.address().port, code, room.discoveryToken) });
     }
-    const response = Buffer.from(JSON.stringify({ protocol: 5, rooms: visible }));
+    const response = Buffer.from(JSON.stringify({ protocol: 7, rooms: visible }));
     if (response.length <= 1200) discovery.send(response, peer.port, peer.address);
   });
   discovery.on('error', error => log(`Sitzungssuche: ${error.message}`));

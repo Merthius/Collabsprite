@@ -2,6 +2,9 @@
 local M = {}
 local directory=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local Notes=dofile(app.fs.joinPath(directory,'notes.lua'))
+local Structure=dofile(app.fs.joinPath(directory,'structure.lua'))
+M.track=Structure.track
+local identities={}
 function M.key(layer, frame) return string.format('%d:%d', layer, frame) end
 local function integer(value,lo,hi)
   assert(type(value)=='number' and value==math.floor(value) and value>=lo and value<=hi,'Ungültige Bilddaten')
@@ -101,7 +104,7 @@ function M.scan(sprite,mapping,previous)
   end
   return out
 end
-function M.capture(sprite)
+function M.describe(sprite,known)
   assert(sprite, 'Bitte zuerst ein Bild in Aseprite oeffnen.')
   assert(sprite.colorMode==ColorMode.RGB, 'Bitte vor der Sitzung Sprite > Farbmodus > RGB waehlen (in einer Kopie).')
   assert(sprite.width<=1024 and sprite.height<=1024, 'Maximale Canvas-Groesse: 1024 x 1024.')
@@ -113,15 +116,16 @@ function M.capture(sprite)
   local s={format=1,name=app.fs.fileTitle(sprite.filename or '') or 'Gemeinsam',width=sprite.width,height=sprite.height,
     layers=layers,frames={},cels={},palette={},notes=Notes.read(sprite)}
   for _,f in ipairs(sprite.frames) do s.frames[#s.frames+1]=math.max(1,math.floor(f.duration*1000+0.5)) end
-  local scan=M.scan(sprite,mapping)
-  for l,layer in ipairs(mapping) do if not layer.isGroup then
-    for f=1,#sprite.frames do
-      local cel=layer:cel(f)
-      s.cels[#s.cels+1]={layer=l,frame=f,runs=M.runs(scan[M.key(l,f)].bytes),opacity=cel and cel.opacity or 255,z=cel and cel.zIndex or 0}
-    end
-  end end
+  s.frameIds,s.tags,s.cels=Structure.describe(sprite,mapping,layers,known or identities[sprite.id])
   local pal=sprite.palettes[1]
   if pal then for i=0,math.min(#pal,256)-1 do s.palette[#s.palette+1]=pal:getColor(i).rgbaPixel end end
+  return s,mapping
+end
+function M.capture(sprite,known,previous)
+  local s,mapping=M.describe(sprite,known)
+  local scan=M.scan(sprite,mapping,previous)
+  for _,c in ipairs(s.cels) do c.runs=M.runs(scan[M.key(c.layer,c.frame)].bytes) end
+  identities[sprite.id]=Structure.track(sprite,mapping,s)
   return s
 end
 function M.validate(s)
@@ -155,13 +159,26 @@ function M.validate(s)
   assert(type(s.palette)=='table' and #s.palette<=256,'Ungültige Palette')
   for _,color in ipairs(s.palette) do integer(color,0,0xffffffff) end
   assert(type(s.cels)=='table' and #s.cels<=raster*#s.frames,'Ungültige Cels')
-  local seen={}
+  local seen,links={},{}
   for _,cel in ipairs(s.cels) do
     integer(cel.layer,1,#s.layers);integer(cel.frame,1,#s.frames)
     local key=M.key(cel.layer,cel.frame)
     assert(not s.layers[cel.layer].group and not seen[key],'Doppeltes oder ungültiges Cel')
     seen[key]=true
     integer(cel.opacity or 255,0,255);integer(cel.z or 0,-32768,32767)
+    if cel.link then
+      local found=false;for _,id in ipairs(s.frameIds or {}) do if id==cel.link then found=true end end
+      assert(found,'Ungültige Cel-Verknüpfung')
+      local key=cel.layer..':'..cel.link
+      assert(not links[key] or links[key]==(cel.opacity or 255),'Verknüpfte Cels müssen dieselbe Deckkraft haben')
+      links[key]=cel.opacity or 255
+    end
+  end
+  assert(type(s.tags or {})=='table' and #(s.tags or {})<=256,'Zu viele Tags')
+  for _,t in ipairs(s.tags or {}) do
+    identity(t.id);integer(t.from,1,#s.frames);integer(t.to,t.from,#s.frames)
+    integer(t.direction,0,3);integer(t.repeats,0,65535);integer(t.color,0,0xffffffff)
+    assert(type(t.name)=='string' and #t.name<=400,'Ungültiger Tag')
   end
 end
 function M.decode(s)
@@ -174,7 +191,7 @@ function M.decode(s)
   end end
   for _,cel in ipairs(s.cels) do
     local c=assert(cells[M.key(cel.layer,cel.frame)],'Unbekanntes Cel')
-    c.bytes=M.applyRuns(blank,cel.runs); c.opacity=cel.opacity or 255; c.z=cel.z or 0
+    c.bytes=M.applyRuns(blank,cel.runs); c.opacity=cel.opacity or 255; c.z=cel.z or 0;c.link=cel.link
   end
   return cells
 end
@@ -192,7 +209,7 @@ end
 function M.replace(sprite,s,cells)
   M.validate(s)
   if s.notes then Notes.write(sprite,s.notes) end
-  assert(sprite.width==s.width and sprite.height==s.height,'Canvas-Größe stimmt nicht')
+  if sprite.width~=s.width or sprite.height~=s.height then sprite:crop(Rectangle(0,0,s.width,s.height)) end
   local old={}
   for _,layer in ipairs(sprite.layers) do old[#old+1]=layer end
   while #sprite.frames>#s.frames do sprite:deleteFrame(#sprite.frames) end
@@ -210,11 +227,13 @@ function M.replace(sprite,s,cells)
   end
   for _,layer in ipairs(old) do sprite:deleteLayer(layer) end
   for _,c in pairs(cells) do M.writeCel(sprite,mapping[c.layer],c.frame,c.bytes,c.opacity,c.z) end
+  Structure.apply(sprite,mapping,s)
   if #s.palette>0 then
     local pal=Palette(#s.palette)
     for i,v in ipairs(s.palette) do pal:setColor(i-1,Color{r=v&255,g=(v>>8)&255,b=(v>>16)&255,a=(v>>24)&255}) end
     sprite:setPalette(pal)
   end
+  identities[sprite.id]=Structure.track(sprite,mapping,s)
   return mapping
 end
 function M.create(s,cells)
@@ -238,6 +257,7 @@ function M.create(s,cells)
     end
     sprite:deleteLayer(initial)
     for _,c in pairs(cells) do M.writeCel(sprite,mapping[c.layer],c.frame,c.bytes,c.opacity,c.z) end
+    Structure.apply(sprite,mapping,s)
     if #s.palette>0 then
       local pal=Palette(#s.palette)
       for i,v in ipairs(s.palette) do pal:setColor(i-1,Color{r=v&255,g=(v>>8)&255,b=(v>>16)&255,a=(v>>24)&255}) end
@@ -245,6 +265,7 @@ function M.create(s,cells)
     end
   end)
   sprite.filename=(s.name~='' and s.name or 'Gemeinsam')..' - Multiplayer.aseprite'
+  identities[sprite.id]=Structure.track(sprite,mapping,s)
   for _,layer in ipairs(mapping) do if not layer.isGroup then app.layer=layer; break end end
   return sprite,mapping
 end

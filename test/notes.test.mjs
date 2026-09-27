@@ -20,7 +20,7 @@ test('Notes: field revisions, personal undo and foreign ABA conflict protection'
 test('Notes: atomic validation, cycle and size protection', () => {
   const b = new Notes();create(b, 'a', card(1));create(b, 'a', card(2, id(1)));
   const before = b.snapshot();assert.equal(set(b, 'a', 1, 'parent', id(2)).ok, false);assert.deepEqual(b.snapshot(), before);
-  assert.equal(set(b, 'a', 1, 'text', 'a'.repeat(2049)).ok, false);
+  assert.equal(set(b, 'a', 1, 'text', 'a'.repeat(4097)).ok, false);
   assert.throws(() => validateNotes({ ...emptyNotes(), cards: [card(1), card(1)] }));
   assert.throws(() => validateNotes({ ...emptyNotes(), cards: [card(1, id(9))] }));
   const result = run(b, 'a', { action: 'patch', patches: [
@@ -63,4 +63,24 @@ test('Notes: pixel undo and structural restore never roll back the board', () =>
   room.deleteRecoverable('host','layer',[2]);set(room.notes,'guest',1,'text','After deletion');
   room.restoreDeletion(room.recoveries.at(-1).id);room.undoRedo('host',false);
   assert.equal(room.snapshot().notes.cards[0].text,'After deletion');
+});
+
+test('Magnetic boxes: bounded RGBA references, list styles, stack uniqueness and legacy migration', () => {
+  const original={format:1,revision:0,cards:[card(1),card(2,id(1)),card(3,id(1))],trash:[]};
+  const migrated=validateNotes(original);
+  assert.equal(migrated.format,2);assert.equal(migrated.cards[2].parent,id(2));assert.equal(original.cards[2].parent,id(1));
+  assert.equal(migrated.cards[2].title,'Hexe');
+  const b=new Notes(migrated);
+  assert.equal(create(b,'guest',card(4,id(1))).ok,false,'A box cannot have two magnetic children');
+  assert.equal(set(b,'guest',1,'parent',id(3)).ok,false,'Cycle accepted');
+  const picture={...card(4),kind:'image',image:{width:512,height:512,pixels:'abcdef12'.repeat(512*512)}};
+  assert.ok(create(b,'guest',picture).ok);assert.deepEqual(new Notes(b.snapshot()).data.cards[3].image,picture.image);
+  assert.equal(set(b,'guest',4,'image',{width:513,height:1,pixels:'00000000'.repeat(513)}).ok,false);
+  assert.equal(set(b,'guest',4,'image',{width:1,height:1,pixels:'000000zz'}).ok,false);
+  assert.equal(set(b,'guest',4,'image',{width:1,height:1,pixels:'00000000',path:'private.png'}).ok,false);
+  assert.equal(set(b,'guest',4,'image',false).ok,false);
+  const list={...card(5),kind:'list',listStyle:'number',text:'Farbe\nBlau',checks:'01'};
+  assert.ok(create(b,'guest',list).ok);assert.equal(set(b,'guest',5,'checks','maybe').ok,false);
+  assert.equal(set(b,'guest',5,'text','x\n'.repeat(128)).ok,false);
+  assert.ok(run(b,'guest',{action:'undo'}).ok);assert.ok(run(b,'guest',{action:'redo'}).ok);
 });

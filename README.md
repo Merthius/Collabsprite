@@ -2,17 +2,19 @@
 
 # Collabsprite
 
-[![Version](https://img.shields.io/badge/version-0.8.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.8.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
+> **Neu in 0.10.0 Beta:** Freie Ideenwand mit magnetischen Text-, Listen- und Bildboxen, erweiterte gemeinsame Ebenen-/Animationsbearbeitung und ein geführter Updater. [Versionshinweise](docs/releases/v0.10.0.md).
 
-**Gemeinsam Pixel-Art und Animationen direkt in Aseprite bearbeiten.** Eine Person hostet, die anderen treten bei. Alle nutzen dieselbe Erweiterung und dieselben Rasterebenen und Frames. `Strg+Z`/`Strg+Y` wirken auf die eigenen synchronisierten Pixelaktionen, ohne neuere fremde Pixel zu entfernen.
+[![Version](https://img.shields.io/badge/version-0.10.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
 
-**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.8.0/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+**Gemeinsam Pixel-Art und Animationen direkt in Aseprite bearbeiten.** Eine Person hostet, die anderen treten bei. Alle nutzen dieselbe Erweiterung und dieselben Rasterebenen und Frames. `Strg+Z`/`Strg+Y` wirken auf die eigenen synchronisierten Pixel-, Struktur- und Eigenschaftsänderungen, ohne neuere fremde Pixel zu entfernen.
 
-Version **0.8.0 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Neu: eine **gemeinsame Ideenwand aus verbundenen Notizkarten**, direkt am Bild gespeichert. [Notiz-Tutorial](docs/shared-notes.md).
+**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.10.0/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+
+Version **0.10.0 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Neu: eine **gemeinsame Ideenwand mit magnetischen Text-, Listen- und Bildboxen**, direkt am Bild gespeichert. [Notiz-Tutorial](docs/shared-notes.md).
 
 Die **Diagnosekonsole ist dauerhaft enthalten**: **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren**. Das lokale Protokoll unter `%TEMP%\Collabsprite-debug.log` bleibt nach einem Neustart erhalten und ist auf 512 KiB begrenzt. Es enthält technische Ereignisse und Fehler, keine Bilddaten oder Einladungscodes. **Neues Protokoll** leert die Aufnahme; nur **vor** dem erneuten Auslösen eines Fehlers verwenden. Schutz gegen wiederholte Timer-Aufrufe während Freigabedialogen wurde ergänzt. Ob dies den gemeldeten „C stack overflow“ auf dem betroffenen Freund-PC behebt, bleibt dort zu prüfen.
 
-**Alle Teilnehmenden müssen auf 0.8.0 aktualisieren**: Protokoll **5** ist nicht mit 0.7.x oder früher kompatibel. Wiederverbindung, persönlicher Pixel-Verlauf, Löschwiederherstellung, Beitrittssperre und Diagnose bleiben enthalten. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
+**Alle Teilnehmenden müssen auf 0.10.0 aktualisieren**: Protokoll **7** ist nicht mit älteren Releases kompatibel. Wiederverbindung, persönlicher Pixel-Verlauf, Löschwiederherstellung, Beitrittssperre und Diagnose bleiben enthalten. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
 
 ## Schnellstart
 
@@ -36,7 +38,7 @@ Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host
 
 ## Installation – auf jedem PC
 
-1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.8.0) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
+1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.0) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
 2. Öffne Aseprite → **Bearbeiten → Einstellungen → Erweiterungen → Erweiterung hinzufügen** und wähle die Datei. Ein Doppelklick auf die Datei kann ebenfalls funktionieren ([offizielle Aseprite-Anleitung](https://www.aseprite.org/docs/extensions/)).
 3. Starte Aseprite neu. Öffne **Ansicht → Collabsprite → Server erstellen / beitreten**.
 
@@ -45,10 +47,12 @@ Für Host und Gäste gilt exakt dieselbe Installationsdatei. Du kannst jederzeit
 ### Eine ältere Version aktualisieren
 
 1. Sitzungskopie speichern und die laufende Sitzung über **Trennen** beenden.
-2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.8.0** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
-3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Ansicht → Collabsprite → Info** muss **0.8.0** stehen.
+2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.10.0** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
+3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Ansicht → Collabsprite → Info** muss **0.10.0** stehen.
 
-**„Update“** im Collabsprite-Menü lädt das geprüfte Paket nach Downloads; danach wird es wie oben installiert. Es installiert sich nicht stillschweigend selbst. Bei sehr alten oder fehlerhaften Builds das Paket direkt von dieser Seite laden.
+**In 0.10.0 enthalten:** **Ansicht → Collabsprite → Update** zeigt ein kompaktes Fortschrittsfenster für Versionsprüfung, Download, Paketprüfung und Installation. Nach dem Download öffnet sich Aseprites Installer automatisch mit der richtigen Datei. Die Installation/Aktualisierung dort bestätigen und anschließend Aseprite neu starten. Kein Suchen im Downloads-Ordner; keine automatische Beendigung deiner Arbeit. Eine laufende Multiplayer-Sitzung vorher über **Trennen** beenden. Die bisherige Installation und Einstellungen werden vorab unter `Aseprite/Collabsprite-backups` gesichert; Sitzungsdaten bleiben unangetastet. Schließen des Fortschrittsfensters vor der Installation verhindert die Installation; ein laufender Download kann noch fertig werden.
+
+**0.8.0 und ältere Versionen** laden über „Update“ nur herunter. Für den ersten Wechsel auf den neuen Update-Ablauf die heruntergeladene `.aseprite-extension` noch einmal wie oben installieren. Bei fehlerhaften Builds das Paket direkt von der Release-Seite laden.
 
 Falls zuvor **„ws 8.21.3“** im Installationsdialog erschien: Das war ein Fehler unserer älteren Pakete. Installiere die korrigierte Datei erneut; ein vorhandener separater „ws“-Eintrag ist keine Collabsprite-Version. Nicht den Quellcode-ZIP verwenden.
 
@@ -73,14 +77,19 @@ Der Einladungscode hat etwa die Form `192.168.1.10:8766,26.1.2.3:8766/RAUM/TOKEN
 
 ## Gemeinsam planen – die Ideenwand
 
-Beim Erstellen oder Beitreten öffnet sich eine schließbare **Ideenwand**. Host und Gäste bearbeiten dieselben verbundenen Karten; **X** schließt nur die eigene Ansicht. Wieder öffnen: **Ansicht → Collabsprite → Gemeinsame Notizen**.
+Beim Erstellen oder Beitreten öffnet sich die **Ideenwand**. **X** schließt nur deine Ansicht. Wieder öffnen: **Ansicht → Collabsprite → Gemeinsame Notizen**. Gespeicherte Bildnotizen sind auch ohne Sitzung verfügbar und öffnen sich mit ihrer Datei.
 
-1. **+ Karte** erstellt eine Hauptidee, zum Beispiel „Hexe“.
-2. **Rechtsklick → + Unterkarte** verbindet „Kleidung“ → „Kleid“ und einen zweiten Zweig „Waffe“ → „Besen“.
-3. **Doppelklick** öffnet den Notiztext. Mit **Übernehmen** teilen; Farbe, Titel, Status und Zuordnung ändern sich per Rechtsklick. Karten ziehen, mit dem Mausrad zoomen.
-4. Der **Host speichert die Sitzungskopie als `.aseprite`**. Bild und Notizen bleiben zusammen, auch nach Umbenennen, Verschieben oder „Speichern unter“. PNG/Spritesheets enthalten keine Notizen.
+![Beispiel der neuen Ideenwand mit Pastellboxen und magnetischen Stapeln](docs/idea-board.png)
 
-Eigener Notiz-Verlauf, kurzer Feldschutz gegen gleichzeitiges Überschreiben und Papierkorb sind enthalten. Nicht übernommene Entwürfe bleiben während der laufenden App erhalten; vor Schließen/Speichern fordert die Erweiterung zum Übernehmen oder Verwerfen auf. **Ein Programmabsturz kann unbestätigte Entwürfe verlieren.** [Bedienung und Grenzen](docs/shared-notes.md).
+*Mit der nativen Zeichenroutine gerenderte Beispielwand; kein vollständiger Aseprite-Fenster-Screenshot.*
+
+1. **Rechtsklick auf die freie Fläche** → Text, Checkliste, Punktliste, nummerierte Liste oder Referenzbild.
+2. **Direkt in die Box schreiben**. Enter ergänzt eine Zeile; Strg+Enter oder Klick daneben übernimmt.
+3. **Am Boxrand ziehen**: oben den ganzen Stapel, in der Mitte diese Box mit allem darunter, unten nur die letzte Box. Nahe unter eine andere Box ziehen, um magnetisch anzudocken.
+4. **Rechtsklick auf die Box** → Pastellfarbe. Text am Stapelanfang wird automatisch groß und fett.
+5. Der **Host speichert die Sitzungskopie als .aseprite**. Bilder und Notizen bleiben zusammen. PNG/Spritesheets enthalten keine Ideenwand.
+
+Eigener Notizverlauf und Feldschutz gegen gleichzeitiges Überschreiben sind enthalten. Unbestätigte Entwürfe sind nicht absturzfest. Alte Notizen werden übernommen; **vor dem ersten Speichern eine Dateikopie behalten**, da ältere Versionen das neue Format nicht bearbeiten können. [Bedienung und Grenzen](docs/shared-notes.md).
 
 ## Gemeinsam arbeiten und speichern
 
@@ -89,8 +98,8 @@ Der Host speichert das gemeinsame Bild. Bei Gästen blockiert Collabsprite die n
 **Kein Kopierschutz:** Zum Bearbeiten empfängt Aseprite auf dem Gast-PC die Bilddaten. Screenshots, Zwischenablage, Skripte, Aseprites Wiederherstellungsdaten oder eine veränderte/deaktivierte Erweiterung lassen sich damit nicht zuverlässig verhindern. Nur vertrauenswürdige Personen einladen. Die Speicherregel ist eine Bedienungssperre, keine Sicherheitsgarantie; sie gilt nicht rückwirkend für ältere Clients.
 
 - Normale Aseprite-Werkzeuge wie Stift, Radierer, Füllen und Formen sowie **abgeschlossene** Auswahl-, Einfüge- und Verschiebeaktionen werden geteilt. Während eines gehaltenen Pinselstrichs oder einer schwebenden Auswahl erscheint noch keine Live-Vorschau beim Gegenüber.
-- Alle Teilnehmenden können über Aseprites normale Befehle Rasterebenen und Frames **am Ende** hinzufügen und vorhandene Ebenen kopieren. Einzelne und mehrere ausgewählte Ebenen/Frames können gelöscht werden; beim Löschen einer Gruppe verschwinden ihre Unterebenen. Ebenenname, Sichtbarkeit, Sperre, Deckkraft und Mischmodus sowie Frame-Dauer, Cel-Deckkraft/Z-Index und die erste Palette werden geteilt. Umordnen und manche komplexe Strukturänderungen bleiben gesperrt.
-- `Strg+Z`/`Strg+Y` schalten nur die **eigenen synchronisierten Pixelaktionen** um. Fremde spätere Beiträge bleiben erhalten; neue Ebenen und Frames gehören nicht zu diesem Pixel-Verlauf.
+- Alle können über die normalen Aseprite-Befehle Rasterebenen und Gruppen anlegen, umsortieren, duplizieren oder löschen; Frames auch mittig einfügen und umordnen. Verknüpfte Cels an derselben Position, Animationstags, Größenänderung, Zuschnitt und Rasterebenen-Zusammenführen werden geteilt. Ebenen-/Frame-/Cel-Eigenschaften und die erste Palette bleiben synchronisiert. [Details](docs/cooperative-editing.md).
+- `Strg+Z`/`Strg+Y` gelten für eigene synchronisierte Pixel-, Struktur- und Eigenschaftsänderungen. Rücknahmen, die neuere fremde Beiträge entfernen würden, werden abgewiesen. Ein Strukturkonflikt bleibt als separater lokaler Entwurf-Tab erhalten.
 - Der **Host** speichert die Sitzungskopie über **Datei → Speichern unter** als `.aseprite`, damit Ebenen und Frames erhalten bleiben. Er legt zusätzlich automatische Sitzungs-Backups lokal im `data`-Ordner an; sie ersetzen kein eigenes Speichern. Ältere Sicherungen blockieren keinen neuen Hoststart; Collabsprite lädt die acht zuletzt geänderten Sitzungen und lässt ältere Dateien unangetastet.
 - Wenn der Host das Sitzungsbild oder Aseprite schließt, wird der Hintergrundserver nach dem Backup beendet und Port `8766` wieder frei. Die Gäste werden getrennt; ihre bereits bestätigten Beiträge bleiben im gemeinsamen Host-Bild und dessen Backup.
 - **Letzte Löschung wiederherstellen** unter **Ansicht → Collabsprite** fügt gelöschte Ebenen/Frames zurück, ohne neuere Zeichnungen in den übrigen Cels zurückzusetzen. Für alle Teilnehmenden verfügbar; die zuletzt ausgeführte gemeinsame Löschung zuerst. Bis zu 20 Löschaktionen / insgesamt 4.194.304 gelöschte Cel-Pixel, nur solange der Server läuft. Wiederhergestellte Pixel bilden eine neue Basis; ihr früherer Pixel-Undo wird nicht mit wiederhergestellt.
@@ -119,7 +128,7 @@ Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **o
 | **Aseprite reagiert nicht** | Speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
 | **Verbindung weg** | Bis zu zwei Minuten auf automatische Wiederverbindung warten und Netzwerk/Host prüfen. Bei Abbruch lokale Ansicht nicht voreilig schließen, Diagnose kopieren; Host speichert. Kein allgemeines Offline-Merging. |
 
-Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. Ideenwand: bis 128 Karten und 512 KiB inklusive Papierkorb. **0.8.0 verwendet Protokoll 5; frühere Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
+Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Slices, Farbprofile, versetzt verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. Ideenwand: bis 128 Boxen und 8 MiB inklusive Papierkorb; Referenzen bis 512×512 Pixel. Bei Netzabbruch während einer unbestätigten Strukturaktion bleibt die lokale Fassung erhalten; dafür gibt es noch keine automatische Wiederaufnahme. **0.10.0 verwendet Protokoll 7; frühere Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
 
 ## Entwickeln und beitragen
 
@@ -131,7 +140,7 @@ npm test
 
 Der Build legt den Installer im benachbarten Ordner `../output/` ab. `test/` enthält automatisierte Server-/Protokolltests und native Aseprite-Testskripte. Hinweise zu Fehlern und Pull Requests stehen in [CONTRIBUTING.md](CONTRIBUTING.md). **Sitzungsdateien aus `data/`, private Einladungscodes und Bilder gehören nie in ein öffentliches Issue oder einen Commit.**
 
-Collabsprite steht unter der [MIT-Lizenz](LICENSE). Die mit dem Installer ausgelieferte `ws`-Bibliothek steht ebenfalls unter MIT; die unveränderte Node.js-Laufzeit enthält ihre vollständigen Lizenzhinweise in `runtime/LICENSE`. Dieses Community-Projekt ist nicht offiziell mit Aseprite oder Radmin VPN verbunden.
+Collabsprite steht unter der [MIT-Lizenz](LICENSE). Die mit dem Installer ausgelieferte `ws`-Bibliothek steht ebenfalls unter MIT; die unveränderte Node.js-Laufzeit enthält ihre vollständigen Lizenzhinweise in `runtime/LICENSE`. Die Ideenwand-Schrift Atkinson Hyperlegible steht unter der [SIL Open Font License](extension/notes-font-OFL.txt). Dieses Community-Projekt ist nicht offiziell mit Aseprite oder Radmin VPN verbunden.
 
 ## Logo
 

@@ -2,6 +2,7 @@
 // It never applies a whole-image snapshot over another participant's work.
 import { randomBytes } from 'node:crypto';
 import { Notes, validateNotes } from './notes.mjs';
+import { mergeDocument, documentState, documentEqual, DocumentConflict, changedPaths } from './document.mjs';
 const newId = () => randomBytes(16).toString('hex');
 export const LIMITS = { side: 1024, layers: 32, frames: 120, pixels: 4_194_304, changes: 1_048_576, history: 256, historyPixels: 500_000, recovery: 20, recoveryPixels: 4_194_304 };
 // Expected user-operation failures are nonfatal; malformed protocol data is not.
@@ -78,10 +79,25 @@ export function validateSnapshot(input) {
     if (layers[layer - 1].group || seen.has(`${layer}:${frame}`)) throw new Error('Doppeltes oder ungueltiges Cel');
     seen.add(`${layer}:${frame}`);
     validateRuns(cel.runs, width * height);
-    return { layer, frame, runs: [...cel.runs], opacity: integer(cel.opacity ?? 255, 0, 255, 'Cel-Deckkraft'), z: integer(cel.z ?? 0, -32768, 32767, 'Cel-Z') };
+    const link = cel.link || null;
+    if (link !== null && !frameIds.includes(link)) throw new Error('Ungültige Cel-Verknüpfung');
+    return { layer, frame, runs: [...cel.runs], opacity: integer(cel.opacity ?? 255, 0, 255, 'Cel-Deckkraft'), z: integer(cel.z ?? 0, -32768, 32767, 'Cel-Z'), ...(link ? { link } : {}) };
   });
   const palette = Array.isArray(input.palette) ? input.palette.slice(0, 256).map(v => integer(v, 0, 0xffffffff, 'Palettenfarbe')) : [];
-  return { format: 1, name: String(input.name || 'Gemeinsam').slice(0, 100), width, height, layers, frames, frameIds, cels, palette, notes: validateNotes(input.notes) };
+  const links = new Map();
+  for (const c of cels) if (c.link) {
+    const key = `${c.layer}:${c.link}`, first = links.get(key);
+    if (first && !documentEqual(first.runs, c.runs)) throw new Error('Verknüpfte Cels müssen dieselben Pixel haben');
+    if (first && first.opacity !== c.opacity) throw new Error('Verknüpfte Cels müssen dieselbe Deckkraft haben');
+    links.set(key, c);
+  }
+  const tags = input.tags ?? [];
+  if (!Array.isArray(tags) || tags.length > 256) throw new Error('Zu viele Animationstags');
+  const normalizedTags = tags.map(t => ({ id: identity(t.id), name: String(t.name || '').slice(0,100),
+    from: integer(t.from,1,frames.length,'Tag-Anfang'), to: integer(t.to,t.from,frames.length,'Tag-Ende'),
+    direction: integer(t.direction ?? 0,0,3,'Tag-Richtung'), repeats: integer(t.repeats ?? 0,0,65535,'Tag-Wiederholungen'),
+    color: integer(t.color ?? 0,0,0xffffffff,'Tag-Farbe') })).sort((a,b)=>a.id.localeCompare(b.id));
+  return { format: 1, name: String(input.name || 'Gemeinsam').slice(0, 100), width, height, layers, frames, frameIds, cels, palette, tags: normalizedTags, notes: validateNotes(input.notes) };
 }
 export class Room {
   constructor(snapshot, options = {}) {
@@ -95,6 +111,7 @@ export class Room {
     this.historyPixels = 0;
     this.revision = 0;
     this.structure = 0;
+    this.mutations=[];this.mutationClock=0;
     this.historyLimit = options.historyLimit ?? LIMITS.history;
     this.pixelLimit = options.pixelLimit ?? LIMITS.historyPixels;
     for (let l = 1; l <= this.meta.layers.length; l++) {
@@ -103,6 +120,7 @@ export class Room {
     for (const cel of this.meta.cels) {
       const cell = this.cells.get(`${cel.layer}:${cel.frame}`);
       cell.opacity = cel.opacity; cell.z = cel.z;
+      cell.link = cel.link;
       for (let i = 0; i < cel.runs.length; i += 3) cell.pixels.fill(cel.runs[i + 2], cel.runs[i], cel.runs[i] + cel.runs[i + 1]);
       cell.base.set(cell.pixels);
     }
@@ -121,7 +139,7 @@ export class Room {
     for (const id of this.users.keys()) if (!retained.has(id)) this.users.delete(id);
   }
   snapshot() {
-    return { ...structuredClone(this.meta), notes: this.notes.snapshot(), cels: [...this.cells.values()].sort((a,b) => a.layer-b.layer || a.frame-b.frame).map(c => ({ layer: c.layer, frame: c.frame, opacity: c.opacity, z: c.z, runs: encodeRuns(c.pixels, true) })) };
+    return { ...structuredClone(this.meta), notes: this.notes.snapshot(), cels: [...this.cells.values()].sort((a,b) => a.layer-b.layer || a.frame-b.frame).map(c => ({ layer: c.layer, frame: c.frame, opacity: c.opacity, z: c.z, ...(c.link ? { link: c.link } : {}), runs: encodeRuns(c.pixels, true) })) };
   }
   changesToPatches(touched) {
     const patches = [];
@@ -169,6 +187,20 @@ export class Room {
     if (amount > LIMITS.changes) throw new Error('Aktion zu gross (maximal 1 Million geaenderte Pixel)');
     const op = { author, seq, active: true,
       patches: patches.map(({ layer, frame, runs }) => ({ layer, frame, runs: [...runs] })), amount };
+    const expanded = new Map();
+    for (const p of op.patches) {
+      const source = this.cells.get(`${p.layer}:${p.frame}`);
+      const targets = source.link ? [...this.cells.values()].filter(c => c.layer === source.layer && c.link === source.link) : [source];
+      for (const target of targets) {
+        const key = `${target.layer}:${target.frame}`, previous = expanded.get(key);
+        if (previous && !documentEqual(previous.runs, p.runs)) throw new Error('Widersprüchliche verknüpfte Pixeländerungen');
+        expanded.set(key, { layer: target.layer, frame: target.frame, runs: p.runs });
+      }
+    }
+    op.patches = [...expanded.values()];
+    op.amount = op.patches.reduce((sum,p) => sum + validateRuns(p.runs,this.size),0);
+    if (op.amount > LIMITS.pixels) throw new Error('Zu viele verknüpfte Pixel');
+    op.refs = op.patches.map(p => this.cells.get(`${p.layer}:${p.frame}`));
     const touched = new Map();
     for (const patch of op.patches) {
       const key = `${patch.layer}:${patch.frame}`, cell = this.cells.get(key), indices = new Set();
@@ -183,18 +215,36 @@ export class Room {
       touched.set(key, indices);
     }
     user.seq = seq; user.undo.push(op); user.redo = [];
-    this.operations.push(op); this.historyPixels += amount;
+    this.markMutation(author,op.patches.map(p=>`/cells/${this.meta.layers[p.layer-1].id}:${this.meta.frameIds[p.frame-1]}/runs`));
+    this.operations.push(op); this.historyPixels += op.amount;
     this.compact();
     return { type: 'patch', author, seq, revision: ++this.revision, patches: this.changesToPatches(touched) };
   }
   undoRedo(author, redo = false) {
     const user = this.user(author), from = redo ? user.redo : user.undo, to = redo ? user.undo : user.redo;
-    const op = from.pop();
+    const op = from.at(-1);
     if (!op) return null;
+    if (op.document) {
+      const overlap=(a,b)=>a==='*'||b==='*'||a===b||a.startsWith(b+'/')||b.startsWith(a+'/');
+      if ((this.mutations[0]?.clock || 0)>op.clock+1 || this.mutations.some(m=>m.clock>op.clock && m.author!==author && m.paths.some(p=>op.paths.some(q=>overlap(p,q)))))
+        throw new OperationRejected('Eigenes Struktur-Undo betrifft neuere Änderungen einer anderen Person und wurde zum Schutz dieser Arbeit nicht ausgeführt.');
+      const before = redo ? op.before : op.after, after = redo ? op.after : op.before;
+      let result;
+      try { result = validateSnapshot(mergeDocument(before, after, this.snapshot())); }
+      catch (err) { if (err instanceof DocumentConflict) throw new OperationRejected('Eigenes Struktur-Undo würde neuere Beiträge verändern. Bitte diese Änderung zuerst gemeinsam klären.'); throw err; }
+      this.installDocument(result, redo ? op.afterCells : op.beforeCells);
+      op.clock=this.markMutation(author,op.paths);
+      from.pop();to.push(op);op.active=redo;
+      return { type:'document',author,action:redo?'redo':'undo',snapshot:this.snapshot(),structure:++this.structure,revision:++this.revision };
+    }
+    if (op.refs?.some(c => this.cells.get(`${c.layer}:${c.frame}`) !== c))
+      throw new OperationRejected('Diese ältere Pixelaktion gehört zu einer inzwischen umgebauten Ebene/Arbeitsfläche. Zuerst die Strukturänderung rückgängig machen.');
+    from.pop();
     op.active = redo; to.push(op);
+    this.markMutation(author,op.refs.map(c=>`/cells/${this.meta.layers[c.layer-1].id}:${this.meta.frameIds[c.frame-1]}/runs`));
     const touched = new Map();
-    for (const patch of op.patches) {
-      const key = `${patch.layer}:${patch.frame}`, cell = this.cells.get(key), indices = new Set();
+    for (const [p,patch] of op.patches.entries()) {
+      const cell = op.refs?.[p] || this.cells.get(`${patch.layer}:${patch.frame}`), key = `${cell.layer}:${cell.frame}`, indices = new Set();
       for (let r = 0; r < patch.runs.length; r += 3) {
         for (let i = patch.runs[r]; i < patch.runs[r] + patch.runs[r + 1]; i++) {
           const visible = cell.stacks.get(i)?.findLast(node => node.op.active)?.value ?? cell.base[i];
@@ -206,10 +256,10 @@ export class Room {
     return { type: 'patch', author, action: redo ? 'redo' : 'undo', revision: ++this.revision, patches: this.changesToPatches(touched) };
   }
   compact() {
-    while (this.operations.length > 1 && (this.operations.length > this.historyLimit || this.historyPixels > this.pixelLimit)) {
+    while (this.operations.length > 1 && (this.operations.length > this.historyLimit || this.historyPixels > this.pixelLimit || this.operations.reduce((sum,op)=>sum+(op.bytes||0),0)>64*1024*1024)) {
       const op = this.operations.shift();
-      for (const patch of op.patches) {
-        const cell = this.cells.get(`${patch.layer}:${patch.frame}`);
+      for (const [p,patch] of (op.patches || []).entries()) {
+        const cell = op.refs?.[p] || this.cells.get(`${patch.layer}:${patch.frame}`);
         for (let r = 0; r < patch.runs.length; r += 3) for (let i = patch.runs[r]; i < patch.runs[r] + patch.runs[r + 1]; i++) {
           if (op.active) cell.base[i] = patch.runs[r + 2];
           const stack = cell.stacks.get(i);
@@ -219,8 +269,50 @@ export class Room {
       }
       const user = this.user(op.author);
       user.undo = user.undo.filter(item => item !== op); user.redo = user.redo.filter(item => item !== op);
-      this.historyPixels -= op.amount;
+      this.historyPixels -= op.amount || 0;
     }
+  }
+  cellIdentities() {
+    return new Map([...this.cells.values()].map(c => [`${this.meta.layers[c.layer-1].id}:${this.meta.frameIds[c.frame-1]}`, c]));
+  }
+  markMutation(author,paths) {
+    this.mutations.push({clock:++this.mutationClock,author,paths});
+    if(this.mutations.length>2048) this.mutations.shift();
+    return this.mutationClock;
+  }
+  installDocument(snapshot, preferred = new Map()) {
+    // Keep pixel stacks for surviving, unmodified cells across reordering.
+    const existing=this.cellIdentities(), fresh=new Room(snapshot);
+    for (const [key,cell] of fresh.cells) {
+      const id=`${snapshot.layers[cell.layer-1].id}:${snapshot.frameIds[cell.frame-1]}`;
+      const candidates=[preferred.get(id),existing.get(id)];
+      for (const old of candidates) if (old && old.pixels.length===cell.pixels.length &&
+        (preferred.get(id)===old || (this.meta.width===snapshot.width && this.meta.height===snapshot.height)) &&
+        old.link===cell.link && documentEqual(old.pixels,cell.pixels)) {
+        old.layer=cell.layer;old.frame=cell.frame;old.opacity=cell.opacity;old.z=cell.z;
+        fresh.cells.set(key,old);break;
+      }
+    }
+    this.meta=fresh.meta;this.cells=fresh.cells;this.size=fresh.size;
+  }
+  document(author, before, after, requestId) {
+    before=validateSnapshot(before);after=validateSnapshot(after);
+    const current=this.snapshot();
+    let result;
+    try { result=validateSnapshot(mergeDocument(before,after,current)); }
+    catch(err) { if (err instanceof DocumentConflict) throw new OperationRejected(err.message);throw err; }
+    if (documentEqual(documentState(current),documentState(result)))
+      return {type:'documentAck',author,requestId,snapshot:current,structure:this.structure,revision:this.revision,confirmedSeq:this.user(author).seq};
+    const op={document:true,author,active:true,before:current,beforeCells:this.cellIdentities(),amount:0};
+    this.installDocument(result);
+    this.hasDocumentTransactions=true;
+    op.after=this.snapshot();op.afterCells=this.cellIdentities();
+    op.paths=current.width!==result.width || current.height!==result.height ? ['*'] : changedPaths(documentState(current),documentState(result));
+    op.clock=this.markMutation(author,op.paths);
+    op.bytes=Buffer.byteLength(JSON.stringify([op.before,op.after]))+this.size*8*(op.beforeCells.size+op.afterCells.size);
+    const user=this.user(author);user.undo.push(op);user.redo=[];
+    this.operations.push(op);this.compact();
+    return {type:'document',author,requestId,snapshot:op.after,structure:++this.structure,revision:++this.revision,confirmedSeq:user.seq};
   }
   append(kind, name, source) {
     const raster = this.meta.layers.filter(l => !l.group).length;
@@ -273,6 +365,8 @@ export class Room {
     this.cells = cells;
     const retained = [];
     for (const op of this.operations) {
+      if (op.document) { retained.push(op);continue; }
+      if (op.refs) op.refs=op.refs.filter((c,i)=>layerMap[op.patches[i].layer] && frameMap[op.patches[i].frame]);
       op.patches = op.patches.flatMap(p => {
         const layer = layerMap[p.layer], frame = frameMap[p.frame];
         return layer && frame ? [{ ...p, layer, frame }] : [];

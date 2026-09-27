@@ -1,5 +1,7 @@
 # Technische Hinweise / Technical notes
 
+Aktueller öffentlicher Stand: **0.10.0 Beta, Protokoll 7, Notizformat 2**. Die nach Versionsnummern gegliederten älteren Abschnitte dokumentieren die Entwicklung und sind keine aktuelle Funktionsliste. Aktuelle Bedienung: [Zeichnen](cooperative-editing.md) und [Ideenwand](shared-notes.md).
+
 ## Architektur
 
 - Beide Seiten installieren dieselbe Aseprite-Erweiterung (`extension/`). Nur der Host startet `server.mjs` mit der gebündelten Node.js-Laufzeit (Windows x64, 24.21.0). Eine globale Node-Installation wird im Release nicht benötigt.
@@ -17,6 +19,49 @@ Der Build enthält zuerst das Collabsprite-`package.json`: Aseprite 1.3.18.6 wer
 Die Diagnose ist Teil der regulären Beta. Dateizugriffe finden nicht im WebSocket-Empfang oder Paint-Callback der Diagnoseansicht statt. Der Haupttimer und Client schützen sich gegen Wiedereintritt durch Aseprites modale Freigabedialoge. `test/callbacks.lua` modelliert einen solchen verschachtelten Callback, verweigerte Dateifreigabe und einen dauerhaft wartenden Worker; der reale Fehler auf dem Freund-PC ist damit noch nicht abschließend erklärt.
 
 ## Synchronisationsmodell
+
+### Kooperative Strukturtransaktionen (entwickelt in 0.9.0, veröffentlicht mit 0.10.0)
+
+`document.mjs` bildet Snapshots auf stabile Ebenen-/Frame-/Tag-Kennungen ab
+und führt vorher/nachher/aktueller Serverstand feldweise zusammen. Unveränderte
+Felder stammen vom Server. Pixeländerungen an anderen Cels und Metadaten an
+anderen Feldern bleiben erhalten. Canvas-Koordinatenwechsel verlangen einen
+unveränderten Ausgangsstand; alle Grenzen werden vor der Mutation validiert.
+Notizen sind ausdrücklich außerhalb dieses Bildabgleichs.
+
+`document` transportiert abgeschlossene native Struktur-/Metadatenänderungen.
+Die Antwort enthält einen autoritativen Snapshot; vorangehende Broadcasts
+werden während einer eigenen ausstehenden Strukturaktion darin zusammengefasst.
+Konflikte liefern `documentRejected`, keine Fehlerschleife: der Client behält
+einen separat geschützten Entwurf-Tab und gleicht die Sitzung ab. Spätes Zeichnen
+während der Bestätigung wird ebenfalls vor einem Überschreiben gesichert.
+Netzausfall während einer unbestätigten Strukturtransaktion stoppt vorsichtig;
+es gibt noch keine idempotente Wiederaufnahme dieser Transaktionen.
+
+Pixel-Stacks überleben unveränderte Cels trotz Umordnung. Transformierte oder
+entfernte Cels behalten ihre alten Stack-Objekte im begrenzten Strukturverlauf.
+Eigenes Struktur-Undo ist eine geprüfte inverse Änderung, keine globale
+Snapshot-Rücksetzung. Ein begrenztes Mutationsjournal verhindert auch fremde
+ABA-Überschreibungen. Unabhängige fremde Beiträge bleiben bestehen; destruktive
+Konflikte und ein zu altes Prüffenster werden abgewiesen. Struktur-Snapshots
+haben zusätzlich ein konservatives 64-MiB-Verlaufsbudget (die jüngste Aktion
+bleibt erhalten); bestehende Aktions-/Pixelbudgets gelten weiter.
+
+`structure.lua` verfolgt echte native Cel-Objekte für die Frame-Zuordnung,
+weil Aseprites Frame-Wrapper auch nach Einfügen auf derselben Nummer stehen.
+Nach einer abgeschlossenen Löschung des letzten Cels eines Frames hält ein
+transparenter 1-Pixel-Cel die native Kennung stabil; keine zusätzliche Ebene,
+kein Scan während eines gehaltenen Strichs und keine Änderung am Quellbild.
+Tags werden über stabile IDs, nicht native Sortierpositionen identifiziert.
+Echte `LinkCels`-Verknüpfungen werden rekonstruiert; der Server verteilt Striche
+und Undo auf deren Mitglieder. Unterschiedlich positionierte verknüpfte Cels
+sind noch nicht unterstützt und werden explizit zurückgewiesen.
+Der native Test bestätigt gemeinsam geltende Cel-Deckkraft bei Links, aber
+individuelle Z-Offsets. Der Paketvalidator verwirft widersprüchliche Deckkraft.
+
+[Bedienung und aktuelle Grenzen](cooperative-editing.md). Die folgenden
+Abschnitte bleiben als Historie erhalten; ihre Einschränkungen zu Gruppen,
+Reihenfolge, Tags, Links und Struktur-Undo sind mit 0.9.0 teilweise überholt.
 
 ### 0.8.0 / Protokoll 5: gemeinsame Notizen
 
@@ -151,3 +196,9 @@ Maximalwerte: 8 Teilnehmende; 1024×1024 Bildpunkte; 32 Ebenen inklusive Gruppen
 `npm ci` installiert die mitgelieferte `ws`-Abhängigkeit; `npm test` prüft Server, Protokoll und mehrere WebSocket-Clients. `./build.ps1` erstellt `../output/Collabsprite.aseprite-extension`. `test/bootstrap.ps1` prüft den Hintergrundstarter auf einem isolierten lokalen Testport. Native Aseprite-Tests liegen unter `test/*.lua` und benötigen eine lokale Aseprite-Installation.
 
 Bislang bestätigt: früherer Ein-PC-Testaufbau mit Sitzungserstellung im sichtbaren Aseprite 1.3.18.6 und zwei lokalen Aseprite-Instanzen mit gegenseitigen Pixeln und eigenem Undo/Redo; außerdem Node-Protokolltests. In 0.5.0 kam ein automatisierter Verbindungstest über die echte LAN-Adresse dieses Rechners hinzu. Für 0.6.0 wurden automatisierte Tests und ein nativer Aseprite-Test mit zwei Verbindungen für einfaches und mehrfaches Löschen, persönlichen Pixel-Verlauf und Metadaten bestanden. Das beweist noch keine Zusammenarbeit über zwei physische PCs. Noch offen: durchgehender Zwei-PC-Test im direkten LAN und über Radmin VPN, VPN-Sitzungssuche, UAC-/Firewall-Ablauf sowie ein nativer Test mit lange gehaltenem Mausstrich.
+
+## 0.10.0 notes replacement (released beta)
+
+Protocol 7 / notes format 2: ordered single-child stacks, typed text/list/image elements, bounded raw RGBA image embedding. Format-1 branches migrate depth-first without deleting text or changing the source file until save. Legacy title/status fields remain storage-only for lossless migration; old UI actions are removed. Reference dimensions 1–512, exact lowercase hex RGBA length, no paths or URLs, 8 MiB total board including trash, 9 MiB inbound note envelope, 16 MiB per-author history. UI decodes images only when the board changes and checks saved-property text before reparsing offline. Stack moves use expected parent revisions on the selected tail and destination, plus the server's one-child/cycle invariant. New note data is deliberately excluded from pixel/document undo, as before.
+
+The custom canvas contains no persistent toolbar/search. Proportional type is an embedded OFL bitmap atlas, decoded without filesystem permission dialogs in the paint callback. Unsupported glyphs display a replacement while preserving source text. Reference selection uses Aseprite's file chooser and decoder; first frame only, aspect ratio preserved. Enter creates newlines, Ctrl+Enter commits. The old card hierarchy is not still exposed in a hidden alternate UI.
