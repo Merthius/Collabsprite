@@ -1,6 +1,10 @@
 -- RGBA cel transport: compact runs on the wire, immutable byte strings locally.
 local M = {}
 function M.key(layer, frame) return string.format('%d:%d', layer, frame) end
+local function integer(value,lo,hi)
+  assert(type(value)=='number' and value==math.floor(value) and value>=lo and value<=hi,'Ungültige Bilddaten')
+  return value
+end
 function M.runs(bytes, before)
   local runs, start, count, value = {}, nil, 0, nil
   local function flush()
@@ -22,8 +26,10 @@ function M.runs(bytes, before)
   return runs
 end
 function M.applyRuns(bytes, runs)
+  assert(type(runs)=='table' and #runs%3==0 and #runs<=#bytes/4*3,'Ungültige Pixelbereiche')
   local parts, cursor = {}, 1
   for i=1,#runs,3 do
+    integer(runs[i],0,#bytes/4-1);integer(runs[i+1],1,#bytes/4);integer(runs[i+2],0,0xffffffff)
     local pos, count, value = runs[i]*4+1, runs[i+1], runs[i+2]
     assert(pos >= cursor and count > 0 and pos+count*4 <= #bytes+1, 'Ungueltige Pixelbereiche')
     parts[#parts+1] = bytes:sub(cursor,pos-1)
@@ -116,7 +122,49 @@ function M.capture(sprite)
   if pal then for i=0,math.min(#pal,256)-1 do s.palette[#s.palette+1]=pal:getColor(i).rgbaPixel end end
   return s
 end
+function M.validate(s)
+  assert(type(s)=='table' and s.format==1,'Unbekanntes Bildformat')
+  integer(s.width,1,1024);integer(s.height,1,1024)
+  assert(type(s.name)=='string' and #s.name<=400,'Ungültiger Bildname')
+  assert(type(s.layers)=='table' and #s.layers>=1 and #s.layers<=32,'Ungültige Ebenenzahl')
+  assert(type(s.frames)=='table' and #s.frames>=1 and #s.frames<=120,'Ungültige Framezahl')
+  local raster,ancestors=0,{0}
+  local ids={}
+  local function identity(id)
+    assert(type(id)=='string' and #id==32 and id:match('^[a-f0-9]+$') and not ids[id],'Ungültige Strukturkennung')
+    ids[id]=true
+  end
+  if s.frameIds then
+    assert(#s.frameIds==#s.frames,'Ungültige Frame-Kennungen')
+    for _,id in ipairs(s.frameIds) do identity(id) end
+  end
+  for i,layer in ipairs(s.layers) do
+    if layer.id then identity(layer.id) end
+    assert(type(layer)=='table' and type(layer.name)=='string' and #layer.name<=400,'Ungültige Ebene')
+    local parent=integer(layer.parent,0,i-1)
+    while #ancestors>0 and ancestors[#ancestors]~=parent do table.remove(ancestors) end
+    assert(#ancestors>0,'Ungültige Ebenengruppen')
+    if layer.group then ancestors[#ancestors+1]=i else raster=raster+1 end
+    integer(layer.opacity,0,255);integer(layer.blend,0,31)
+  end
+  assert(raster>0 and raster*#s.frames*s.width*s.height<=4194304,'Zu viele Cel-Pixel')
+  for _,ms in ipairs(s.frames) do integer(ms,1,65535) end
+  assert(type(s.palette)=='table' and #s.palette<=256,'Ungültige Palette')
+  for _,color in ipairs(s.palette) do integer(color,0,0xffffffff) end
+  assert(type(s.cels)=='table' and #s.cels<=raster*#s.frames,'Ungültige Cels')
+  local seen={}
+  for _,cel in ipairs(s.cels) do
+    integer(cel.layer,1,#s.layers);integer(cel.frame,1,#s.frames)
+    local key=M.key(cel.layer,cel.frame)
+    assert(not s.layers[cel.layer].group and not seen[key],'Doppeltes oder ungültiges Cel')
+    seen[key]=true
+    integer(cel.opacity or 255,0,255);integer(cel.z or 0,-32768,32767)
+  end
+end
 function M.decode(s)
+  -- Validate dimensions/structure BEFORE allocating any pixel buffers or
+  -- native sprites: a malformed host response must not exhaust Aseprite RAM.
+  M.validate(s)
   local cells,blank={},string.rep('\0',s.width*s.height*4)
   for l,layer in ipairs(s.layers) do if not layer.group then
     for f=1,#s.frames do cells[M.key(l,f)]={layer=l,frame=f,bytes=blank,opacity=255,z=0} end
@@ -135,6 +183,35 @@ function M.writeCel(sprite,layer,frame,bytes,opacity,z)
   else cel=sprite:newCel(layer,frame,im,Point(0,0)) end
   if opacity then cel.opacity=opacity end
   if z then cel.zIndex=z end
+end
+-- Caller owns the transaction and applying guard. Keep the same Sprite so
+-- guest restrictions, the open tab and event subscriptions remain attached.
+function M.replace(sprite,s,cells)
+  M.validate(s)
+  assert(sprite.width==s.width and sprite.height==s.height,'Canvas-Größe stimmt nicht')
+  local old={}
+  for _,layer in ipairs(sprite.layers) do old[#old+1]=layer end
+  while #sprite.frames>#s.frames do sprite:deleteFrame(#sprite.frames) end
+  while #sprite.frames<#s.frames do sprite:newEmptyFrame(#sprite.frames+1) end
+  for f,ms in ipairs(s.frames) do sprite.frames[f].duration=ms/1000 end
+  local mapping={}
+  for i,meta in ipairs(s.layers) do
+    local layer=meta.group and sprite:newGroup() or sprite:newLayer()
+    layer.parent=meta.parent>0 and mapping[meta.parent] or sprite
+    layer.stackIndex=#(meta.parent>0 and mapping[meta.parent].layers or sprite.layers)
+    layer.name=meta.name;layer.opacity=meta.opacity;layer.blendMode=meta.blend;layer.isVisible=meta.visible
+    layer.isEditable=meta.editable~=false
+    if not meta.group then layer.isContinuous=meta.continuous==true end
+    mapping[i]=layer
+  end
+  for _,layer in ipairs(old) do sprite:deleteLayer(layer) end
+  for _,c in pairs(cells) do M.writeCel(sprite,mapping[c.layer],c.frame,c.bytes,c.opacity,c.z) end
+  if #s.palette>0 then
+    local pal=Palette(#s.palette)
+    for i,v in ipairs(s.palette) do pal:setColor(i-1,Color{r=v&255,g=(v>>8)&255,b=(v>>16)&255,a=(v>>24)&255}) end
+    sprite:setPalette(pal)
+  end
+  return mapping
 end
 function M.create(s,cells)
   cells=cells or M.decode(s)

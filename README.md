@@ -2,15 +2,17 @@
 
 # Collabsprite
 
-[![Version](https://img.shields.io/badge/version-0.6.5%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.5) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/badge/version-0.7.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.7.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
 
 **Gemeinsam Pixel-Art und Animationen direkt in Aseprite bearbeiten.** Eine Person hostet, die anderen treten bei. Alle nutzen dieselbe Erweiterung und dieselben Rasterebenen und Frames. `Strg+Z`/`Strg+Y` wirken auf die eigenen synchronisierten Pixelaktionen, ohne neuere fremde Pixel zu entfernen.
 
-**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.6.5/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.7.0/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
 
-Version **0.6.5 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Die Paketierung ist korrigiert: Aseprite erkennt jetzt Collabsprite statt versehentlich die enthaltene Bibliothek „ws“. Updates von Entwicklungsständen funktionieren ebenfalls.
+Version **0.7.0 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Neu: automatische Wiederverbindung mit eigenem Pixel-Verlauf, Wiederherstellung gelöschter Ebenen/Frames und weitere Schutzmaßnahmen für die Sitzung.
 
 Die **Diagnosekonsole ist dauerhaft enthalten**: **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren**. Das lokale Protokoll unter `%TEMP%\Collabsprite-debug.log` bleibt nach einem Neustart erhalten und ist auf 512 KiB begrenzt. Es enthält technische Ereignisse und Fehler, keine Bilddaten oder Einladungscodes. **Neues Protokoll** leert die Aufnahme; nur **vor** dem erneuten Auslösen eines Fehlers verwenden. Schutz gegen wiederholte Timer-Aufrufe während Freigabedialogen wurde ergänzt. Ob dies den gemeldeten „C stack overflow“ auf dem betroffenen Freund-PC behebt, bleibt dort zu prüfen.
+
+**Alle Teilnehmenden müssen auf 0.7.0 aktualisieren**: Das neue Protokoll 4 ist nicht mit 0.6.x kompatibel. Enthalten sind auch die bisherigen lokalen Verbesserungen: Beitrittssperre, sichtbare Sicherungsfehler, Überlastungsschutz und beständiges Gast-Zeichnen nach dem Verlassen. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
 
 ## Schnellstart
 
@@ -34,7 +36,7 @@ Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host
 
 ## Installation – auf jedem PC
 
-1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.5) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
+1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.7.0) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
 2. Öffne Aseprite → **Bearbeiten → Einstellungen → Erweiterungen → Erweiterung hinzufügen** und wähle die Datei. Ein Doppelklick auf die Datei kann ebenfalls funktionieren ([offizielle Aseprite-Anleitung](https://www.aseprite.org/docs/extensions/)).
 3. Starte Aseprite neu. Öffne **Ansicht → Collabsprite → Server erstellen / beitreten**.
 
@@ -43,8 +45,8 @@ Für Host und Gäste gilt exakt dieselbe Installationsdatei. Du kannst jederzeit
 ### Eine ältere Version aktualisieren
 
 1. Sitzungskopie speichern und die laufende Sitzung über **Trennen** beenden.
-2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.6.5** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
-3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Ansicht → Collabsprite → Info** muss **0.6.5** stehen.
+2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.7.0** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
+3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Ansicht → Collabsprite → Info** muss **0.7.0** stehen.
 
 **„Update“** im Collabsprite-Menü lädt das geprüfte Paket nach Downloads; danach wird es wie oben installiert. Es installiert sich nicht stillschweigend selbst. Bei sehr alten oder fehlerhaften Builds das Paket direkt von dieser Seite laden.
 
@@ -71,12 +73,18 @@ Der Einladungscode hat etwa die Form `192.168.1.10:8766,26.1.2.3:8766/RAUM/TOKEN
 
 ## Gemeinsam arbeiten und speichern
 
+Der Host speichert das gemeinsame Bild. Bei Gästen blockiert Collabsprite die normalen Speicher- und Exportbefehle für das Sitzungsbild, auch nach einem Verbindungsabbruch. Beim regulären **Trennen** wartet der Gast auf die Bestätigung seiner letzten Änderungen und schließt dann nur seine Sitzungsansicht. Bereits bestätigte Beiträge bleiben beim Host und im Server-Backup. Bei fehlender Bestätigung bleibt das Bild offen; ein Absturz oder hartes Beenden kann ungesendete Änderungen weiterhin verlieren.
+
+**Kein Kopierschutz:** Zum Bearbeiten empfängt Aseprite auf dem Gast-PC die Bilddaten. Screenshots, Zwischenablage, Skripte, Aseprites Wiederherstellungsdaten oder eine veränderte/deaktivierte Erweiterung lassen sich damit nicht zuverlässig verhindern. Nur vertrauenswürdige Personen einladen. Die Speicherregel ist eine Bedienungssperre, keine Sicherheitsgarantie; sie gilt nicht rückwirkend für ältere Clients.
+
 - Normale Aseprite-Werkzeuge wie Stift, Radierer, Füllen und Formen sowie **abgeschlossene** Auswahl-, Einfüge- und Verschiebeaktionen werden geteilt. Während eines gehaltenen Pinselstrichs oder einer schwebenden Auswahl erscheint noch keine Live-Vorschau beim Gegenüber.
 - Alle Teilnehmenden können über Aseprites normale Befehle Rasterebenen und Frames **am Ende** hinzufügen und vorhandene Ebenen kopieren. Einzelne und mehrere ausgewählte Ebenen/Frames können gelöscht werden; beim Löschen einer Gruppe verschwinden ihre Unterebenen. Ebenenname, Sichtbarkeit, Sperre, Deckkraft und Mischmodus sowie Frame-Dauer, Cel-Deckkraft/Z-Index und die erste Palette werden geteilt. Umordnen und manche komplexe Strukturänderungen bleiben gesperrt.
 - `Strg+Z`/`Strg+Y` schalten nur die **eigenen synchronisierten Pixelaktionen** um. Fremde spätere Beiträge bleiben erhalten; neue Ebenen und Frames gehören nicht zu diesem Pixel-Verlauf.
-- Speichere die Sitzungskopie über **Datei → Speichern unter** als `.aseprite`, damit Ebenen und Frames erhalten bleiben. Der Host legt zusätzlich automatische Sitzungs-Backups lokal im `data`-Ordner an; sie ersetzen kein eigenes Speichern. Ältere Sicherungen blockieren keinen neuen Hoststart; Collabsprite lädt die acht zuletzt geänderten Sitzungen und lässt ältere Dateien unangetastet.
-- Wenn der Host das Sitzungsbild oder Aseprite schließt, wird der Hintergrundserver nach dem Backup beendet und Port `8766` wieder frei. Die Gäste werden getrennt und sollten ihre Sitzungskopie speichern.
-- **Trennen** beendet die Verbindung. Nach einem Netzabbruch gibt es noch keine automatische Wiederverbindung oder Zusammenführung von Offline-Änderungen.
+- Der **Host** speichert die Sitzungskopie über **Datei → Speichern unter** als `.aseprite`, damit Ebenen und Frames erhalten bleiben. Er legt zusätzlich automatische Sitzungs-Backups lokal im `data`-Ordner an; sie ersetzen kein eigenes Speichern. Ältere Sicherungen blockieren keinen neuen Hoststart; Collabsprite lädt die acht zuletzt geänderten Sitzungen und lässt ältere Dateien unangetastet.
+- Wenn der Host das Sitzungsbild oder Aseprite schließt, wird der Hintergrundserver nach dem Backup beendet und Port `8766` wieder frei. Die Gäste werden getrennt; ihre bereits bestätigten Beiträge bleiben im gemeinsamen Host-Bild und dessen Backup.
+- **Letzte Löschung wiederherstellen** unter **Ansicht → Collabsprite** fügt gelöschte Ebenen/Frames zurück, ohne neuere Zeichnungen in den übrigen Cels zurückzusetzen. Für alle Teilnehmenden verfügbar; die zuletzt ausgeführte gemeinsame Löschung zuerst. Bis zu 20 Löschaktionen / insgesamt 4.194.304 gelöschte Cel-Pixel, nur solange der Server läuft. Wiederhergestellte Pixel bilden eine neue Basis; ihr früherer Pixel-Undo wird nicht mit wiederhergestellt.
+- Nach einem **kurzen Netzabbruch** verbindet Collabsprite bis zu zwei Minuten lang automatisch neu: derselbe Tab, dieselbe Identität und der noch verfügbare eigene Pixel-Verlauf. Bestätigte Striche werden nicht doppelt angewendet; noch ausstehende werden über feste Ebenen-/Frame-Kennungen abgeglichen. Währenddessen pausiert die Bearbeitung. Wenn genau das Ziel eines unbestätigten Strichs gelöscht wurde oder das Bild trotz Pause lokal verändert wurde, bleibt die Ansicht offen und der Abgleich stoppt sicher. Kein allgemeines Offline-Merging.
+- **Trennen** beendet die Sitzungsteilnahme bewusst. Automatische Wiederaufnahme gilt nicht nach absichtlichem Verlassen, Aseprite-/Server-Neustart oder abgelaufener Frist. Nach einem harten Host-Absturz kann der Server noch bis zu zwei Minuten auf eine Wiederverbindung warten, bevor er beendet wird; beim regulären Schließen wird er sofort nach dem Backup beendet.
 
 ## So funktioniert es
 
@@ -86,7 +94,7 @@ Gast-PC A ── LAN oder Radmin VPN ──┐
 Gast-PC B ── LAN oder Radmin VPN ──┘
 ```
 
-Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **ohne eigene Ende-zu-Ende-Verschlüsselung**; nutzt deshalb nur ein vertrauenswürdiges LAN oder VPN. Ein privater Einladungscode schützt die Sitzung zusätzlich. Die Windows-Firewall erlaubt Port `8766` nur für den benötigten Node-Prozess, im **lokalen Subnetz** auf privaten/Domain-Netzen und für **Radmin-Adressen** (`26.0.0.0/8`).
+Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **ohne eigene Ende-zu-Ende-Verschlüsselung**; nutzt deshalb nur ein vertrauenswürdiges LAN oder VPN. **Offene Sitzungen verteilen ihre Einladung über die Netzwerksuche an erreichbare Teilnehmer dieses Netzes.** Der Code alleine macht eine offene Sitzung deshalb nicht privat gegenüber anderen Netzwerkteilnehmern. Der Host kann **„Beitritte erlauben“** ausschalten: Die Sitzung verschwindet aus der Suche, weitere Beitritte mit bekanntem Code werden ebenfalls abgelehnt. Bestehende Gäste können weiterarbeiten und innerhalb ihrer Frist wiederverbinden. Die Windows-Firewall erlaubt Port `8766` nur für den benötigten Node-Prozess, im **lokalen Subnetz** auf privaten/Domain-Netzen und für **Radmin-Adressen** (`26.0.0.0/8`). Keine Router-Portweiterleitung ins öffentliche Internet einrichten.
 
 ## Probleme und Grenzen
 
@@ -98,9 +106,9 @@ Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **o
 | **LAN-Gast erreicht den Host nicht** | Windows-Netzwerkprofil auf dem Host auf **Privat** prüfen; Host-Firewall und WLAN-Client-Isolation prüfen. |
 | **„C stack overflow“ beim Beitreten** | Aktualisiere Host und Gäste auf dieselbe Version. Nach dem Fehler **Diagnosekonsole → Protokoll kopieren**; Aseprite-Version und genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues) ergänzen. |
 | **Aseprite reagiert nicht** | Speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
-| **Verbindung weg** | Sitzungskopie speichern; Host/Netz prüfen und bewusst neu beitreten. Offline-Änderungen werden nicht automatisch gemischt. |
+| **Verbindung weg** | Bis zu zwei Minuten auf automatische Wiederverbindung warten und Netzwerk/Host prüfen. Bei Abbruch lokale Ansicht nicht voreilig schließen, Diagnose kopieren; Host speichert. Kein allgemeines Offline-Merging. |
 
-Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. **0.6.5 verwendet weiterhin Protokoll 3; 0.5.0-Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
+Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Tags, Slices, Farbprofile, verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. **0.7.0 verwendet Protokoll 4; frühere Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
 
 ## Entwickeln und beitragen
 

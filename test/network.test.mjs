@@ -4,7 +4,7 @@ import { WebSocket } from 'ws';
 import dgram from 'node:dgram';
 import { startServer } from '../server.mjs';
 import { allowedPeer, addresses, invite, replyAddress } from '../network.mjs';
-import { mkdtemp, rm, writeFile, utimes, readdir } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, utimes, readdir, rename, readFile } from 'node:fs/promises';
 import { tmpdir, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -28,7 +28,7 @@ async function connect(port,hello,address='127.0.0.1') {
     return new Promise((resolve,reject)=>{const p={type,resolve};p.timeout=setTimeout(()=>reject(Error('Timeout '+type)),4000);pending.push(p);});
   };
   await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
-  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:3,...hello});
+  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:4,...hello});
   return {ws,send,next};
 }
 async function waitFor(check,description) {
@@ -46,10 +46,152 @@ async function discover(port) {
       const timeout=setTimeout(()=>reject(Error('Timeout UDP discovery')),2000);
       socket.once('message',data=>{clearTimeout(timeout);resolve(JSON.parse(data.toString()));});
     });
-    socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V3'),port,'127.0.0.1');
+    socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V4'),port,'127.0.0.1');
     return await reply;
   } finally {socket.close();}
 }
+test('Authenticated reconnect retains identity, undo and pending sequence across a locked session',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});t.after(()=>service.close());
+  const host=await connect(service.port,{mode:'host',snapshot:snapshot()});const hw=await host.next('welcome');
+  const [,room,token]=hw.invite.split('/');const guest=await connect(service.port,{mode:'join',room,token});const gw=await guest.next('welcome');
+  const patch={layer:1,frame:1,layerId:gw.snapshot.layers[0].id,frameId:gw.snapshot.frameIds[0],runs:[0,1,17]};
+  guest.send({type:'paint',seq:1,structure:0,patches:[patch]});await host.next('patch');await guest.next('patch');
+  guest.ws.terminate();await once(guest.ws,'close');await waitFor(()=>service.rooms.get(room).clients.size===1,'guest loss');
+  host.send({type:'admission',open:false});await host.next('admission');
+  host.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[1,1,29]}]});await host.next('patch');
+  const forged=await connect(service.port,{mode:'resume',room,author:gw.author,resumeToken:token});
+  assert.match((await forged.next('error')).message,/Wiederverbindung/);
+  const resume={mode:'resume',room,author:gw.author,resumeToken:gw.resumeToken};
+  const back=await connect(service.port,resume);const bw=await back.next('welcome');
+  assert.equal(bw.author,gw.author);assert.equal(bw.confirmedSeq,1);assert.equal(bw.resumed,true);assert.equal((await back.next('history')).undo,1);
+  back.send({type:'paint',seq:1,structure:0,patches:[patch]});assert.equal((await back.next('ack')).seq,1);
+  assert.equal(service.rooms.get(room).core.revision,2);
+  back.send({type:'undo'});await back.next('patch');await host.next('patch');
+  assert.deepEqual([...service.rooms.get(room).core.cells.get('1:1').pixels].slice(0,2),[0,29]);
+  back.send({type:'leave'});await once(back.ws,'close');
+  const denied=await connect(service.port,resume);assert.match((await denied.next('error')).message,/Wiederverbindung/);
+});
+test('Unexpected host transport loss is leased, resumes once, and expires safely',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{},resumeMs:250});t.after(()=>service.close());
+  let shutdowns=0;service.server.on('collabsprite:last-host-left',()=>shutdowns++);
+  const host=await connect(service.port,{mode:'host',snapshot:snapshot()});const welcome=await host.next('welcome');
+  const resume={mode:'resume',room:welcome.room,author:welcome.author,resumeToken:welcome.resumeToken};
+  // Replace an apparently active (half-open) socket using its private secret.
+  const back=await connect(service.port,resume);const resumed=await back.next('welcome');
+  assert.equal(resumed.host,true);assert.equal(resumed.author,welcome.author);
+  await waitFor(()=>service.rooms.get(welcome.room).clients.size===1,'half-open replacement');
+  back.ws.terminate();await once(back.ws,'close');assert.equal(shutdowns,0);
+  await waitFor(()=>shutdowns===1,'lease expiry');
+  const denied=await connect(service.port,resume);assert.match((await denied.next('error')).message,/abgelaufen/);
+});
+test('Recovery is broadcast to all peers, and two stale clicks cannot restore two deletions',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});t.after(()=>service.close());
+  const s=snapshot();s.frames=[100,200,300];
+  const host=await connect(service.port,{mode:'host',snapshot:s});const hw=await host.next('welcome');
+  const [,room,token]=hw.invite.split('/');const guest=await connect(service.port,{mode:'join',room,token});await guest.next('welcome');
+  host.send({type:'delete',kind:'frame',index:3,structure:0});await host.next('delete');await guest.next('delete');
+  host.send({type:'delete',kind:'frame',index:2,structure:1});await host.next('delete');await guest.next('delete');
+  const id=service.rooms.get(room).core.recoveries.at(-1).id;
+  guest.send({type:'restore',recovery:id});const [a,b]=await Promise.all([host.next('restore'),guest.next('restore')]);
+  assert.deepEqual(a,b);assert.deepEqual(a.snapshot.frames,[100,200]);
+  host.send({type:'restore',recovery:id});assert.match((await host.next('rejected')).message,/geaendert/);
+  assert.equal(service.rooms.get(room).core.recoveries.length,1);
+});
+test('Host admission gate hides discovery, denies new guests and keeps existing peers editing',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
+  t.after(()=>service.close());
+  const host=await connect(service.port,{mode:'host',snapshot:snapshot()});
+  const welcome=await host.next('welcome');const [,room,token]=welcome.invite.split('/');
+  const guest=await connect(service.port,{mode:'join',room,token});await guest.next('welcome');
+  host.send({type:'admission',open:false});
+  assert.equal((await host.next('admission')).open,false);await guest.next('admission');
+  assert.equal((await discover(service.discoveryPort)).rooms.length,0);
+  const blocked=await connect(service.port,{mode:'join',room,token});
+  assert.match((await blocked.next('error')).message,/Beitritte gesperrt/);
+  guest.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[0,1,27]}]});
+  await Promise.all([host.next('patch'),guest.next('patch')]);
+  guest.send({type:'admission',open:true});assert.match((await guest.next('error')).message,/Nur der Host/);
+  assert.equal(service.rooms.get(room).acceptingGuests,false);
+  host.send({type:'admission',open:true});await host.next('admission');
+  const accepted=await connect(service.port,{mode:'join',room,token});
+  assert.equal((await accepted.next('welcome')).host,false);
+  assert.equal((await discover(service.discoveryPort)).rooms.length,1);
+  assert.equal(service.rooms.get(room).core.cells.get('1:1').pixels[0],27);
+});
+test('Backup failure is visible, retry recovers, concurrent shutdown keeps the final revision',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'collabsprite-backup-safety-'));
+  const dataDir=join(root,'data'), moved=join(root,'temporarily-unavailable');
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir,log:()=>{}});
+  t.after(async()=>{await service.close();await rm(root,{recursive:true,force:true});});
+  const host=await connect(service.port,{mode:'host',snapshot:snapshot()});
+  const welcome=await host.next('welcome');
+  await rename(dataDir,moved);await service.flush();
+  assert.equal((await host.next('backup')).state,'error');
+  assert.equal(service.rooms.get(welcome.room).dirty,true);
+  await rename(moved,dataDir);await service.flush();
+  assert.equal((await host.next('backup')).state,'saved');
+  host.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[0,1,9]}]});
+  await host.next('patch');
+  const room=service.rooms.get(welcome.room), inflight=service.flush();
+  assert.equal(room.saving,true,'Expected an in-flight disk write');
+  // Simulate another already accepted ordered edit before that write finishes.
+  room.core.paint(welcome.author,2,[{layer:1,frame:1,runs:[1,1,10]}],0);room.dirty=true;
+  const closing=service.close();assert.equal(service.close(),closing,'Shutdown is not idempotent');
+  await Promise.all([inflight,closing]);
+  const saved=JSON.parse(await readFile(join(dataDir,welcome.room+'.json'),'utf8'));
+  assert.deepEqual(saved.snapshot.cels[0].runs,[0,1,9,1,1,10]);
+});
+test('Invalid messages cannot mutate after rejection and do not break other peers',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
+  t.after(()=>service.close());
+  const host=await connect(service.port,{mode:'host',snapshot:snapshot()});
+  const welcome=await host.next('welcome');const [,room,token]=welcome.invite.split('/');
+  const bad=await connect(service.port,{mode:'join',room,token});await bad.next('welcome');
+  bad.send(null);
+  bad.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[0,1,99]}]});
+  assert.match((await bad.next('error')).message,/Ungueltige Nachricht/);
+  host.send({type:'ping',nonce:1});await host.next('pong');
+  assert.equal(service.rooms.get(room).core.revision,0);
+  const flood=await connect(service.port,{mode:'join',room,token});await flood.next('welcome');
+  for(let i=0;i<5000;i++) flood.send({type:'ping',nonce:i});
+  assert.match((await flood.next('error')).message,/Zu viele Nachrichten/);
+  const huge=await connect(service.port,{mode:'join',room,token});await huge.next('welcome');
+  huge.send({type:'ping',nonce:'x'.repeat(9000)});
+  assert.match((await huge.next('error')).message,/Steuernachricht zu gross/);
+  host.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[1,1,7]}]});
+  assert.equal((await host.next('patch')).revision,1);
+});
+test('Browser-origin connections are rejected before WebSocket upgrade',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
+  t.after(()=>service.close());
+  const ws=new WebSocket(`ws://127.0.0.1:${service.port}`,{origin:'https://untrusted.example'});
+  await new Promise((resolve,reject)=>{
+    ws.on('error',err=>{assert.match(err.message,/403/);resolve();});
+    ws.on('open',()=>{ws.close();reject(Error('Browser was allowed'));});
+  });
+  assert.equal(service.rooms.size,0);
+});
+test('Last-cel and stale structural commands are rejected without disconnecting collaborators',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
+  t.after(()=>service.close());
+  const host=await connect(service.port,{mode:'host',snapshot:snapshot()});
+  const welcome=await host.next('welcome');const [,room,token]=welcome.invite.split('/');
+  const guest=await connect(service.port,{mode:'join',room,token});await guest.next('welcome');
+  guest.send({type:'delete',kind:'frame',index:1,structure:0});
+  assert.match((await guest.next('rejected')).message,/letzte Frame/);
+  guest.send({type:'delete',kind:'layer',index:1,structure:0});
+  assert.match((await guest.next('rejected')).message,/letzte Rasterebene/);
+  host.send({type:'append',kind:'frame',structure:0});
+  await Promise.all([host.next('append'),guest.next('append')]);
+  guest.send({type:'append',kind:'layer',structure:0});
+  assert.match((await guest.next('rejected')).message,/erneut ausführen/);
+  assert.equal(service.rooms.get(room).core.structure,1);
+  guest.send({type:'append',kind:'layer',structure:1});
+  assert.equal((await host.next('append')).structure,2);await guest.next('append');
+  guest.send({type:'paint',seq:1,structure:2,patches:[{layer:2,frame:2,runs:[0,1,42]}]});
+  assert.equal((await host.next('patch')).revision,3);
+  assert.equal(guest.ws.readyState,WebSocket.OPEN);
+});
 test('Three real WebSocket clients converge; authorization and restore',async t=>{
   const dataDir=await mkdtemp(join(tmpdir(),'pixelkollab-test-'));
   let service=await startServer({port:0,dataDir,log:()=>{}});
@@ -85,13 +227,13 @@ test('Three real WebSocket clients converge; authorization and restore',async t=
   const resumed=await connect(service.port,{mode:'join',room:code,token});
   const recovered=await resumed.next('welcome');
   assert.deepEqual(recovered.snapshot,expected);assert.equal(recovered.restored,true);
-  assert.deepEqual(await resumed.next('history'),{type:'history',undo:0,redo:0});
+  assert.deepEqual(await resumed.next('history'),{type:'history',undo:0,redo:0,recoveryCount:0});
 });
 test('Local-only server advertises loopback and joins without VPN',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
   t.after(()=>service.close());
   assert.deepEqual(await (await fetch(`http://127.0.0.1:${service.port}/status`)).json(),
-    {app:'Collabsprite',protocol:3,localOnly:true,port:service.port});
+    {app:'Collabsprite',protocol:4,localOnly:true,port:service.port});
   const a=await connect(service.port,{mode:'host',name:'Local A',snapshot:snapshot()});
   const welcome=await a.next('welcome');
   assert.equal(welcome.localOnly,true);
@@ -160,13 +302,44 @@ test('Only the last host leaving requests managed server shutdown',async t=>{
   guest.ws.close();await once(guest.ws,'close');
   await waitFor(()=>service.rooms.get(room).clients.size===1,'guest disconnect');
   assert.equal(shutdowns,0,'A guest leaving must not stop the server');
-  host1.ws.close();await once(host1.ws,'close');
+  host1.send({type:'leave'});await once(host1.ws,'close');
   await waitFor(()=>service.rooms.get(room).clients.size===0,'first host disconnect');
   assert.equal(shutdowns,0,'A second active host keeps the server alive');
   const finalHostLeft=once(service.server,'collabsprite:last-host-left');
-  host2.ws.close();await once(host2.ws,'close');
+  host2.send({type:'leave'});await once(host2.ws,'close');
   await finalHostLeft;
   assert.equal(shutdowns,1,'The final host leaving stops a managed server');
+});
+
+test('Guest departure retains pixels, host-only undo and durable backup after restart',async t=>{
+  const dataDir=await mkdtemp(join(tmpdir(),'collabsprite-departure-'));
+  let service=await startServer({port:0,host:'127.0.0.1',dataDir,log:()=>{}});
+  t.after(async()=>{await service.close();await rm(dataDir,{recursive:true,force:true});});
+  const host=await connect(service.port,{mode:'host',name:'Host',snapshot:snapshot()});
+  const welcome=await host.next('welcome');
+  const [,room,token]=welcome.invite.split('/');
+  const guest=await connect(service.port,{mode:'join',name:'Gast',room,token});
+  const guestWelcome=await guest.next('welcome');
+  assert.equal(guestWelcome.host,false);
+  host.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[0,2,0xff112233]}]});
+  await Promise.all([host.next('patch'),guest.next('patch')]);
+  guest.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[1,2,0xffabcdef]}]});
+  // This is the client's ordered drain barrier, sent directly after paint.
+  guest.send({type:'ping',nonce:'leave:2'});
+  assert.equal((await guest.next('pong')).nonce,'leave:2');
+  await Promise.all([host.next('patch'),guest.next('patch')]);
+  guest.ws.close();await once(guest.ws,'close');
+  await waitFor(()=>service.rooms.get(room).clients.size===1,'guest departure');
+  assert.deepEqual([...service.rooms.get(room).core.cells.get('1:1').pixels].slice(0,3),
+    [0xff112233,0xffabcdef,0xffabcdef]);
+  host.send({type:'undo'});await host.next('patch');
+  assert.deepEqual([...service.rooms.get(room).core.cells.get('1:1').pixels].slice(0,3),
+    [0,0xffabcdef,0xffabcdef],'Host undo erased departed guest contribution');
+  const expected=service.rooms.get(room).core.snapshot();
+  await service.close();
+  service=await startServer({port:0,host:'127.0.0.1',dataDir,log:()=>{}});
+  const restored=await connect(service.port,{mode:'join',name:'Host',room,token});
+  assert.deepEqual((await restored.next('welcome')).snapshot,expected);
 });
 test('Peers receive layer/frame deletion, metadata and join presence',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});

@@ -2,7 +2,12 @@
 local root=assert(app.params.root,'root fehlt')
 local Client=dofile(root..'/extension/client.lua')
 local codec=dofile(root..'/extension/codec.lua')
-local a,b=Client.new(),Client.new()
+local rejections=0
+local function trace(event,detail)
+  if event=='websocket receive' and detail=='rejected' then rejections=rejections+1 end
+  print(event..': '..tostring(detail));io.stdout:flush()
+end
+local a,b=Client.new(nil,trace),Client.new(nil,trace)
 local source=Sprite(8,8,ColorMode.RGB)
 local before=app.events:on('beforecommand',function(ev) a:beforeCommand(ev);b:beforeCommand(ev) end)
 local stage,started,lastLoggedStage=0,os.time(),nil
@@ -30,13 +35,15 @@ a:host(source,'Host',tonumber(app.params.port) or 8766)
 timer=Timer{interval=0.04,ontick=function()
   local ok,err=pcall(function()
     a:tick();b:tick()
-    if a.closed or b.closed then error('Verbindung: '..a.status..' / '..b.status) end
+    if a.closed or (b.closed and stage<12) then error('Verbindung: '..a.status..' / '..b.status) end
     if os.time()-started>60 then error('Zeitlimit in Schritt '..stage) end
     if stage~=lastLoggedStage then lastLoggedStage=stage;log('STAGE '..stage) end
     if stage==0 and a.connected then
       local invite=a.invite:gsub('^[^/]+:(%d+)/','127.0.0.1:%1/',1)
       b:join(invite,'Gast');stage=1
     elseif stage==1 and b.connected then
+      a:send{type='admission',open=false};stage=1.5
+    elseif stage==1.5 and a.acceptingGuests==false and b.acceptingGuests==false then
       a:append('layer','Zweite');stage=2
     elseif stage==2 and #b.mapping==2 then
       app.sprite=b.sprite;app.layer=b.mapping[2]
@@ -83,10 +90,33 @@ timer=Timer{interval=0.04,ontick=function()
       a:append('frame');stage=10
     elseif stage==10 and #a.sprite.frames==3 and #b.sprite.frames==3 then
       app.sprite=b.sprite;app.range.frames={1,2}
-      assert(app.command.RemoveFrame(),'Mehrfach-RemoveFrame nicht verfuegbar')
+      -- A modal test dialog can collapse the native timeline range. Exercise
+      -- the same client operation explicitly for a deterministic live test.
+      b:deleteMany('frame',{1,2})
       stage=11
     elseif stage==11 and #a.sprite.frames==1 and #b.sprite.frames==1 then
-      finish('PASS native: Ebene/Frames loeschen, Verlauf, Metadaten.')
+      b.mapping[1].isVisible=true;b.mapping[1].isEditable=true
+      app.sprite=b.sprite
+      app.transaction('Test: letzter Gast-Pixel',function()
+        local cel=b.mapping[1]:cel(1)
+        local image=cel and cel.image:clone() or Image(8,8,ColorMode.RGB)
+        image:drawPixel(3,3,0xff7f3f1f)
+        if cel then cel.image=image else b.sprite:newCel(b.mapping[1],1,image,Point(0,0)) end
+      end)
+      -- Deliberately no capture/timer between the last stroke and Leave.
+      b:requestLeave(function() trace('leave','closing guest view');b.sprite:close();trace('leave','guest view closed') end)
+      trace('leave','request queued')
+      stage=12
+    elseif stage==12 and b.closed and pixel(a,1,1,27)==0xff7f3f1f then
+      app.sprite=a.sprite
+      a:action('undo') -- Host has no pixel actions; guest's pixel must remain.
+      stage=13
+    elseif stage==13 and #a.inbox==0 and a.ticks%10==0 then
+      assert(pixel(a,1,1,27)==0xff7f3f1f,'Gast-Pixel nach Verlassen/Host-Undo verloren')
+      a:delete('frame',1);stage=14
+    elseif stage==14 and rejections>0 then
+      assert(a.connected and #a.sprite.frames==1,'Abgelehnte Aktion beendet Sitzung')
+      finish('PASS native: Struktur, Verlauf, Metadaten, Gast-Trennen/Host-Undo, Beitrittssperre, letzte-Frame-Ablehnung.')
     end
   end)
   if not ok then finish('FAIL native stage '..stage..': '..tostring(err)) end

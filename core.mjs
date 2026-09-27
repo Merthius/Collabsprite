@@ -1,6 +1,10 @@
 // Ordered pixel contributions. Undo toggles only the requesting author's operation.
 // It never applies a whole-image snapshot over another participant's work.
-export const LIMITS = { side: 1024, layers: 32, frames: 120, pixels: 4_194_304, changes: 1_048_576, history: 256, historyPixels: 500_000 };
+import { randomBytes } from 'node:crypto';
+const newId = () => randomBytes(16).toString('hex');
+export const LIMITS = { side: 1024, layers: 32, frames: 120, pixels: 4_194_304, changes: 1_048_576, history: 256, historyPixels: 500_000, recovery: 20, recoveryPixels: 4_194_304 };
+// Expected user-operation failures are nonfatal; malformed protocol data is not.
+export class OperationRejected extends Error {}
 export function integer(value, min, max, label) {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new Error(`Ungueltig: ${label}`);
   return value;
@@ -36,7 +40,16 @@ export function validateSnapshot(input) {
   if (!Array.isArray(input.layers) || !input.layers.length || input.layers.length > LIMITS.layers) throw new Error('Maximal 32 Ebenen');
   if (!Array.isArray(input.frames) || !input.frames.length || input.frames.length > LIMITS.frames) throw new Error('Maximal 120 Frames');
   const frames = input.frames.map(ms => integer(ms, 1, 65535, 'Frame-Dauer'));
+  const ids = new Set();
+  const identity = value => {
+    const id = value ?? newId();
+    if (typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id) || ids.has(id)) throw new Error('Ungueltige oder doppelte Strukturkennung');
+    ids.add(id); return id;
+  };
+  if (input.frameIds != null && (!Array.isArray(input.frameIds) || input.frameIds.length !== frames.length)) throw new Error('Ungueltige Frame-Kennungen');
+  const frameIds = frames.map((_, i) => identity(input.frameIds?.[i]));
   const layers = input.layers.map((layer, i) => ({
+    id: identity(layer.id),
     name: String(layer.name || `Ebene ${i + 1}`).slice(0, 100),
     group: layer.group === true,
     parent: integer(layer.parent ?? 0, 0, i, 'Elterngruppe'),
@@ -46,7 +59,14 @@ export function validateSnapshot(input) {
     editable: layer.editable !== false,
     continuous: layer.continuous === true
   }));
-  layers.forEach(layer => { if (layer.parent && !layers[layer.parent - 1].group) throw new Error('Ungueltige Ebenengruppe'); });
+  // Native layer indices use depth-first order. Non-contiguous descendants
+  // would make a peer delete the wrong cels when removing a group.
+  const ancestors = [0];
+  layers.forEach((layer, i) => {
+    while (ancestors.length && ancestors.at(-1) !== layer.parent) ancestors.pop();
+    if (!ancestors.length) throw new Error('Ungueltige Reihenfolge der Ebenengruppen');
+    if (layer.group) ancestors.push(i + 1);
+  });
   const rasterCount = layers.filter(l => !l.group).length;
   if (!rasterCount || rasterCount * frames.length * width * height > LIMITS.pixels) throw new Error('Sitzung zu gross: maximal 4 Millionen Cel-Pixel');
   if (!Array.isArray(input.cels) || input.cels.length > rasterCount * frames.length) throw new Error('Ungueltige Cels');
@@ -60,7 +80,7 @@ export function validateSnapshot(input) {
     return { layer, frame, runs: [...cel.runs], opacity: integer(cel.opacity ?? 255, 0, 255, 'Cel-Deckkraft'), z: integer(cel.z ?? 0, -32768, 32767, 'Cel-Z') };
   });
   const palette = Array.isArray(input.palette) ? input.palette.slice(0, 256).map(v => integer(v, 0, 0xffffffff, 'Palettenfarbe')) : [];
-  return { format: 1, name: String(input.name || 'Gemeinsam').slice(0, 100), width, height, layers, frames, cels, palette };
+  return { format: 1, name: String(input.name || 'Gemeinsam').slice(0, 100), width, height, layers, frames, frameIds, cels, palette };
 }
 export class Room {
   constructor(snapshot, options = {}) {
@@ -69,6 +89,7 @@ export class Room {
     this.cells = new Map();
     this.users = new Map();
     this.operations = [];
+    this.recoveries = [];
     this.historyPixels = 0;
     this.revision = 0;
     this.structure = 0;
@@ -93,8 +114,12 @@ export class Room {
     return this.users.get(id);
   }
   history(id) { const u = this.user(id); return { undo: u.undo.length, redo: u.redo.length }; }
+  pruneUsers(connectedAuthors) {
+    const retained = new Set([...connectedAuthors, ...this.operations.map(op => op.author)]);
+    for (const id of this.users.keys()) if (!retained.has(id)) this.users.delete(id);
+  }
   snapshot() {
-    return { ...this.meta, cels: [...this.cells.values()].sort((a,b) => a.layer-b.layer || a.frame-b.frame).map(c => ({ layer: c.layer, frame: c.frame, opacity: c.opacity, z: c.z, runs: encodeRuns(c.pixels, true) })) };
+    return { ...structuredClone(this.meta), cels: [...this.cells.values()].sort((a,b) => a.layer-b.layer || a.frame-b.frame).map(c => ({ layer: c.layer, frame: c.frame, opacity: c.opacity, z: c.z, runs: encodeRuns(c.pixels, true) })) };
   }
   changesToPatches(touched) {
     const patches = [];
@@ -112,21 +137,36 @@ export class Room {
   }
   paint(author, seq, patches, structure) {
     const user = this.user(author);
-    if (structure !== this.structure) throw new Error('Dokumentstruktur hat sich geaendert; lokale Kopie speichern und neu verbinden');
     integer(seq, 1, Number.MAX_SAFE_INTEGER, 'Sequenz');
+    // A resumed connection may resend an already committed operation whose
+    // acknowledgement was lost. Never apply it (or add history) twice.
+    if (seq <= user.seq) return { type: 'ack', seq: user.seq };
     if (seq !== user.seq + 1) throw new Error('Sequenz stimmt nicht; bitte neu verbinden');
     if (!Array.isArray(patches) || !patches.length || patches.length > this.cells.size) throw new Error('Leere/ungueltige Operation');
+    patches = patches.map(patch => {
+      if (patch.layerId != null || patch.frameId != null) {
+        const layer = this.meta.layers.findIndex(l => l.id === patch.layerId) + 1;
+        const frame = this.meta.frameIds.indexOf(patch.frameId) + 1;
+        if (!layer || !frame) throw new Error('Ziel einer unbestaetigten Pixelaktion wurde geloescht. Lokale Ansicht bleibt erhalten.');
+        return { ...patch, layer, frame };
+      }
+      if (structure !== this.structure) throw new Error('Dokumentstruktur hat sich geaendert; lokale Ansicht bleibt erhalten');
+      return patch;
+    });
     let amount = 0;
     const seen = new Set();
     // Validate every cel first: no partial mutation on malformed messages.
     for (const patch of patches) {
+      integer(patch?.layer, 1, this.meta.layers.length, 'Cel-Ebene');
+      integer(patch?.frame, 1, this.meta.frames.length, 'Cel-Frame');
       const key = `${patch.layer}:${patch.frame}`;
       if (!this.cells.has(key) || seen.has(key)) throw new Error('Unbekanntes oder doppeltes Cel');
       seen.add(key);
       amount += validateRuns(patch.runs, this.size);
     }
     if (amount > LIMITS.changes) throw new Error('Aktion zu gross (maximal 1 Million geaenderte Pixel)');
-    const op = { author, seq, active: true, patches: structuredClone(patches), amount };
+    const op = { author, seq, active: true,
+      patches: patches.map(({ layer, frame, runs }) => ({ layer, frame, runs: [...runs] })), amount };
     const touched = new Map();
     for (const patch of op.patches) {
       const key = `${patch.layer}:${patch.frame}`, cell = this.cells.get(key), indices = new Set();
@@ -184,8 +224,8 @@ export class Room {
     const raster = this.meta.layers.filter(l => !l.group).length;
     const layerCount = this.meta.layers.length, frameCount = this.meta.frames.length;
     if (kind === 'layer') {
-      if (layerCount >= LIMITS.layers || (raster + 1) * frameCount * this.size > LIMITS.pixels) throw new Error('Ebenen-/Groessenlimit erreicht');
-      const layer = { name: String(name || `Ebene ${layerCount + 1}`).slice(0, 100), group: false, parent: 0, opacity: 255, blend: 3, visible: true, editable: true, continuous: false };
+      if (layerCount >= LIMITS.layers || (raster + 1) * frameCount * this.size > LIMITS.pixels) throw new OperationRejected('Ebenen-/Groessenlimit erreicht');
+      const layer = { id: newId(), name: String(name || `Ebene ${layerCount + 1}`).slice(0, 100), group: false, parent: 0, opacity: 255, blend: 3, visible: true, editable: true, continuous: false };
       const copyFrom = source == null ? null : integer(source, 1, layerCount, 'Quellebene');
       if (copyFrom && this.meta.layers[copyFrom - 1].group) throw new Error('Gruppen lassen sich so nicht duplizieren');
       this.meta.layers.push(layer);
@@ -201,9 +241,11 @@ export class Room {
       }
       return { type: 'append', kind, layer, index: layerCount + 1, cels, structure: ++this.structure, revision: ++this.revision };
     }
-    if (kind !== 'frame' || frameCount >= LIMITS.frames || raster * (frameCount + 1) * this.size > LIMITS.pixels) throw new Error('Frame-/Groessenlimit erreicht');
+    if (kind !== 'frame') throw new Error('Unbekannter Strukturtyp');
+    if (frameCount >= LIMITS.frames || raster * (frameCount + 1) * this.size > LIMITS.pixels) throw new OperationRejected('Frame-/Groessenlimit erreicht');
     const copyFrom = source == null ? null : integer(source, 1, frameCount, 'Quellframe');
     this.meta.frames.push(this.meta.frames[copyFrom ? copyFrom - 1 : frameCount - 1]);
+    this.meta.frameIds.push(newId());
     const cels = [];
     this.meta.layers.forEach((l, i) => {
       if (l.group) return;
@@ -215,7 +257,7 @@ export class Room {
         cels.push({ layer: i + 1, frame: frameCount + 1, opacity: copy.opacity, z: copy.z, runs: encodeRuns(copy.pixels, true) });
       }
     });
-    return { type: 'append', kind, duration: this.meta.frames[frameCount], index: frameCount + 1, cels, structure: ++this.structure, revision: ++this.revision };
+    return { type: 'append', kind, duration: this.meta.frames[frameCount], frameId: this.meta.frameIds[frameCount], index: frameCount + 1, cels, structure: ++this.structure, revision: ++this.revision };
   }
   remapStructure(layerMap, frameMap) {
     const cells = new Map();
@@ -247,11 +289,12 @@ export class Room {
   delete(kind, index) {
     if (kind === 'frame') {
       integer(index, 1, this.meta.frames.length, 'Frame');
-      if (this.meta.frames.length < 2) throw new Error('Das letzte Frame kann nicht geloescht werden');
+      if (this.meta.frames.length < 2) throw new OperationRejected('Das letzte Frame kann nicht geloescht werden');
       const frameMap = {};
       for (let f = 1; f <= this.meta.frames.length; f++) if (f !== index) frameMap[f] = f < index ? f : f - 1;
       const layerMap = Object.fromEntries(this.meta.layers.map((_, i) => [i + 1, i + 1]));
       this.meta.frames.splice(index - 1, 1);
+      this.meta.frameIds.splice(index - 1, 1);
       this.remapStructure(layerMap, frameMap);
       return { type: 'delete', kind, index, count: 1, structure: ++this.structure, revision: ++this.revision };
     }
@@ -264,7 +307,7 @@ export class Room {
       if (parent) removed.add(i);
     }
     const remaining = this.meta.layers.filter((layer, i) => !removed.has(i + 1));
-    if (!remaining.some(layer => !layer.group)) throw new Error('Die letzte Rasterebene kann nicht geloescht werden');
+    if (!remaining.some(layer => !layer.group)) throw new OperationRejected('Die letzte Rasterebene kann nicht geloescht werden');
     const layerMap = {}, frameMap = {};
     let next = 0;
     for (let i = 1; i <= this.meta.layers.length; i++) if (!removed.has(i)) layerMap[i] = ++next;
@@ -282,6 +325,73 @@ export class Room {
     const trial = new Room(this.snapshot());
     for (const index of ordered) trial.delete(kind, index);
     return ordered.map(index => this.delete(kind, index));
+  }
+  deleteRecoverable(author, kind, indices) {
+    const before = this.snapshot();
+    const events = this.deleteMany(kind, indices);
+    const liveLayers = new Set(this.meta.layers.map(l => l.id)), liveFrames = new Set(this.meta.frameIds);
+    const removedLayers = before.layers.filter(l => !liveLayers.has(l.id));
+    const removedFrames = before.frameIds.filter(id => !liveFrames.has(id));
+    const cells = before.cels.filter(c => !liveLayers.has(before.layers[c.layer - 1].id) || !liveFrames.has(before.frameIds[c.frame - 1]));
+    const entry = { id: newId(), author, kind, pixels: cells.length * this.size,
+      layers: removedLayers.map(l => ({ ...l, parentId: l.parent ? before.layers[l.parent - 1].id : null })),
+      frames: removedFrames.map(id => ({ id, duration: before.frames[before.frameIds.indexOf(id)] })),
+      layerOrder: before.layers.map(l => l.id), frameOrder: before.frameIds,
+      cels: cells.map(c => ({ ...c, layerId: before.layers[c.layer - 1].id, frameId: before.frameIds[c.frame - 1] })) };
+    this.recoveries.push(entry);
+    while (this.recoveries.length > LIMITS.recovery || this.recoveries.reduce((sum, e) => sum + e.pixels, 0) > LIMITS.recoveryPixels) this.recoveries.shift();
+    return events;
+  }
+  restoreDeletion(expectedId) {
+    const entry = this.recoveries.at(-1);
+    if (!entry || entry.id !== expectedId) throw new OperationRejected('Die letzte Loeschung hat sich geaendert. Bitte erneut versuchen.');
+    const old = this.snapshot();
+    const layers = old.layers.map(l => ({ ...l, parentId: l.parent ? old.layers[l.parent - 1].id : null }));
+    // Merge only the deleted fragments. Current pixels and histories remain
+    // authoritative; this is NOT a rollback to a whole-document old snapshot.
+    const insert = (list, items, order) => {
+      for (const item of items) {
+        const pos = order.indexOf(item.id);
+        const next = order.slice(pos + 1).find(id => list.some(v => v.id === id));
+        const index = next ? list.findIndex(v => v.id === next) : list.length;
+        list.splice(index, 0, item);
+      }
+    };
+    insert(layers, entry.layers.map(l => ({ ...l })), entry.layerOrder);
+    const allIds = new Set(layers.map(l => l.id));
+    for (const l of layers) if (l.parentId && !allIds.has(l.parentId)) l.parentId = null;
+    const ordered = [];
+    const visit = parentId => { for (const l of layers.filter(v => v.parentId === parentId)) { ordered.push(l); if (l.group) visit(l.id); } };
+    visit(null);
+    const layerIndex = new Map(ordered.map((l, i) => [l.id, i + 1]));
+    const frames = old.frameIds.map((id, i) => ({ id, duration: old.frames[i] }));
+    insert(frames, entry.frames, entry.frameOrder);
+    const frameIndex = new Map(frames.map((f, i) => [f.id, i + 1]));
+    const cels = old.cels.map(c => ({ ...c, layer: layerIndex.get(old.layers[c.layer - 1].id), frame: frameIndex.get(old.frameIds[c.frame - 1]) }));
+    for (const c of entry.cels) {
+      const layer = layerIndex.get(c.layerId), frame = frameIndex.get(c.frameId);
+      if (layer && frame) cels.push({ ...c, layer, frame });
+    }
+    let snapshot;
+    try {
+      snapshot = validateSnapshot({ ...old, layers: ordered.map(l => ({ ...l, parent: l.parentId ? layerIndex.get(l.parentId) : 0 })),
+        frames: frames.map(f => f.duration), frameIds: frames.map(f => f.id), cels });
+    } catch { throw new OperationRejected('Wiederherstellung ueberschreitet das Ebenen-/Frame-/Groessenlimit. Zuerst Platz schaffen.'); }
+    const layerMap = Object.fromEntries(old.layers.map((l, i) => [i + 1, layerIndex.get(l.id)]));
+    const frameMap = Object.fromEntries(old.frameIds.map((id, i) => [i + 1, frameIndex.get(id)]));
+    this.remapStructure(layerMap, frameMap);
+    for (let l = 1; l <= snapshot.layers.length; l++) if (!snapshot.layers[l - 1].group) {
+      for (let f = 1; f <= snapshot.frames.length; f++) if (!this.cells.has(`${l}:${f}`)) this.addCell(l, f);
+    }
+    for (const c of entry.cels) {
+      const cell = this.cells.get(`${layerIndex.get(c.layerId)}:${frameIndex.get(c.frameId)}`);
+      if (!cell) continue;
+      for (let i = 0; i < c.runs.length; i += 3) cell.pixels.fill(c.runs[i + 2], c.runs[i], c.runs[i] + c.runs[i + 1]);
+      cell.base.set(cell.pixels); cell.opacity = c.opacity; cell.z = c.z;
+    }
+    this.meta = { ...snapshot, cels: [] };
+    this.recoveries.pop();
+    return { type: 'restore', snapshot: this.snapshot(), structure: ++this.structure, revision: ++this.revision };
   }
   setProperty(kind, index, field, value) {
     if (kind === 'frame') {

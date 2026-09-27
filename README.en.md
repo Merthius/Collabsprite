@@ -2,13 +2,15 @@
 
 # Collabsprite — English guide
 
-[Deutsch](README.md) · [Download v0.6.5 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.6.5/Collabsprite.aseprite-extension)
+[Deutsch](README.md) · [Download v0.7.0 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.7.0/Collabsprite.aseprite-extension)
 
-Version **0.6.5 beta** includes hosting and joining in **one installer**, with a bundled Windows x64 host runtime. No separate Node.js installation is needed. The archive now identifies itself correctly as Collabsprite, fixing the accidental “ws 8.21.3” installation prompt. Development-version updates are supported.
+Version **0.7.0 beta** includes hosting and joining in **one installer**, with a bundled Windows x64 host runtime. No separate Node.js installation is needed. New: automatic reconnection with personal pixel history, deleted layer/frame recovery, and session safety improvements. **Everyone must update: protocol 4 is incompatible with 0.6.x.**
 
 **Diagnostics are included in every build.** Open **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren** after an error. The local `%TEMP%\Collabsprite-debug.log` survives restarts and is bounded to 512 KiB. It contains technical events, not image data or invitation codes. Use **Neues Protokoll** only before reproducing an error. Guards prevent nested timer dispatch during permission dialogs; the reported guest-PC “C stack overflow” still needs a retest on that PC.
 
 Collabsprite is an unofficial, open-source Aseprite extension for drawing together on the same pixel-art canvas. The host runs a small local server; everyone uses the **same** extension. Per-user undo/redo applies to synchronized pixel operations without removing newer contributions by someone else.
+
+Also included: a host admission gate, backup-failure and stalled-connection feedback, bounded receive queues and message budgets. Deleting the final layer/frame no longer disconnects the session. See the [audit/checklist (German)](docs/multiplayer-checklist.md).
 
 ![Illustrated setup: install, host, join](docs/quick-start.svg)
 
@@ -30,13 +32,13 @@ The session server runs on the **host PC** (port `8766`). There is just **one wo
 
 ## Install on every computer
 
-1. On the [v0.6.5 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.6.5), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
+1. On the [v0.7.0 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.7.0), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
 2. In Aseprite, open **Edit → Preferences → Extensions → Add Extension** and select the file. Double-clicking the extension may work as well ([official Aseprite instructions](https://www.aseprite.org/docs/extensions/)).
 3. Restart Aseprite. Open **View → Collabsprite → Create / Join Server** (German UI: **Ansicht → Collabsprite → Server erstellen / beitreten**).
 
 ## Updating an older installation
 
-Save the session copy and disconnect. Add the new **`Collabsprite.aseprite-extension`** in Aseprite's extension settings and confirm the update of **pixelkollab-native / Collabsprite** to **0.6.5**. Restart Aseprite on every participating PC and check **Ansicht → Collabsprite → Info**. The technical package ID stays the same for update compatibility.
+Save the session copy and disconnect. Add the new **`Collabsprite.aseprite-extension`** in Aseprite's extension settings and confirm the update of **pixelkollab-native / Collabsprite** to **0.7.0**. Restart Aseprite on every participating PC and check **Ansicht → Collabsprite → Info**. The technical package ID stays the same for update compatibility.
 
 The **Update** menu downloads a verified installer into Downloads; then install that file as above. On a broken older build, download directly from GitHub. An older prompt for **“ws 8.21.3”** was caused by our archive layout, not by choosing the wrong file. Reinstall the corrected package. GitHub's source-code ZIP is not the installer.
 
@@ -63,15 +65,21 @@ An invitation may look like `192.168.1.10:8766,26.1.2.3:8766/ROOM/TOKEN`; withou
 - Standard Aseprite drawing tools and **completed** selection, paste, fill, and move operations sync. A held stroke or floating selection is not streamed live.
 - Any participant can append raster layers and frames and duplicate an existing layer using ordinary Aseprite commands. Single or multiple selected layers/frames can be deleted; deleting a group removes its children. Layer name, visibility, edit lock, opacity and blend mode; frame duration; cel opacity/Z-index; and the first palette sync. Reordering and some complex structure changes are still blocked.
 - `Ctrl+Z` / `Ctrl+Y` affect your own synchronized **pixel** actions. Layer/frame creation is not part of that pixel history.
-- Save the session copy as `.aseprite` with **Save As**. The host also keeps local session backups, but they do not replace manual saves. Older backups never block a new host; Collabsprite restores the eight most recently changed sessions and leaves older files untouched.
-- Closing the host's session image or Aseprite stops the background server after saving its backup and releases port `8766`. Guests are disconnected and should save their local session copies.
-- After a network interruption, there is no automatic reconnect or offline merge. Save the local copy and join deliberately again.
+- The **host** saves the session copy as `.aseprite` with **Save As**. The host also keeps local session backups, but they do not replace manual saves. Older backups never block a new host; Collabsprite restores the eight most recently changed sessions and leaves older files untouched.
+- Closing the host's session image or Aseprite stops the background server after saving its backup and releases port `8766`. Guests are disconnected; acknowledged contributions remain in the host's document and backup.
 
-The WebSocket connection has **no built-in end-to-end encryption**; use only a trusted LAN or VPN. The host checks and orders changes. The invitation code must remain private. Firewall rules limit inbound TCP/UDP port `8766` to the local subnet on private/domain networks and Radmin's `26.0.0.0/8` range for the Node process.
+Normal save/export commands are blocked for guest session documents, including after disconnect. A normal **Disconnect** waits for the final outgoing edits to be acknowledged before closing the guest's session view. A timeout keeps that view open. Confirmed guest edits survive leaving; crashes or forced termination can still lose unsent edits. Unrelated local files and host saves are unaffected.
+
+**Not copy protection:** A guest's Aseprite must receive image data to edit it. Screenshots, clipboard copying, scripts, Aseprite recovery data, and modified/disabled extensions cannot be reliably prevented. Invite trusted people only. This is a UI workflow restriction, not a security boundary, and does not apply retroactively to old clients.
+- **Ansicht → Collabsprite → Letzte Löschung wiederherstellen** restores the most recent shared layer/frame deletion without rolling back newer peer pixels. Any participant can use it. Up to 20 deletion batches / 4,194,304 deleted cel-pixels total, only for the running server's lifetime. Recovered pixels become a base; their old deleted pixel history is not restored.
+- After a short network interruption, Collabsprite retries automatically for up to two minutes, keeping the same tab, identity and retained personal pixel undo. Already committed strokes are not duplicated; unconfirmed strokes use stable layer/frame IDs. Editing pauses during reconnection. If a pending stroke's target was deleted or the paused document was changed locally, reconciliation stops and keeps the local view open. This is not general offline merging.
+- Deliberate disconnect, Aseprite/server restart, or lease expiry ends resumability. Normal host closure stops the server after backup. A hard crash can leave it waiting up to two minutes for reconnection before shutdown.
+
+The WebSocket connection has **no built-in end-to-end encryption**; use only a trusted LAN or VPN. The host checks and orders changes. Open sessions advertise their invitations through LAN discovery: a code is not a privacy boundary against reachable network members. The host can turn off **Beitritte erlauben** to hide discovery and reject additional joins, including known invitations; existing guests can keep working and resume within their lease. Do not forward this service to the public Internet. Firewall rules limit inbound TCP/UDP port `8766` to the local subnet on private/domain networks and Radmin's `26.0.0.0/8` range for the Node process.
 
 ## Limitations and support
 
-RGB/RGBA raster layers are supported, with limits of 8 participants, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.6.5 still uses protocol 3; 0.5.0 sessions are incompatible.** See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
+RGB/RGBA raster layers are supported, with limits of 8 participants including reconnecting leases, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, tags, slices, color profiles, linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.7.0 uses protocol 4; earlier sessions are incompatible.** See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
 
 The bundled, unmodified Node.js 24.21.0 runtime carries its full notices in `runtime/LICENSE`. Collabsprite is [MIT-licensed](LICENSE) and is not affiliated with Aseprite or Radmin VPN. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 

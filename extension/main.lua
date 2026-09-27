@@ -38,15 +38,16 @@ local function safely(action)
 end
 
 local function refresh(s)
-  if s.sprite then guarded[s.sprite]=true end
+  if s.sprite then guarded[s.sprite]={guest=s.isHost==false} end
   if not dialog then return end
-  local busy=startup~=nil
-  dialog:modify{id='status',text=busy and 'Vorbereitung ...' or s.connected and 'Verbunden' or s.connecting and 'Verbinde ...' or 'Nicht verbunden'}
+  local busy=startup~=nil or s.reconnecting
+  dialog:modify{id='status',text=s.reconnecting and 'Verbinde erneut ...' or busy and 'Vorbereitung ...' or s.connected and (s.syncStatus or 'Verbunden') or s.connecting and 'Verbinde ...' or 'Nicht verbunden'}
   dialog:modify{id='startHost',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='joinManual',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='joinFound',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='search',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='copy',visible=s.connected and s.isHost}
+  dialog:modify{id='admission',visible=s.connected and s.isHost,selected=s.acceptingGuests~=false}
   dialog:modify{id='disconnect',visible=busy or s.connected or s.connecting}
 end
 
@@ -58,7 +59,7 @@ local function artistName()
 end
 
 local function newSession()
-  if session and (session.connected or session.connecting) then error('Bereits mit einer Sitzung verbunden.') end
+  if session and (session.connected or session.connecting or session.reconnecting) then error('Bereits mit einer Sitzung verbunden.') end
   session=Client.new(refresh,logDiagnostic)
   return session
 end
@@ -127,7 +128,7 @@ local function searchSessionsNow(output)
     local choices,seen={},{}
     for line in (output or ''):gmatch('[^\r\n]+') do
       local ok,result=pcall(function() return decodeJson(line) end)
-      if ok and result and result.protocol==3 then
+      if ok and result and result.protocol==4 then
         for _,room in ipairs(result.rooms or {}) do
           local invite=tostring(room.invite or '')
           local address=invite:match('^([^/]+)/') or ''
@@ -297,6 +298,9 @@ local function show()
     :entry{id='name',label='Dein Name',text=preferences.name or 'Kuenstler'}
     :button{id='startHost',text='Sitzung erstellen',onclick=function()
       if not app.sprite then alert('Bitte zuerst ein Bild öffnen');return end
+      if guarded[app.sprite] and guarded[app.sprite].guest then
+        alert('Dieses Gast-Sitzungsbild kann nur der ursprüngliche Host speichern oder neu hosten.');return
+      end
       safely(function()
         local sprite,name=app.sprite,artistName()
         beginBootstrap('Host',nil,function() newSession():host(sprite,name,PORT) end)
@@ -311,6 +315,12 @@ local function show()
     end}
     :separator{}
     :label{id='status',label='Aktive Sitzung',text='Nicht verbunden'}
+    :check{id='admission',label='Zugriff',text='Beitritte erlauben',selected=true,visible=false,onclick=function()
+      safely(function()
+        if session and session.connected and session.isHost then session:send{type='admission',open=dialog.data.admission==true} end
+      end)
+    end}
+    :newrow()
     :button{id='copy',text='Einladung kopieren',visible=false,onclick=function() copyInvite() end}
     :button{id='disconnect',text='Trennen',visible=false,onclick=function() disconnect() end}
   dialog:show{wait=false}
@@ -332,12 +342,15 @@ disconnect=function()
     app.tip('Collabsprite: Vorbereitung abgebrochen. Ein bereits gestarteter Server beendet sich bei Leerlauf.',5)
     return
   end
-  if not session or not (session.connected or session.connecting) then return end
-  if #session.pending>0 then
-    alert('Eigene Aenderungen werden noch uebertragen. Bitte kurz warten.')
-  else
-    session:disconnect()
-  end
+  if not session or not (session.connected or session.connecting or session.reconnecting) then return end
+  safely(function()
+    local leaving=session
+    leaving:requestLeave(function()
+      -- Only discard the guest's session view after the server confirms its
+      -- edits. Never close the host document or unrelated local artwork.
+      if leaving.isHost==false and leaving.sprite and leaving.sprite.isValid then leaving.sprite:close() end
+    end)
+  end)
 end
 
 function init(plugin)
@@ -355,13 +368,34 @@ function init(plugin)
   plugin:newMenuGroup{id='CollabspriteMenu',title='Collabsprite',group='view_new'}
   plugin:newCommand{id='PixelKollabMultiplayer',title='Server erstellen / beitreten...',group='CollabspriteMenu',onclick=show}
   plugin:newCommand{id='CollabspriteUpdate',title='Update...',group='CollabspriteMenu',onclick=update}
+  plugin:newCommand{id='CollabspriteRestoreDeletion',title='Letzte Löschung wiederherstellen',group='CollabspriteMenu',
+    onenabled=function() return session~=nil and session.connected and session.recovery~=nil end,
+    onclick=function() safely(function() if session then session:restoreDeletion() end end) end}
   plugin:newCommand{id='CollabspriteInfo',title='Info...',group='CollabspriteMenu',onclick=info}
   plugin:newCommand{id='CollabspriteDebugConsole',title='Diagnosekonsole...',group='CollabspriteMenu',onclick=showDiagnostics}
   commandListener=app.events:on('beforecommand',function(ev)
+    local protection=guarded[app.sprite]
+    if Client.blockGuestSave(ev,protection and protection.guest) then return end
     if session and (session.connected or session.connecting) then
       logDiagnostic('aseprite command',tostring(ev.name or 'unknown'))
     end
-    if session and session.connected then
+    if session and (session.connected or session.reconnecting) then
+      if ev.name=='CloseAllFiles' or ev.name=='Exit' or (ev.name=='CloseFile' and app.sprite==session.sprite) then
+        ev.stopPropagation()
+        local leaving,name,params,target=session,ev.name,ev.params,app.sprite
+        safely(function()
+          leaving:requestLeave(function()
+            local guest=leaving.isHost==false
+            if guest and leaving.sprite and leaving.sprite.isValid then leaving.sprite:close() end
+            if name=='CloseFile' and not guest and app.sprite~=target then
+              app.tip('Verbindung getrennt. Das Sitzungsbild kann jetzt geschlossen werden.',5)
+              return
+            end
+            if name~='CloseFile' or not guest then app.command[name](params or {}) end
+          end)
+        end)
+        return
+      end
       local ok,error=xpcall(function() session:beforeCommand(ev) end,function(err)
         return debug and debug.traceback and debug.traceback(tostring(err),2) or tostring(err)
       end)

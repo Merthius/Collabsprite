@@ -5,6 +5,62 @@ export const snapshot = () => ({ format: 1, name: 'Test', width: 4, height: 4,
   layers: [{ name: 'Gemeinsam' }], frames: [100], cels: [], palette: [] });
 const paint = (room, author, seq, runs, layer = 1, frame = 1) => room.paint(author, seq, [{ layer, frame, runs }],room.structure);
 const pixels = room => [...room.cells.get('1:1').pixels];
+test('Stable IDs rebase delayed pixels, reject deleted targets and deduplicate a lost ack', () => {
+  const r=new Room(snapshot());r.append('layer','Second');r.append('frame');
+  const layerId=r.meta.layers[1].id,frameId=r.meta.frameIds[1];
+  r.delete('layer',1);r.delete('frame',1);
+  const patch={layer:2,frame:2,layerId,frameId,runs:[0,1,77]};
+  assert.equal(r.paint('A',1,[patch],2).revision,5);
+  assert.equal(pixels(r)[0],77);
+  const revision=r.revision;
+  assert.deepEqual(r.paint('A',1,[patch],2),{type:'ack',seq:1});
+  assert.equal(r.revision,revision);assert.equal(r.history('A').undo,1);
+  r.append('layer','Keep');r.delete('layer',1);
+  assert.throws(()=>r.paint('A',2,[patch],2),/geloescht/);
+  assert.equal(pixels(r)[0],0);
+});
+test('Restore deleted layer/frame fragments keeps newer peer work and surviving personal undo',()=>{
+  const r=new Room(snapshot());r.append('layer','Second');r.append('frame');
+  paint(r,'A',1,[0,1,11],1,1);paint(r,'B',1,[0,1,22],2,2);
+  const original=r.snapshot();
+  r.deleteRecoverable('B','layer',[1]);
+  r.deleteRecoverable('A','frame',[1]);
+  paint(r,'B',2,[1,1,33],1,1);
+  r.restoreDeletion(r.recoveries.at(-1).id);
+  r.restoreDeletion(r.recoveries.at(-1).id);
+  assert.deepEqual(r.meta.layers,original.layers);assert.deepEqual(r.meta.frameIds,original.frameIds);
+  assert.equal(r.cells.get('1:1').pixels[0],11);
+  assert.deepEqual([...r.cells.get('2:2').pixels].slice(0,2),[22,33]);
+  r.undoRedo('B');assert.deepEqual([...r.cells.get('2:2').pixels].slice(0,2),[22,0]);
+  r.undoRedo('B');assert.equal(r.cells.get('2:2').pixels[0],0);
+  assert.equal(r.cells.get('1:1').pixels[0],11,'Restored deleted pixels are a recovered base');
+});
+test('Nested groups and multi-frame recovery restore structure without replacing new content',()=>{
+  const s=snapshot();s.layers=[{name:'G',group:true},{name:'A',parent:1},{name:'Nested',group:true,parent:1},{name:'B',parent:3},{name:'Keep'}];
+  s.frames=[100,200,300,400];
+  const r=new Room(s);paint(r,'A',1,[0,1,12],4,3);
+  const ids=r.meta.layers.map(l=>l.id);
+  r.deleteRecoverable('A','layer',[1]);r.append('layer','New');paint(r,'B',1,[0,1,55],2,1);
+  const restore=r.restoreDeletion(r.recoveries.at(-1).id);
+  assert.deepEqual(restore.snapshot.layers.slice(0,5).map(l=>l.id),ids);
+  assert.equal(r.cells.get('4:3').pixels[0],12);assert.equal(r.cells.get('6:1').pixels[0],55);
+  r.deleteRecoverable('B','frame',[1,3]);
+  r.restoreDeletion(r.recoveries.at(-1).id);
+  assert.deepEqual(r.meta.frames,s.frames);assert.equal(r.cells.get('4:3').pixels[0],12);
+  assert.equal(r.cells.get('6:1').pixels[0],55);
+});
+test('Recovery is bounded; stale restoration and limit failures are atomic',()=>{
+  const r=new Room(snapshot());r.append('frame');
+  r.deleteRecoverable('A','frame',[1]);const id=r.recoveries.at(-1).id;
+  assert.throws(()=>r.restoreDeletion('stale'),/geaendert/);
+  for(let i=1;i<120;i++) r.append('frame');
+  const before=r.snapshot(), revision=r.revision;
+  assert.throws(()=>r.restoreDeletion(id),/limit/);
+  assert.deepEqual(r.snapshot(),before);assert.equal(r.revision,revision);assert.equal(r.recoveries.length,1);
+  r.delete('frame',120);r.restoreDeletion(id);
+  for(let i=0;i<25;i++) { r.append('layer');r.deleteRecoverable('A','layer',[2]); }
+  assert.equal(r.recoveries.length,20);
+});
 test('Own undo/redo preserves newer overlapping peer pixels', () => {
   const r = new Room(snapshot());
   paint(r, 'A', 1, [0, 2, 10]);
@@ -36,6 +92,25 @@ test('Whole operation validation is atomic and sequence strict', () => {
   assert.throws(() => paint(r,'A',2,[0,1,1]));
   assert.throws(() => paint(r,'A',1,[0,3,1,1,1,2]));
   assert.throws(() => paint(r,'A',1,[0,1,-1]));
+});
+test('Numeric cel IDs and depth-first groups are validated before mutation', () => {
+  const r=new Room(snapshot());
+  assert.throws(()=>r.paint('A',1,[{layer:'1',frame:1,runs:[0,1,7]}],0),/Cel-Ebene/);
+  assert.equal(r.revision,0);assert.equal(pixels(r)[0],0);
+  const malformed=snapshot();
+  malformed.layers=[{name:'Group',group:true},{name:'Sibling'},{name:'Late child',parent:1}];
+  assert.throws(()=>new Room(malformed),/Reihenfolge/);
+  const event=r.paint('A',1,[{layer:1,frame:1,runs:[0,1,7],unexpected:{keep:'no'}}],0);
+  assert.deepEqual(r.operations[0].patches,event.patches);
+});
+test('Departed authors are bounded without erasing contributions or undo', () => {
+  const r=new Room(snapshot(),{historyLimit:2});
+  for(let i=0;i<500;i++) r.user('idle-'+i);
+  paint(r,'guest',1,[0,1,33]);r.pruneUsers(['host']);
+  assert.equal(r.users.size,1);assert.equal(r.user('guest').undo.length,1);
+  paint(r,'host',1,[1,1,44]);paint(r,'host',2,[2,1,55]);r.pruneUsers(['host']);
+  assert.equal(r.users.has('guest'),false);assert.equal(pixels(r)[0],33);
+  r.undoRedo('host');r.undoRedo('host');assert.equal(pixels(r)[0],33);
 });
 test('History compaction preserves visible state and immutable base', () => {
   const r=new Room(snapshot(),{historyLimit:2});

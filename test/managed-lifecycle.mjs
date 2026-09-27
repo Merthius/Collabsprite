@@ -19,7 +19,7 @@ async function connect(hello) {
     });
   });
   await once(socket, 'open');
-  socket.send(JSON.stringify({ type: 'hello', protocol: 3, ...hello }));
+  socket.send(JSON.stringify({ type: 'hello', protocol: 4, ...hello }));
   return { socket, welcome: await welcome };
 }
 
@@ -27,11 +27,11 @@ const host = await connect({ mode: 'host', name: 'Host', snapshot });
 const [,room,token] = host.welcome.invite.split('/');
 const guest = await connect({ mode: 'join', name: 'Guest', room, token });
 assert.equal(guest.welcome.room, room);
-guest.socket.close();
+guest.socket.send(JSON.stringify({type:'leave'}));
 await once(guest.socket, 'close');
 assert.equal((await fetch(`http://127.0.0.1:${port}/status`)).status, 200,
   'A guest leaving must not stop the server');
-host.socket.close();
+host.socket.send(JSON.stringify({type:'leave'}));
 await once(host.socket, 'close');
 
 const deadline = Date.now() + 6000;

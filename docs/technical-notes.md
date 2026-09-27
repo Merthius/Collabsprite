@@ -18,6 +18,76 @@ Die Diagnose ist Teil der regulären Beta. Dateizugriffe finden nicht im WebSock
 
 ## Synchronisationsmodell
 
+### 0.7.0 / Protokoll 4: Wiederaufnahme und gelöschte Inhalte
+
+Die Erweiterung nutzt [Aseprites offizielle Plugin-API](https://www.aseprite.org/api/plugin#pluginnewcommand) für den zusätzlichen Wiederherstellungsbefehl. Beide Rollen bleiben in einem Installer; alle Teilnehmenden müssen aktualisieren.
+
+Jede Ebene besitzt eine feste 128-Bit-ID, Frames eine parallele `frameIds`-Liste. IDs bleiben in Backups erhalten. Server und Client ordnen ausstehende Pixelaktionen anhand dieser IDs neu zu, statt inzwischen verschobene Indizes blind zu verwenden. Ist das tatsächliche Ziel gelöscht, stoppt der Client vor dem Umbau seiner Ansicht. Fremde Strukturänderungen mit überlebenden Zielen können dagegen abgeglichen werden. Metadaten-/reine Strukturaktionen werden nicht automatisch erneut abgespielt; veraltete Metadatenindizes können weiterhin einen sicheren Abbruch auslösen.
+
+Ein `welcome` enthält einen individuellen zufälligen 256-Bit-Resume-Schlüssel; nur sein Hash liegt serverseitig in einer flüchtigen Lease. Nicht im Einladungscode, Diagnoseprotokoll oder Backup. `hello/mode=resume` verlangt Raum, Autor und diesen Schlüssel; der öffentliche Einladungscode genügt nicht. Höchstens 8 aktive/kurz unterbrochene Identitäten, Lease 120 s. Ein gültiger Resume ersetzt auch einen halb offenen Socket; alte Socket-Callbacks dürfen die neue Identität nicht abmelden. Eine Beitrittssperre lässt legitime Wiederaufnahme bestehender Gäste zu.
+
+Beim Transportverlust hält der Client den Tab offen und sperrt vorübergehend die Bearbeitung. Wiederholungsabstand 1/2/4/8/10 s; aktuelle Server-Snapshot und `confirmedSeq` entfernen schon bestätigte Pixeloperationen, übrige werden mit derselben Sequenz genau einmal nachgeliefert. Server-`ack` für ältere Sequenzen verändert weder Bild noch Verlauf. Ein Snapshot-Abgleich ersetzt Inhalte im **selben** nativen Sprite, nicht in einem neuen Tab. Änderungen am pausierten lokalen Bild werden vor dem Abgleich erkannt und bleiben bei Abbruch erhalten. Kein allgemeines Offline-Merging; keine Wiederaufnahme nach Aseprite-/Server-Neustart oder absichtlichem Verlassen.
+
+Explizites `leave` widerruft die Lease und beendet einen verwalteten letzten Host nach finalem Backup. Bei unerwartetem Verlust hält der Server den Port höchstens bis zum Lease-Ende für Resume offen. Ein nie benutzter Starter endet weiterhin nach 30 s. `Trennen` während einer Unterbrechung behält die lokale Ansicht; bei nicht erreichbarem Server läuft dessen Lease bis zum Fristende aus.
+
+`delete`/`deleteMany` speichern nur gelöschte Strukturfragmente/Cels und kleine ID-Reihenfolgen. `restore` verlangt die aktuelle Recovery-ID und stellt die letzte gemeinsame Löschung atomar wieder her. Neue Inhalte in übrigen Cels und ihre persönliche Pixelhistorie bleiben erhalten; gelöschte Pixel kehren als Basis zurück, nicht mit alter gelöschter Undo-Historie. Bis 20 Löschaktionen und 4.194.304 gespeicherte Cel-Pixel insgesamt; älteste Einträge fallen heraus. Der Löschverlauf ist flüchtig und nicht in Server-Backups enthalten. Größen-/Strukturlimits werden vor Mutation geprüft. Zwei gleichzeitige Klicks auf dieselbe Recovery-ID stellen nicht versehentlich zwei Aktionen wieder her.
+
+Regressionen: 37 Node-Tests, `test/resume.lua` mit echten nativen Bildobjekten sowie `test/native-reconnect.lua` mit zwei echten Aseprite-WebSockets, absichtlich verlorener Bestätigung, ungesendetem Strich, fremden Löschungen und anschließendem beidseitigem Undo. Zusätzlich alle bisherigen Batch-, Struktur-, Bootstrap-/Update-Tests. Zwei physische PCs sind damit weiterhin nicht nachgewiesen.
+
+### Historischer lokaler Stand 0.6.7: Härtung (in 0.7.0 enthalten)
+
+Die folgenden Absätze dokumentieren die damaligen Grenzen; die Aussagen zu fehlenden IDs/Resume sind durch 0.7.0 oben ersetzt.
+
+Die [Multiplayer-Prüfung](multiplayer-checklist.md) dokumentiert die Prioritäten,
+Funde, Tests und verbleibenden Grenzen. Zusätzliche Nachrichten `admission`,
+`backup` und `rejected` erweitern Protokoll 3; für das vollständige Verhalten
+dieselbe 0.6.7 auf Host und Gästen verwenden. Öffentlicher Stand bleibt 0.6.5.
+Host-Zugriffskontrolle ist serverseitig, die Gast-Speichersperre dagegen nur UI.
+
+Die offene Sitzungssuche liefert Einladungen an erreichbare LAN-/VPN-Peers.
+`admission=false` verhindert neue Beitritte und Discovery, trennt aber keine
+bestehenden Teilnehmer. Ein verwaistes Backup kann nur lokal mit bekanntem
+Token als Host wiederaufgenommen werden; dabei sind weitere Beitritte zunächst
+gesperrt. Reconnect mit bewahrter Teilnehmeridentität/Undo ist noch nicht vorhanden.
+
+Erwartete Ablehnungen (letzte Ebene/letztes Frame, Größenlimit, veraltete reine
+Strukturaktion) trennen die Sitzung nicht. Veraltete Pixel-/Metadatenoperationen
+und Strukturwechsel bei unbestätigten Pixeln erfordern weiterhin einen sicheren
+Abbruch, bis ein getestetes Rebase-/stabile-ID-Modell vorhanden ist. Solche
+Operationen niemals blind erneut senden: die Indizes könnten andere Cels meinen.
+
+Sicherungsmeldungen gehen nur an den Host. Die gemeldete Revision ist die
+tatsächlich geschriebene, nicht notwendigerweise die neueste Bildrevision.
+Schreiben über temporäre Datei, Dateiflush und Rename; der Shutdown wartet
+auf eine laufende ältere Sicherung und schreibt danach noch offene Änderungen.
+Ein fehlgeschlagener Versuch lässt `dirty=true` und wird periodisch wiederholt.
+Das ersetzt kein manuelles Speichern und garantiert keine Stromausfallsicherheit.
+
+Lokaler Stand 0.6.6: Reguläres Trennen erfasst den letzten abgeschlossenen
+Strich und wartet asynchron auf eine geordnete Ping/Pong-Bestätigung des
+Servers. Weitere währenddessen abgeschlossene Änderungen erfordern eine neue
+Bestätigung. Nach zehn Sekunden ohne Bestätigung bleibt die Sitzung offen.
+CloseFile/CloseAllFiles/Exit über den Command-Hook nutzen denselben Ablauf;
+harte Prozessabbrüche und direkte Skript-/native Schließpfade können ihn umgehen.
+Bei Verbindungsende wird ein zuvor empfangener finaler Patch noch gerendert.
+Native Transaktionen wählen explizit das Sitzungsdokument und stellen einen
+zuvor aktiven anderen Tab (oder keinen aktiven Tab) anschließend wieder her.
+So gehen Empfangsänderungen nicht in den Undo-Verlauf eines fremden Dokuments.
+Presence alleine löst keinen Pixel-Scan mehr aus. Austritt entfernt ausschließlich
+die Netzwerkmitgliedschaft, nicht Pixelbeiträge/Verlauf; er stößt ein Backup an.
+
+Speichern/Exportieren ist in normalen Aseprite-Befehlen des Gast-Sitzungsbilds
+gesperrt. Die Rolle bleibt für das Dokument nach Trennung erhalten; reguläres
+Gast-Trennen schließt seine Sitzungskopie erst nach bestätigtem Transfer.
+Diese lokale UI-Regel schützt nicht vor Skripten, Zwischenablage, Bildschirmkopie,
+Wiederherstellungsdateien, alten oder veränderten Clients. Gastgeräte empfangen
+weiterhin vollständige Bilddaten. Es gibt ausdrücklich keine DRM-Garantie.
+
+Regressionen: `test/lifecycle.lua` (Aseprite Batch, echte Dokumente mit
+deterministischem Transport), `test/controller.lua` (Menü-/Schließrouting),
+`test/network.test.mjs` (Gast geht, Host-Undo, Wiederherstellung), sowie
+`test/native-structure.lua` mit echten Aseprite-WebSocket-Verbindungen.
+
 Die Synchronisierung geschieht nach abgeschlossenen Aktionen. Temporäre schwebende Cels und ein noch gehaltener Pinselstrich werden nicht als stabile Änderung verteilt. In Version 0.6.0 werden Rasterebenen und Frames angefügt, dupliziert bzw. einzeln oder in Auswahl gelöscht; das Löschen einer vorhandenen Gruppe entfernt ihre Unterebenen. Ebenenname, Sichtbarkeit, Sperre, Deckkraft, Mischmodus und durchgehende Cels, Frame-Dauer, Cel-Deckkraft/Z-Index sowie die erste Palette werden übertragen. Ebene/Frame-Nummern werden bei Löschungen neu zugeordnet; veraltete indexbezogene Nachrichten werden abgewiesen statt auf falsche Cels angewendet. Undo/Redo betrifft serverseitig weiterhin nur eigene Pixeloperationen, nicht Struktur- oder Metadatenänderungen. Mauszeiger und Namens-Tags anderer Teilnehmender werden nicht übertragen.
 
 ## Sicherheit und Grenzen
