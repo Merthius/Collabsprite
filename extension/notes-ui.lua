@@ -5,6 +5,7 @@ local T=dofile(app.fs.joinPath(dir,'notes-input.lua'))
 local S=dofile(app.fs.joinPath(dir,'notes-stack.lua'))
 local F=dofile(app.fs.joinPath(dir,'notes-style.lua'))
 local I=dofile(app.fs.joinPath(dir,'notes-image.lua'))
+local L=dofile(app.fs.joinPath(dir,'ui-layout.lua'))
 local UI={};UI.__index=UI
 local function inside(r,x,y) return x>=r.x and y>=r.y and x<r.x+r.w and y<r.y+r.h end
 local function rect(x,y,w,h) return {x=x,y=y,w=w,h=h} end
@@ -87,7 +88,8 @@ function UI:reveal(s,id,caret)
   if y<12 then s.oy=s.oy+12-y elseif y+math.min(b.h,160)*s.zoom>(s.height or 410)-12 then s.oy=s.oy+(s.height or 410)-12-y-math.min(b.h,160)*s.zoom end
   if caret and s.inline then
     local row=1;for i,v in ipairs(b.rows) do if s.inline.cursor>=v.start then row=i end end
-    local cy=s.oy+(b.y+14+(row-1)*b.lineHeight)*s.zoom
+    local _,ry=S.rowPosition(b,row)
+    local cy=s.oy+(b.y+ry)*s.zoom
     if cy<12 then s.oy=s.oy+12-cy elseif cy+b.lineHeight*s.zoom>(s.height or 410)-12 then s.oy=s.oy+(s.height or 410)-12-cy-b.lineHeight*s.zoom end
   end
 end
@@ -105,7 +107,8 @@ function UI:import(s,point)
   picker:file{id='path',title='Referenzbild',open=true,entry=false,filetypes={'png','jpg','jpeg','webp','gif','bmp'},onchange=function()
     local path=picker.data.path
     if path and path~='' then picker:close();self:run(function() self:add(s,'image',nil,point,I.load(path)) end) end
-  end}:button{text='Abbrechen'}:show{wait=false}
+  end}:button{text='Abbrechen'}
+  L.show(picker)
 end
 function UI:draftValue(d) return d.value end
 function UI:endInline(s,d)
@@ -180,52 +183,73 @@ end
 function UI:remove(s,id,tail)
   local c=N.card(s.board,id);if c then self:action(s,{action='delete',id=id,versions=N.copy(c.versions),revision=s.board.revision,children=tail}) end
 end
-function UI:menu(s,id,x,y)
+function UI:menu(s,id,x,y,page)
   local items={};local function item(label,fn) items[#items+1]={label=label,fn=fn} end
   local point={x=clamp((x-s.ox)/s.zoom),y=clamp((y-s.oy)/s.zoom)}
   local c=id and N.card(s.board,id);local draft=s.inline
-  if draft and draft.error then
+  local function submenu(label,nextPage) item(label..' →',function() self:menu(s,id,x,y,nextPage) end) end
+  if page then item('Zurück',function() self:menu(s,id,x,y) end) end
+  if page=='list' then
+    item('Checkliste',function() self:add(s,'list','check',point) end)
+    item('Punktliste',function() self:add(s,'list','bullet',point) end)
+    item('Nummerierte Liste',function() self:add(s,'list','number',point) end)
+  elseif page=='style' and c then
+    for _,style in ipairs({{'check','Checkliste'},{'bullet','Punktliste'},{'number','Nummeriert'}}) do item(style[2],function() self:action(s,{action='patch',patches={N.patch(N.card(s.board,id),'listStyle',style[1])}}) end) end
+  elseif draft and draft.error then
     item('Entwurf kopieren',function() app.clipboard.text=draft.value end)
-    item('Gemeinsamen Text ansehen',function() local now=N.card(s.board,draft.id);app.alert{title='Gemeinsamer Text',text=now and S.text(now) or 'Element wurde gelöscht.'} end)
+    item('Gemeinsamen Text ansehen',function() local now=N.card(s.board,draft.id);self:compare(s,now and S.text(now) or 'Element wurde gelöscht.') end)
     item('Meinen Text übernehmen',function()
       local now=N.card(s.board,draft.id);if not now then return end
       draft.base=N.copy(now);draft.error=nil;draft.dirty=draft.value~=S.text(now);self:finishInline(s)
     end)
     item('Entwurf verwerfen',function() if not draft.sending then self:endInline(s,draft) end end)
   else
-    item('Text',function() self:add(s,'text',nil,point) end)
-    item('Checkliste',function() self:add(s,'list','check',point) end)
-    item('Punktliste',function() self:add(s,'list','bullet',point) end)
-    item('Nummerierte Liste',function() self:add(s,'list','number',point) end)
-    item('Referenzbild …',function() self:import(s,point) end)
-    if c then
+    if not c or page=='add' then
+      item('Text',function() self:add(s,'text',nil,point) end)
+      submenu('Liste','list')
+      item('Referenzbild …',function() self:import(s,point) end)
+    else
       items[#items+1]={colors=true,id=id}
-      if c.kind=='list' then
-        for _,style in ipairs({{'check','Als Checkliste'},{'bullet','Als Punktliste'},{'number','Als Nummerierung'}}) do item(style[2],function() self:action(s,{action='patch',patches={N.patch(N.card(s.board,id),'listStyle',style[1])}}) end) end
-      end
+      if c.kind~='image' then item('Text bearbeiten',function() self:edit(s,id) end) end
+      if c.kind=='list' then submenu('Listenart','style') end
+      submenu('Neues Element','add')
       item('Element löschen',function() self:remove(s,id,false) end)
       if #S.tail(s.board,id)>1 then item('Teilstapel löschen',function() self:remove(s,id,true) end) end
     end
-    item('Rückgängig  ·  Strg+Z',function() self:action(s,{action='undo'}) end)
-    if #s.board.trash>0 then item('Letzte Löschung wiederherstellen',function() self:action(s,{action='restore',id=s.board.trash[#s.board.trash].id}) end) end
-    item('Alles ins Bild',function() self:fit(s) end)
+    if not page then
+      item('Rückgängig  ·  Strg+Z',function() self:action(s,{action='undo'}) end)
+      if #s.board.trash>0 then item('Löschung wiederherstellen',function() self:action(s,{action='restore',id=s.board.trash[#s.board.trash].id}) end) end
+      item('Alles einpassen',function() self:fit(s) end)
+    end
   end
-  s.menu={x=math.max(4,math.min(x,(s.width or 660)-254)),y=math.max(4,math.min(y,(s.height or 410)-#items*27-12)),items=items}
+  local width=216
+  for _,v in ipairs(items) do if v.label then width=math.max(width,F.measure(v.label,false)+26) end end
+  s.menu={x=x,y=y,w=width,items=items,offset=0};s.menuHover=nil
   self:refresh(s)
+end
+function UI:compare(s,text)
+  local d=Dialog{title='Gemeinsamer Text'};local w,h=L.canvas(510,300)
+  local rows=S.lines(text,false,w-24);local offset=0
+  d:canvas{width=w,height=h,autoscaling=false,onpaint=function(ev)
+    local gc=ev.context;gc.color=F.color('#2B2C30');gc:fillRect(Rectangle(0,0,gc.width,gc.height))
+    for i=offset+1,math.min(#rows,offset+math.floor((gc.height-16)/20)) do F.draw(gc,rows[i].text,12,8+(i-offset-1)*20,1,false,true) end
+  end,onwheel=function(ev) offset=math.max(0,math.min(math.max(0,#rows-1),offset+ev.deltaY*3));d:repaint() end}
+    :newrow():button{text='Schließen'}
+  L.show(d)
 end
 function UI:paint(s,ev)
   local gc=ev.context;s.width=gc.width;s.height=gc.height;s.hits={}
-  gc.opacity=255;gc.color=Color{r=36,g=39,b=44};gc:fillRect(Rectangle(0,0,gc.width,gc.height))
+  gc.antialias=true;gc.opacity=255;gc.color=Color{r=39,g=40,b=43};gc:fillRect(Rectangle(0,0,gc.width,gc.height))
   local function hit(id,kind,r,extra) s.hits[#s.hits+1]={id=id,kind=kind,r=r,extra=extra} end
   local z=s.zoom;local boxes=self:layout(s)
   for _,b in ipairs(boxes) do
     local c=b.card;local x,y=s.ox+b.x*z,s.oy+b.y*z;local w,h=b.w*z,b.h*z
     if x+w>0 and y+h>0 and x<gc.width and y<gc.height then
       local d=s.inline and s.inline.id==c.id and s.inline or nil
-      F.box(gc,x+2,y+3,w,h,Color{r=23,g=25,b=29},7*z)
+      F.box(gc,x,y+2,w,h,Color{r=23,g=24,b=26,a=120},5*z)
       local border=d and d.error and '#CF6F7E' or s.selected==c.id and '#AAC6D4' or '#5D6268'
-      F.box(gc,x-1,y-1,w+2,h+2,F.color(border),8*z)
-      F.box(gc,x,y,w,h,F.paper(c.color),7*z)
+      F.box(gc,x-1,y-1,w+2,h+2,F.color(border),6*z)
+      F.box(gc,x,y,w,h,F.paper(c.color),5*z)
       hit(c.id,'drag',rect(x,y,w,h),b)
       if c.kind=='image' then
         local cached=s.images[c.id]
@@ -235,36 +259,40 @@ function UI:paint(s,ev)
           gc:drawImage(cached.image,Rectangle(0,0,c.image.width,c.image.height),Rectangle(math.floor(x+(w-iw)/2),math.floor(y+14*z),math.max(1,math.floor(iw)),math.max(1,math.floor(ih))))
         end
       else
-        local tx=x+(c.kind=='list' and 40 or 16)*z;local rows=b.rows
+        local rows=b.rows
+        hit(c.id,'text',rect(x+14*z,y+10*z,w-28*z,h-20*z),b)
         if d then d.draw={lines={},heading=b.heading,z=z} end
         local a,finish=0,0;if d then a,finish=T.selection(d) end
         for i,row in ipairs(rows) do
-          local ry=y+(14+(i-1)*b.lineHeight)*z;local text=row.text
+          local text=row.text
+          local placeholder=text=='' and #rows==1
+          local shown=placeholder and (c.kind=='list' and 'Listenpunkt …' or 'Text …') or text
+          local rx,top=S.rowPosition(b,i,placeholder and not d and shown or text)
+          local tx,ry=x+rx*z,y+top*z
           if d then
             local left=math.max(0,a-row.start);local right=math.min(T.length(text),finish-row.start)
             if right>left then
               gc.color=Color{r=113,g=156,b=187,a=100};gc:fillRect(Rectangle(math.floor(tx+F.measure(T.slice(text,0,left),b.heading)*z),math.floor(ry),math.max(1,math.floor((F.measure(T.slice(text,0,right),b.heading)-F.measure(T.slice(text,0,left),b.heading))*z)),math.floor(b.lineHeight*z)))
             end
             local widths={};for n=0,T.length(text) do widths[n]=F.measure(T.slice(text,0,n),b.heading)*z end
-            d.draw.lines[#d.draw.lines+1]={r=rect(tx,ry,(b.w-32)*z,b.lineHeight*z),widths=widths,start=row.start,length=T.length(text)}
+            d.draw.lines[#d.draw.lines+1]={r=rect(tx,ry,math.max(1,F.measure(text,b.heading))*z,b.lineHeight*z),widths=widths,start=row.start,length=T.length(text)}
             if d.cursor>=row.start and d.cursor<=row.start+T.length(text) then
               local cx=tx+widths[d.cursor-row.start];gc.color=Color{r=43,g=66,b=82};gc:fillRect(Rectangle(math.floor(cx),math.floor(ry+3*z),math.max(1,math.floor(z)),math.floor((b.lineHeight-5)*z)))
             end
           end
           if c.kind=='list' and row.first then
             if c.listStyle=='check' then
-              local done=c.checks:sub(row.index,row.index)=='1';local cr=rect(x+16*z,ry+4*z,13*z,13*z)
+              local done=c.checks:sub(row.index,row.index)=='1';local cr=rect(tx-24*z,ry+4*z,13*z,13*z)
               F.box(gc,cr.x,cr.y,cr.w,cr.h,F.color(done and '#7EAC97' or '#839A8D'),3*z)
               if not done then F.box(gc,cr.x+z,cr.y+z,cr.w-2*z,cr.h-2*z,F.paper(c.color),2*z)
               else gc.color=Color{r=250,g=255,b=251};gc:beginPath();gc:moveTo(cr.x+3*z,cr.y+6*z);gc:lineTo(cr.x+6*z,cr.y+9*z);gc:lineTo(cr.x+11*z,cr.y+3*z);gc:stroke() end
               hit(c.id,'check',cr,row.index)
-            elseif c.listStyle=='number' then F.draw(gc,row.index..'.',x+16*z,ry,z,false)
-            else F.box(gc,x+20*z,ry+9*z,4*z,4*z,F.color('#526559'),2*z) end
+            elseif c.listStyle=='number' then F.draw(gc,row.index..'.',tx-24*z,ry,z,false)
+            else F.box(gc,tx-19*z,ry+8*z,4*z,4*z,F.color('#526559'),2*z) end
           end
-          if text=='' and #rows==1 then text=c.kind=='list' and 'Listenpunkt …' or 'Text …';gc.opacity=110 end
+          if placeholder then gc.opacity=110;if not d then text=shown end end
           F.draw(gc,text,tx,ry,z,b.heading);gc.opacity=255
         end
-        hit(c.id,'text',rect(tx,y+12*z,w-(tx-x)-14*z,h-24*z),b)
       end
       if s.selected==c.id or s.hover==c.id then F.box(gc,x+w/2-10*z,y+4*z,20*z,2*z,Color{r=103,g=114,b=121,a=100},z) end
       if d and (d.error or d.sending) then F.box(gc,x+w-10*z,y+7*z,4*z,4*z,F.color(d.error and '#B74158' or '#7295AB'),2*z) end
@@ -272,17 +300,25 @@ function UI:paint(s,ev)
   end
   if s.drag and s.drag.target then local b=s.drag.target;F.box(gc,s.ox+b.x*z,s.oy+(b.y+b.h+2)*z,S.width*z,3*z,F.color('#B7DBC7'),z) end
   if s.menu then
-    local m=s.menu;F.box(gc,m.x+3,m.y+4,250,#m.items*27+10,Color{r=17,g=20,b=24},8)
-    F.box(gc,m.x,m.y,250,#m.items*27+10,F.color('#EFF0EB'),7)
-    for i,item in ipairs(m.items) do
-      local r=rect(m.x+5,m.y+5+(i-1)*27,240,27)
+    local m=s.menu;local rowHeight=25
+    m.w=math.min(m.w,gc.width-8);m.visible=math.max(1,math.min(#m.items,math.floor((gc.height-18)/rowHeight)))
+    m.offset=math.min(m.offset,#m.items-m.visible);local mh=m.visible*rowHeight+10
+    m.x=math.max(4,math.min(m.x,gc.width-m.w-4));m.y=math.max(4,math.min(m.y,gc.height-mh-4))
+    F.box(gc,m.x+2,m.y+3,m.w,mh,F.color('#191A1C'),4)
+    F.box(gc,m.x-1,m.y-1,m.w+2,mh+2,F.color('#62636A'),4)
+    F.box(gc,m.x,m.y,m.w,mh,F.color('#333438'),3)
+    for i=m.offset+1,math.min(#m.items,m.offset+m.visible) do
+      local item=m.items[i];local r=rect(m.x+5,m.y+5+(i-m.offset-1)*rowHeight,m.w-10,rowHeight)
       if item.colors then
-        for n,color in ipairs(F.colors) do local cr=rect(r.x+6+(n-1)*32,r.y+4,25,19);F.box(gc,cr.x,cr.y,cr.w,cr.h,F.color(color),4);hit(item.id,'color',cr,color) end
+        local step=r.w/#F.colors
+        for n,color in ipairs(F.colors) do local cr=rect(r.x+3+(n-1)*step,r.y+4,step-6,17);F.box(gc,cr.x,cr.y,cr.w,cr.h,F.color(color),3);hit(item.id,'color',cr,color) end
       else
-        if s.menuHover==i then F.box(gc,r.x,r.y,r.w,r.h,F.color('#D5DED9'),4) end
-        F.draw(gc,item.label,r.x+8,r.y+3,1,false);hit(nil,'menu',r,item.fn)
+        if s.menuHover==i then F.box(gc,r.x,r.y,r.w,r.h,F.color('#50535B'),2) end
+        F.draw(gc,item.label,r.x+8,r.y+2,1,false,true);hit(nil,'menu',r,item.fn)
       end
     end
+    if m.offset>0 then F.box(gc,m.x+m.w/2-8,m.y,16,2,F.color('#AEBECD'),1) end
+    if m.offset+m.visible<#m.items then F.box(gc,m.x+m.w/2-8,m.y+mh-2,16,2,F.color('#AEBECD'),1) end
   end
 end
 function UI:hit(s,x,y)
@@ -332,7 +368,7 @@ function UI:pointerMove(s,ev)
       if a.moved then a.target=S.target(a.board,self:layout(s),a) end
     else s.ox=a.ox+ev.x-a.startX;s.oy=a.oy+ev.y-a.startY end
   end
-  s.hover=self:hit(s,ev.x,ev.y);if s.menu then s.menuHover=math.floor((ev.y-s.menu.y-5)/27)+1 end
+  s.hover=self:hit(s,ev.x,ev.y);if s.menu then s.menuHover=s.menu.offset+math.floor((ev.y-s.menu.y-5)/25)+1 end
   self:refresh(s)
 end
 function UI:pointerUp(s)
@@ -347,17 +383,18 @@ function UI:show(sprite)
   sprite=sprite or app.sprite;if not sprite then app.tip('Bitte zuerst ein Bild öffnen.',4);return end
   local s=self:state(sprite);s.seen=true;if s.dialog then return end
   self:prepare(s)
-  s.dialog=Dialog{title='Ideenwand · '..app.fs.fileTitle(sprite.filename~='' and sprite.filename or 'Bild'),onclose=function()
+  s.dialog=Dialog{title='Ideenwand · '..L.short(app.fs.fileTitle(sprite.filename~='' and sprite.filename or 'Bild'),32),onclose=function()
     s.dialog=nil;s.pointerDown=false;s.selecting=false;s.drag=nil;s.menu=nil;self:run(function() self:finishInline(s) end)
   end}
   local d=s.dialog
-  d:canvas{id='board',width=660,height=410,autoscaling=true,focus=true,
+  local width,height=L.canvas(740,490);s.width=width;s.height=height
+  d:canvas{id='board',width=width,height=height,autoscaling=false,focus=true,
     onpaint=function(ev) self:paint(s,ev) end,
     onmousedown=function(ev) self:run(function() self:pointerDown(s,ev) end) end,
     onmousemove=function(ev) self:pointerMove(s,ev) end,
     onmouseup=function() self:run(function() self:pointerUp(s) end) end,
     onwheel=function(ev)
-      s.menu=nil
+      if s.menu then s.menu.offset=math.max(0,math.min(#s.menu.items-(s.menu.visible or 1),s.menu.offset+ev.deltaY));self:refresh(s);return end
       if ev.shiftKey then s.oy=s.oy-ev.deltaY*30
       else local old=s.zoom;s.zoom=math.max(0.25,math.min(2,s.zoom*(ev.deltaY>0 and 0.85 or 1.18)));s.ox=ev.x-(ev.x-s.ox)*s.zoom/old;s.oy=ev.y-(ev.y-s.oy)*s.zoom/old end
       self:refresh(s)
@@ -373,7 +410,7 @@ function UI:show(sprite)
         elseif ev.code=='Enter' and s.selected then self:edit(s,s.selected) end
       end)
     end}
-  self:fit(s);d:show{wait=false};self:refresh(s)
+  self:fit(s);L.show(d);self:refresh(s)
 end
 function UI:tick()
   if self.failed then return end

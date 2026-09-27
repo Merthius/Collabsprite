@@ -1,6 +1,8 @@
 -- The background worker downloads/verifies; Aseprite owns installation.
 -- No self-extraction into a loaded extension and no forced app restart.
 local Update={}
+local dir=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
+local Layout=dofile(app.fs.joinPath(dir,'ui-layout.lua'))
 Update.__index=Update
 local phases={checking='Version prüfen',downloading='Herunterladen',verifying='Paket prüfen',installing='Installieren'}
 local order={'checking','downloading','verifying','installing'}
@@ -18,16 +20,11 @@ function Update:setState(phase,detail)
     local prefix=(phase=='done' or (phase=='current' and i==1)) and '✓ ' or active>i and '✓ ' or active==i and '› ' or '· '
     self.dialog:modify{id=key,text=prefix..phases[key]}
   end
-  local first,second=self.detail,''
-  if #first>80 then
-    local cut=first:sub(1,80):match('^.*() ')
-    cut=cut or 80
-    first,second=self.detail:sub(1,cut-1),self.detail:sub(cut+1)
-  end
-  self.dialog:modify{id='detail',text=first}
-  self.dialog:modify{id='detail2',text=second:sub(1,100),visible=second~=''}
+  local lines=Layout.lines(self.detail)
+  for i=1,4 do self.dialog:modify{id='detail'..i,text=lines[i] or '',visible=i==1 or lines[i]~=nil} end
   self.dialog:modify{id='close',text=self.busy and 'Abbrechen' or 'Schließen',enabled=phase~='installing'}
   self.dialog:modify{id='retry',visible=phase=='cancelled' and self.packagePath~=nil}
+  Layout.fit(self.dialog,300*(app.uiScale or 1),170*(app.uiScale or 1))
   self.dialog:repaint()
 end
 
@@ -42,13 +39,14 @@ function Update:show()
   end}
   self.dialog=dlg
   for _,key in ipairs(order) do dlg:label{id=key,text='· '..phases[key]}:newrow() end
-  dlg:separator{}:label{id='detail',text='GitHub wird im Hintergrund geprüft …'}:newrow()
-    :label{id='detail2',text='',visible=false}:newrow()
-    :button{id='retry',text='Installation erneut öffnen',visible=false,onclick=function()
+  dlg:separator{}
+  -- Reserve wrapped status space before Aseprite installs its scrolling view.
+  for i=1,4 do dlg:label{id='detail'..i,text=i==1 and 'GitHub wird geprüft …' or ' '}:newrow() end
+  dlg:button{id='retry',text='Installation erneut öffnen',visible=false,onclick=function()
       self.options.safely(function() self:install() end)
     end}
     :button{id='close',text='Abbrechen',onclick=function() dlg:close() end}
-  dlg:show{wait=false}
+  Layout.show(dlg)
   self:setState(self.phase,self.detail)
 end
 
@@ -65,7 +63,7 @@ function Update:start()
     return
   end
   local reason=self.options.blocked()
-  if reason then app.alert{title='Collabsprite',text=reason};return end
+  if reason then app.alert{title='Collabsprite',text=Layout.lines(reason)};return end
   local temp=os.getenv('TEMP') or os.getenv('TMP')
   assert(temp and temp~='','Windows-Temp-Verzeichnis fehlt.')
   self.counter=self.counter+1

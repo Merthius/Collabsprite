@@ -5,7 +5,7 @@ local callbacks,controls,events,clock,tick,opens,hostCalls={}, {}, {}, 1000, nil
 local fileReply='READY 18765'
 local fileError=false
 local fakeSession
-local fakeDialog={data={name='Test'}}
+local fakeDialog={data={name='Test'},sizeHint={width=300,height=200},bounds=Rectangle(0,0,300,200)}
 setmetatable(fakeDialog,{__index=function(_,key)
   return function(self,item)
     if item and item.id then
@@ -31,6 +31,7 @@ local env=setmetatable({app=fakeApp,
   Dialog=function() return fakeDialog end,
   Timer=function(item) tick=item.ontick;return {start=function() end,stop=function() end} end,
   dofile=function(path)
+    if path:find('ui-layout.lua',1,true) then return dofile(root..'/extension/ui-layout.lua') end
     if path:find('update-ui.lua',1,true) then return {new=function() return {tick=function() end,close=function() end} end} end
     if path:find('notes-ui.lua',1,true) then return {new=function() return {states={},attach=function() end,tick=function() end,close=function() end} end} end
     if path:find('diagnostics.lua',1,true) then return {new=function() return {log=function() end} end} end

@@ -6,7 +6,7 @@ local tick,client,notify,closed,continued=nil,nil,nil,0,0
 local notesShown,notesTicks,groups=nil,0,{}
 local owned={id=1,isValid=true,close=function() closed=closed+1 end}
 local other={id=2}
-local dlg={data={name='Test',manual='127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef'}}
+local dlg={data={name='Test',manual='127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef'},sizeHint={width=300,height=200},bounds=Rectangle(0,0,300,200)}
 setmetatable(dlg,{__index=function(_,key) return function(self,item)
   if item and item.id then
     controls[item.id]=controls[item.id] or {}
@@ -35,6 +35,7 @@ local env=setmetatable({app=fakeApp,
   os={time=os.time,getenv=function() return 'test-temp' end,execute=function() return true end,remove=function() end},
   io={open=function() return {read=function() return 'READY 127.0.0.1:8766' end,close=function() end} end},
   dofile=function(path)
+    if path:find('ui-layout.lua',1,true) then return dofile(root..'/extension/ui-layout.lua') end
     if path:find('update-ui.lua',1,true) then return {new=function() return {tick=function() end,close=function() end} end} end
     if path:find('client.lua',1,true) then return fakeClient end
     if path:find('json.lua',1,true) then return {decode=function() return {} end} end

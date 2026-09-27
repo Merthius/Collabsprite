@@ -10,6 +10,7 @@ local PORT=8766
 local debugDialog=nil
 local callbackBusy=false
 local notesUI
+local Layout
 
 local function traceback(err)
   return debug and debug.traceback and debug.traceback(tostring(err),2) or tostring(err)
@@ -20,11 +21,11 @@ local function logDiagnostic(event,detail)
 end
 
 local function alert(message)
-  app.alert{title='Collabsprite',text=tostring(message)}
+  if Layout then Layout.alert(message) else app.alert{title='Collabsprite',text=tostring(message)} end
 end
 
 local function friendly(error)
-  local message=tostring(error)
+  local message=tostring(error):match('[^\r\n]+') or 'Unbekannter Fehler. Diagnose prüfen.'
   return message:match('^.-%.lua:%d+:%s*(.+)$') or message
 end
 
@@ -44,7 +45,7 @@ local function refresh(s)
   if notesUI and s.sprite and not s.notesAttached then notesUI:attach(s);s.notesAttached=true end
   if not dialog then return end
   local busy=startup~=nil or s.reconnecting
-  dialog:modify{id='status',text=s.reconnecting and 'Verbinde erneut ...' or busy and 'Vorbereitung ...' or s.connected and (s.syncStatus or 'Verbunden') or s.connecting and 'Verbinde ...' or 'Nicht verbunden'}
+  dialog:modify{id='status',text=Layout.short(s.reconnecting and 'Verbinde erneut ...' or busy and 'Vorbereitung ...' or s.connected and (s.syncStatus or 'Verbunden') or s.connecting and 'Verbinde ...' or 'Nicht verbunden',36)}
   dialog:modify{id='startHost',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='joinManual',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='joinFound',enabled=not busy and not s.connected and not s.connecting}
@@ -52,6 +53,7 @@ local function refresh(s)
   dialog:modify{id='copy',visible=s.connected and s.isHost}
   dialog:modify{id='admission',visible=s.connected and s.isHost,selected=s.acceptingGuests~=false}
   dialog:modify{id='disconnect',visible=busy or s.connected or s.connecting}
+  Layout.fit(dialog,280*(app.uiScale or 1),(pane=='host' and 160 or 210)*(app.uiScale or 1))
 end
 
 local function artistName()
@@ -138,7 +140,7 @@ local function searchSessionsNow(output)
           local address=invite:match('^([^/]+)/') or ''
           if address:match('^[%d%.]+:%d+$') and invite:match('^[%d%.]+:%d+/%x+/%x+$') and not seen[invite] then
             seen[invite]=true
-            local label=tostring(room.name or 'Kuenstler'):sub(1,30)..' - '..tostring(room.image or 'Bild'):sub(1,30)
+            local label=Layout.short(room.name or 'Kuenstler',16)..' · '..Layout.short(room.image or 'Bild',18)
             if discovered[label] then label=label..' ('..(#choices+1)..')' end
             discovered[label]=invite;choices[#choices+1]=label
             discoveredCount=discoveredCount+1
@@ -180,9 +182,10 @@ local function info()
     :newrow()
     :label{label='Projekt',text='github.com/Merthius/Collabsprite'}
     :newrow()
-    :label{text='Zusammen zeichnen im LAN oder ueber Radmin VPN.'}
+    :label{text='Gemeinsam zeichnen im LAN'}:newrow()
+    :label{text='oder über Radmin VPN.'}
     :button{text='Schliessen'}
-  about:show{wait=false}
+  Layout.show(about)
 end
 
 local function showDiagnostics()
@@ -191,18 +194,19 @@ local function showDiagnostics()
     logDiagnostic('diagnostics','console opened')
     if debugDialog then debugDialog.dialog:close();debugDialog=nil end
     local dlg=Dialog{title='Collabsprite - Diagnose',onclose=function() debugDialog=nil end}
-    dlg:label{text='Laufendes, lokales Protokoll · bleibt nach Aseprite-Neustart erhalten'}
+    local width,height=Layout.canvas(660,370)
+    dlg:label{text='Lokales Protokoll · ohne Bilddaten'}
       :newrow()
-      :canvas{id='tail',width=740,height=350,autoscaling=false,onpaint=function(ev)
+      :canvas{id='tail',width=width,height=height,autoscaling=false,onpaint=function(ev)
         local gc=ev.context
         gc.color=Color{r=35,g=37,b=43,a=255}
         gc:fillRect(Rectangle(0,0,gc.width,gc.height))
         gc.color=Color{r=200,g=205,b=215,a=255}
-        gc:fillText('Letzte Ereignisse · ältere Einträge werden automatisch begrenzt',12,22)
-        local lines=diagnostics:memoryTail(15)
-        local start=math.max(1,#lines-14)
+        local count=math.max(1,math.floor((gc.height-36)/20))
+        local lines=diagnostics:memoryTail(count)
+        local start=math.max(1,#lines-count+1)
         for i=start,#lines do
-          gc:fillText(lines[i]:sub(1,130),12,24+(i-start+1)*20)
+          gc:fillText(lines[i]:sub(1,130),12,10+(i-start)*20)
         end
         gc.color=Color{r=145,g=153,b=168,a=255}
         gc:fillText('Lokales Protokoll · höchstens 512 KiB · keine Bilddaten',12,gc.height-12)
@@ -216,7 +220,7 @@ local function showDiagnostics()
           if debugDialog then debugDialog.dialog:repaint() end
         end)
       end}
-      :button{text='Neues Protokoll',onclick=function()
+      :button{text='Leeren',onclick=function()
         safely(function()
           assert(diagnostics:clear(),'Protokoll konnte nicht geleert werden.')
           logDiagnostic('diagnostics','new capture started; version='..installedVersion..'; aseprite='..tostring(app.version or 'unknown'))
@@ -225,7 +229,7 @@ local function showDiagnostics()
         end)
       end}
       :button{text='Schließen',onclick=function() dlg:close() end}
-    dlg:show{wait=false}
+    Layout.show(dlg)
     debugDialog={dialog=dlg,lastPaint=os.time()}
   end)
 end
@@ -240,6 +244,7 @@ local function showPane(which)
   for _,id in ipairs({'manual','joinManual','search'}) do dialog:modify{id=id,visible=not host} end
   dialog:modify{id='sessions',visible=not host and discoveredCount>0}
   dialog:modify{id='joinFound',visible=not host and discoveredCount>0}
+  Layout.fit(dialog,280*(app.uiScale or 1),(host and 160 or 210)*(app.uiScale or 1))
 end
 
 local function show()
@@ -251,7 +256,7 @@ local function show()
   dialog:button{id='tabHost',text='● Erstellen',onclick=function() showPane('host') end}
     :button{id='tabJoin',text='Beitreten',onclick=function() showPane('join') end}
     :newrow()
-    :entry{id='name',label='Dein Name',text=preferences.name or 'Kuenstler'}
+    :entry{id='name',label='Dein Name',text=preferences.name or 'Kuenstler'}:newrow()
     :button{id='startHost',text='Sitzung erstellen',onclick=function()
       if not app.sprite then alert('Bitte zuerst ein Bild öffnen');return end
       if app.sprite and guarded[app.sprite.id] and guarded[app.sprite.id].guest then
@@ -262,10 +267,12 @@ local function show()
         beginBootstrap('Host',nil,function() newSession():host(sprite,name,PORT) end)
       end)
     end}
-    :entry{id='manual',label='Einladungscode',text='',visible=false}
+    :newrow():entry{id='manual',label='Einladungscode',text='',visible=false}
+    :newrow()
     :button{id='joinManual',text='Beitreten',visible=false,onclick=function() joinCode(dialog.data.manual) end}
     :button{id='search',text='Sitzungen suchen',visible=false,onclick=searchSessions}
-    :combobox{id='sessions',label='Aktive Sitzungen',options={'Keine Sitzung gefunden'},visible=false}
+    :newrow():combobox{id='sessions',label='Sitzungen',options={'Keine Sitzung gefunden'},visible=false}
+    :newrow()
     :button{id='joinFound',text='Ausgewählte Sitzung öffnen',visible=false,onclick=function()
       joinCode(discovered[dialog.data.sessions])
     end}
@@ -279,7 +286,7 @@ local function show()
     :newrow()
     :button{id='copy',text='Einladung kopieren',visible=false,onclick=function() copyInvite() end}
     :button{id='disconnect',text='Trennen',visible=false,onclick=function() disconnect() end}
-  dialog:show{wait=false}
+  Layout.show(dialog)
   showPane(pane)
   if session then refresh(session) end
 end
@@ -312,6 +319,7 @@ end
 function init(plugin)
   if not app.isUIAvailable then return end
   extensionPath=plugin.path
+  Layout=dofile(app.fs.joinPath(plugin.path,'ui-layout.lua'))
   local temp=os.getenv('TEMP') or os.getenv('TMP')
   local logPath=temp and app.fs.joinPath(temp,'Collabsprite-debug.log') or (os.tmpname()..'.collabsprite.log')
   diagnostics=dofile(app.fs.joinPath(plugin.path,'diagnostics.lua')).new(logPath)

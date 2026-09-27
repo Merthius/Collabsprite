@@ -5,7 +5,7 @@ local realDecode=dofile(root..'/extension/json.lua').decode
 local reply,manifest,inventory,now,installs,launches,blocked,failInstall='', '', '', 1000,0,0,nil,false
 local controls,dlg={}
 local updater
-local fakeApp={fs={joinPath=function(a,b) return a..'/'..b end},alert=function() end,command={Options=function(params)
+local fakeApp={fs={joinPath=function(a,b) return a..'/'..b end,filePath=app.fs.filePath},alert=function() end,command={Options=function(params)
   assert(updater.phase=='installing' and updater.busy,'No installation status')
   assert(params.installExtension=='C:/Downloads/Collabsprite-v0.8.1.aseprite-extension','Wrong installer path')
   installs=installs+1
@@ -18,7 +18,7 @@ local fakeApp={fs={joinPath=function(a,b) return a..'/'..b end},alert=function()
   end
 end}}
 local env=setmetatable({app=fakeApp,Dialog=function(spec)
-  controls={};dlg={}
+  controls={};dlg={sizeHint={width=300,height=200},bounds=Rectangle(0,0,300,200)}
   return setmetatable(dlg,{__index=function(_,key) return function(self,item)
     if key=='close' then if spec.onclose then spec.onclose() end;return end
     if item and item.id then controls[item.id]=controls[item.id] or {};for k,v in pairs(item) do controls[item.id][k]=v end end
@@ -40,7 +40,8 @@ local downloaded='DOWNLOADED v0.8.1|C:/Downloads/Collabsprite-v0.8.1.aseprite-ex
 fresh():start();updater:start();assert(launches==1,'Duplicate worker')
 for _,phase in ipairs({'checking','downloading','verifying','preparing'}) do reply='PROGRESS '..phase;updater:tick();assert(updater.busy) end
 manifest='INSTALL';reply=downloaded;assert(updater:tick());assert(installs==1 and updater.phase=='done' and not updater.busy)
-assert(controls.detail.text:find('installiert',1,true) and controls.detail.text:find('neu starten',1,true))
+local detail=(controls.detail1.text or '')..(controls.detail2.text or '')
+assert(detail:find('installiert',1,true) and detail:find('neu starten',1,true))
 fresh():start();reply=downloaded;updater:tick();assert(updater.phase=='cancelled' and controls.retry.visible,'Cancelled installer reported success')
 manifest='INSTALL';controls.retry.onclick();assert(updater.phase=='done','Retry failed')
 fresh():start();manifest='{"name":"pixelkollab-native","version":"0.8.1"}';reply=downloaded;updater:tick()

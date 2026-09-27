@@ -1,6 +1,8 @@
 # Ideenwand: freie Elemente und magnetische Stapel
 
-Diese Anleitung beschreibt den **Release 0.10.0 Beta / Protokoll 7**. Sie ersetzt die Karten-/Unterpunkt-Bedienung aus 0.8.x. Host und Gäste benötigen denselben neuen Installer.
+Diese Anleitung beschreibt **Collabsprite 0.10.1 Beta / Protokoll 7**. Die 0.10.x-Ideenwand ersetzt die Karten-/Unterpunkt-Bedienung aus 0.8.x. [Download und Versionshinweise](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.1).
+
+Ab 0.10.1 starten die Collabsprite-Fenster begrenzt auf einen Teil des Aseprite-Fensters. Die Ideenwand wird nicht zusätzlich mit der UI-Skalierung aufgeblasen. Geglättete Schrift, zentrierte Textboxen und dezente Pastellflächen bleiben auch beim Wand-Zoom lesbarer. Aseprites eigene Bildschirm-Skalierung und native Dateiauswahl/Sicherheitsdialoge bleiben unverändert.
 
 ## Eine freie Fläche
 
@@ -9,7 +11,7 @@ Die Wand hat keine Suchleiste, Werkzeugleiste oder dauerhaften Aktionsbuttons. �
 Rechtsklick auf die freie Fläche:
 
 - **Text**: eine leere Box erscheint, direkt losschreiben.
-- **Checkliste**, **Punktliste**, **Nummerierte Liste**: jede Zeile ist ein Listenpunkt; bei Checklisten Kästchen anklicken.
+- **Liste → Checkliste / Punktliste / Nummerierte Liste**: jede Zeile ist ein Listenpunkt; bei Checklisten Kästchen anklicken. In 0.10.0 stehen die drei Listenarten noch direkt im Hauptmenü.
 - **Referenzbild …**: im Dateidialog PNG, JPG/JPEG, WebP, GIF oder BMP auswählen. Bei Animationen wird das erste Bild verwendet.
 
 Text anklicken, um ihn zu ändern. **Enter** setzt eine neue Zeile. **Strg+Enter**, **Escape**, Klick daneben oder normales Schließen übernimmt den Entwurf. Escape verwirft keinen Text. Strg+A/C/X/V und Auswahl per Maus funktionieren im Textfeld. Lange Zeilen umbrechen automatisch.
@@ -28,13 +30,13 @@ Die Unterkante eines freien Stapels ist magnetisch: die gezogene Box nahe darunt
 
 Jede Box kann genau eine Box unter sich haben. Kreise und widersprüchliche Verbindungen werden abgewiesen. Ein **Text am Stapelanfang ist automatisch größer und fett**; weiter unten normal. Es gibt keine separate Titel-Einstellung.
 
-Rechtsklick auf eine Box zeigt **sieben Pastellfarben**. Die Farbe gehört nur dieser Box, nicht dem gesamten Stapel. Bei Listen lässt sich dort auch die Listenart umstellen.
+Rechtsklick auf eine Box zeigt **sieben Pastellfarben**. Die Farbe gehört nur dieser Box, nicht dem gesamten Stapel. **Listenart →** wechselt den Listentyp; **Neues Element →** fügt etwas hinzu. Die kurzen Menüs zeigen nur passende Aktionen. Bei sehr wenig Platz lässt sich das Menü mit dem Mausrad scrollen.
 
 ## Auf der Wand bewegen
 
 - Leere Fläche ziehen oder mittlere Maustaste: Ausschnitt verschieben.
 - Mausrad: um den Mauszeiger zoomen. Umschalt+Mausrad: vertikal verschieben.
-- Rechtsklick → **Alles ins Bild**: alle Elemente sichtbar machen.
+- Rechtsklick → **Alles einpassen** (0.10.0: **Alles ins Bild**): alle Elemente sichtbar machen.
 - Rechtsklick → **Element löschen**: nur diese Box löschen; der verbleibende Stapel wird wieder verbunden.
 - **Teilstapel löschen** entfernt zusätzlich alles darunter.
 - **Entf/Rücktaste** bei ausgewählter, nicht bearbeiteter Box löscht nur diese.

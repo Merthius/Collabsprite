@@ -3,7 +3,7 @@ local N=dofile(root..'/extension/notes.lua')
 local T=dofile(root..'/extension/notes-input.lua')
 local dialogs,controls=0,{}
 local env=setmetatable({Dialog=function(spec)
-  dialogs=dialogs+1;local form={data={},spec=spec}
+  dialogs=dialogs+1;local form={data={},spec=spec,sizeHint={width=720,height=470},bounds=Rectangle(0,0,720,470)}
   return setmetatable(form,{__index=function(_,method) return function(self,item)
     if method=='close' then if spec.onclose then spec.onclose() end;return self end
     if item and item.id then controls[item.id]=item end

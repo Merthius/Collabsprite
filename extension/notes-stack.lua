@@ -51,6 +51,19 @@ function S.layout(board,inline,drag)
   if drag and drag.moved then chain(assert(N.card(board,drag.id)),drag.x,drag.y) end
   return boxes,byId
 end
+function S.rowPosition(box,index,text)
+  local row=box.rows[index]
+  local width=F.measure(text or row.text,box.heading)
+  -- Lists center the complete marker/text block, keeping markers and wrapped
+  -- continuation rows aligned. Plain text centers every line independently.
+  local x=(box.w-width)/2
+  if box.card.kind=='list' then
+    local widest=0;for _,r in ipairs(box.rows) do widest=math.max(widest,F.measure(r.text,false)) end
+    x=(box.w-widest-24)/2+24
+  end
+  local y=(box.h-(#box.rows-1)*box.lineHeight)/2-F.inkCenter(box.heading)+(index-1)*box.lineHeight
+  return x,y
+end
 function S.target(board,boxes,drag)
   local moving={};for _,id in ipairs(S.tail(board,drag.id)) do moving[id]=true end
   local hasChild={};for _,c in ipairs(board.cards) do if c.id~=drag.id then hasChild[c.parent]=true end end

@@ -1,11 +1,12 @@
 -- Bundled OFL bitmap type, independent of OS fonts and Aseprite's small UI font.
 local dir=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local metrics=dofile(app.fs.joinPath(dir,'notes-font-data.lua'))
-local F={};local atlas
+local F={};local atlas;local cache={};local cacheOrder={}
 function F.load()
   if not atlas then
     atlas=Image(metrics.width,metrics.height,ColorMode.RGB)
-    atlas.bytes=metrics.pixels:gsub('%x%x',function(v) return string.char(tonumber(v,16)) end)
+    atlas.bytes=metrics.alpha:gsub('%x%x',function(v) return string.char(40,48,58,tonumber(v,16)) end)
+    metrics.alpha=nil
   end
 end
 function F.measure(text,heading)
@@ -13,14 +14,32 @@ function F.measure(text,heading)
   for _,cp in utf8.codes(text) do local g=font.glyphs[cp] or font.glyphs[63];width=width+g[5] end
   return width
 end
-function F.draw(gc,text,x,y,scale,heading)
+function F.draw(gc,text,x,y,scale,heading,light)
   local font=heading and metrics.heading or metrics.body
+  -- Rasterize from 2x glyphs once at the actual display size, never enlarge a
+  -- 14px bitmap with nearest-neighbour sampling. Bound memory while zooming.
+  local key=string.format('%.3f:%s:%s',scale,tostring(heading),tostring(light))
+  if not cache[key] then
+    cache[key]={};cacheOrder[#cacheOrder+1]=key
+    if #cacheOrder>8 then cache[table.remove(cacheOrder,1)]=nil end
+  end
+  local glyphs=cache[key];local factor=metrics.factor or 1
   for _,cp in utf8.codes(text) do
     local g=font.glyphs[cp] or font.glyphs[63]
-    gc:drawImage(atlas,Rectangle(g[1],g[2],g[3],g[4]),Rectangle(math.floor(x-2*scale),math.floor(y),math.max(1,math.floor(g[3]*scale)),math.max(1,math.floor(g[4]*scale))))
+    local image=glyphs[cp]
+    if not image then
+      image=Image(g[3]*factor,g[4]*factor,ColorMode.RGB)
+      image:drawImage(atlas,Point(-g[1]*factor,-g[2]*factor))
+      image:resize{width=math.max(1,math.floor(g[3]*scale+0.5)),height=math.max(1,math.floor(g[4]*scale+0.5)),method='bilinear'}
+      if light then image.bytes=image.bytes:gsub('...([%z\1-\255])',function(a) return string.char(226,228,231)..a end) end
+      glyphs[cp]=image
+    end
+    gc:drawImage(image,math.floor(x-2*scale+0.5),math.floor(y+0.5))
     x=x+g[5]*scale
   end
 end
+-- Visible ink is slightly above the middle of the font's line box.
+function F.inkCenter(heading) return heading and 15 or 10 end
 F.colors={'#F3E6BB','#D4E8DB','#D6E4F4','#E5DDF2','#F0D8DC','#F4DFCC','#E4E7E8'}
 function F.color(hex) return Color{r=tonumber(hex:sub(2,3),16),g=tonumber(hex:sub(4,5),16),b=tonumber(hex:sub(6,7),16)} end
 function F.paper(hex)

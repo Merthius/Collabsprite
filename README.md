@@ -2,19 +2,19 @@
 
 # Collabsprite
 
-> **Neu in 0.10.0 Beta:** Freie Ideenwand mit magnetischen Text-, Listen- und Bildboxen, erweiterte gemeinsame Ebenen-/Animationsbearbeitung und ein geführter Updater. [Versionshinweise](docs/releases/v0.10.0.md).
+> **Neu in 0.10.1 Beta:** Kompaktere Fenster und Kontextmenüs, geglättete Schrift und zentrierte Texte auf der magnetischen Ideenwand. [Versionshinweise](docs/releases/v0.10.1.md).
 
-[![Version](https://img.shields.io/badge/version-0.10.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/badge/version-0.10.1%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.1) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
 
 **Gemeinsam Pixel-Art und Animationen direkt in Aseprite bearbeiten.** Eine Person hostet, die anderen treten bei. Alle nutzen dieselbe Erweiterung und dieselben Rasterebenen und Frames. `Strg+Z`/`Strg+Y` wirken auf die eigenen synchronisierten Pixel-, Struktur- und Eigenschaftsänderungen, ohne neuere fremde Pixel zu entfernen.
 
-**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.10.0/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.10.1/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
 
-Version **0.10.0 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Neu: eine **gemeinsame Ideenwand mit magnetischen Text-, Listen- und Bildboxen**, direkt am Bild gespeichert. [Notiz-Tutorial](docs/shared-notes.md).
+Version **0.10.1 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Neu: eine **gemeinsame Ideenwand mit magnetischen Text-, Listen- und Bildboxen**, direkt am Bild gespeichert. [Notiz-Tutorial](docs/shared-notes.md).
 
-Die **Diagnosekonsole ist dauerhaft enthalten**: **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren**. Das lokale Protokoll unter `%TEMP%\Collabsprite-debug.log` bleibt nach einem Neustart erhalten und ist auf 512 KiB begrenzt. Es enthält technische Ereignisse und Fehler, keine Bilddaten oder Einladungscodes. **Neues Protokoll** leert die Aufnahme; nur **vor** dem erneuten Auslösen eines Fehlers verwenden. Schutz gegen wiederholte Timer-Aufrufe während Freigabedialogen wurde ergänzt. Ob dies den gemeldeten „C stack overflow“ auf dem betroffenen Freund-PC behebt, bleibt dort zu prüfen.
+Die **Diagnosekonsole ist dauerhaft enthalten**: **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren**. Das lokale Protokoll unter `%TEMP%\Collabsprite-debug.log` bleibt nach einem Neustart erhalten und ist auf 512 KiB begrenzt. Es enthält technische Ereignisse und Fehler, keine Bilddaten oder Einladungscodes. **Leeren** leert die Aufnahme; nur **vor** dem erneuten Auslösen eines Fehlers verwenden. Schutz gegen wiederholte Timer-Aufrufe während Freigabedialogen wurde ergänzt. Ob dies den gemeldeten „C stack overflow“ auf dem betroffenen Freund-PC behebt, bleibt dort zu prüfen.
 
-**Alle Teilnehmenden müssen auf 0.10.0 aktualisieren**: Protokoll **7** ist nicht mit älteren Releases kompatibel. Wiederverbindung, persönlicher Pixel-Verlauf, Löschwiederherstellung, Beitrittssperre und Diagnose bleiben enthalten. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
+**0.10.1 ist mit 0.10.0 kompatibel**: Beide nutzen Protokoll **7**. Für ältere Versionen müssen alle Teilnehmenden aktualisieren; wir empfehlen überall denselben aktuellen Installer. Wiederverbindung, persönlicher Pixel-Verlauf, Löschwiederherstellung, Beitrittssperre und Diagnose bleiben enthalten. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
 
 ## Schnellstart
 
@@ -38,7 +38,7 @@ Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host
 
 ## Installation – auf jedem PC
 
-1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.0) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
+1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.1) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
 2. Öffne Aseprite → **Bearbeiten → Einstellungen → Erweiterungen → Erweiterung hinzufügen** und wähle die Datei. Ein Doppelklick auf die Datei kann ebenfalls funktionieren ([offizielle Aseprite-Anleitung](https://www.aseprite.org/docs/extensions/)).
 3. Starte Aseprite neu. Öffne **Ansicht → Collabsprite → Server erstellen / beitreten**.
 
@@ -47,10 +47,10 @@ Für Host und Gäste gilt exakt dieselbe Installationsdatei. Du kannst jederzeit
 ### Eine ältere Version aktualisieren
 
 1. Sitzungskopie speichern und die laufende Sitzung über **Trennen** beenden.
-2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.10.0** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
-3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Ansicht → Collabsprite → Info** muss **0.10.0** stehen.
+2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.10.1** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
+3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Ansicht → Collabsprite → Info** muss **0.10.1** stehen.
 
-**In 0.10.0 enthalten:** **Ansicht → Collabsprite → Update** zeigt ein kompaktes Fortschrittsfenster für Versionsprüfung, Download, Paketprüfung und Installation. Nach dem Download öffnet sich Aseprites Installer automatisch mit der richtigen Datei. Die Installation/Aktualisierung dort bestätigen und anschließend Aseprite neu starten. Kein Suchen im Downloads-Ordner; keine automatische Beendigung deiner Arbeit. Eine laufende Multiplayer-Sitzung vorher über **Trennen** beenden. Die bisherige Installation und Einstellungen werden vorab unter `Aseprite/Collabsprite-backups` gesichert; Sitzungsdaten bleiben unangetastet. Schließen des Fortschrittsfensters vor der Installation verhindert die Installation; ein laufender Download kann noch fertig werden.
+**In 0.10.1 enthalten:** **Ansicht → Collabsprite → Update** zeigt ein kompaktes Fortschrittsfenster für Versionsprüfung, Download, Paketprüfung und Installation. Nach dem Download öffnet sich Aseprites Installer automatisch mit der richtigen Datei. Die Installation/Aktualisierung dort bestätigen und anschließend Aseprite neu starten. Kein Suchen im Downloads-Ordner; keine automatische Beendigung deiner Arbeit. Eine laufende Multiplayer-Sitzung vorher über **Trennen** beenden. Die bisherige Installation und Einstellungen werden vorab unter `Aseprite/Collabsprite-backups` gesichert; Sitzungsdaten bleiben unangetastet. Schließen des Fortschrittsfensters vor der Installation verhindert die Installation; ein laufender Download kann noch fertig werden.
 
 **0.8.0 und ältere Versionen** laden über „Update“ nur herunter. Für den ersten Wechsel auf den neuen Update-Ablauf die heruntergeladene `.aseprite-extension` noch einmal wie oben installieren. Bei fehlerhaften Builds das Paket direkt von der Release-Seite laden.
 
@@ -79,11 +79,11 @@ Der Einladungscode hat etwa die Form `192.168.1.10:8766,26.1.2.3:8766/RAUM/TOKEN
 
 Beim Erstellen oder Beitreten öffnet sich die **Ideenwand**. **X** schließt nur deine Ansicht. Wieder öffnen: **Ansicht → Collabsprite → Gemeinsame Notizen**. Gespeicherte Bildnotizen sind auch ohne Sitzung verfügbar und öffnen sich mit ihrer Datei.
 
-![Beispiel der neuen Ideenwand mit Pastellboxen und magnetischen Stapeln](docs/idea-board.png)
+![Beispiel der neuen Ideenwand mit Pastellboxen und magnetischen Stapeln](docs/idea-board-0.10.1.png)
 
 *Mit der nativen Zeichenroutine gerenderte Beispielwand; kein vollständiger Aseprite-Fenster-Screenshot.*
 
-1. **Rechtsklick auf die freie Fläche** → Text, Checkliste, Punktliste, nummerierte Liste oder Referenzbild.
+1. **Rechtsklick auf die freie Fläche** → **Text**, **Liste** (Checkliste, Punktliste oder nummerierte Liste) oder **Referenzbild**.
 2. **Direkt in die Box schreiben**. Enter ergänzt eine Zeile; Strg+Enter oder Klick daneben übernimmt.
 3. **Am Boxrand ziehen**: oben den ganzen Stapel, in der Mitte diese Box mit allem darunter, unten nur die letzte Box. Nahe unter eine andere Box ziehen, um magnetisch anzudocken.
 4. **Rechtsklick auf die Box** → Pastellfarbe. Text am Stapelanfang wird automatisch groß und fett.
@@ -128,7 +128,7 @@ Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **o
 | **Aseprite reagiert nicht** | Speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
 | **Verbindung weg** | Bis zu zwei Minuten auf automatische Wiederverbindung warten und Netzwerk/Host prüfen. Bei Abbruch lokale Ansicht nicht voreilig schließen, Diagnose kopieren; Host speichert. Kein allgemeines Offline-Merging. |
 
-Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Slices, Farbprofile, versetzt verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. Ideenwand: bis 128 Boxen und 8 MiB inklusive Papierkorb; Referenzen bis 512×512 Pixel. Bei Netzabbruch während einer unbestätigten Strukturaktion bleibt die lokale Fassung erhalten; dafür gibt es noch keine automatische Wiederaufnahme. **0.10.0 verwendet Protokoll 7; frühere Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
+Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Slices, Farbprofile, versetzt verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. Ideenwand: bis 128 Boxen und 8 MiB inklusive Papierkorb; Referenzen bis 512×512 Pixel. Bei Netzabbruch während einer unbestätigten Strukturaktion bleibt die lokale Fassung erhalten; dafür gibt es noch keine automatische Wiederaufnahme. **0.10.1 und 0.10.0 verwenden Protokoll 7; ältere Protokolle sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
 
 ## Entwickeln und beitragen
 
