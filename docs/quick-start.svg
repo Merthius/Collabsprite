@@ -23,8 +23,8 @@
     <text x="500" y="170" fill="#f3f4ff" font-size="23" font-weight="700">Host erstellt</text>
     <text x="454" y="209" fill="#b6c2d8" font-size="16">RGB-Bild öffnen, dann:</text>
     <rect x="454" y="235" width="292" height="163" rx="8" fill="#333b50" stroke="#59657d"/>
-    <text x="472" y="265" fill="#e8ebff" font-size="16" font-weight="700">Ansicht → Collabsprite…</text>
-    <text x="472" y="296" fill="#b6c2d8" font-size="15">Erstellen · LAN oder Radmin VPN</text>
+    <text x="472" y="265" fill="#e8ebff" font-size="16" font-weight="700">Datei → Multiplayer</text>
+    <text x="472" y="296" fill="#b6c2d8" font-size="15">(Collabsprite) → Erstellen</text>
     <rect x="472" y="316" width="255" height="36" rx="6" fill="#8f72ff"/>
     <text x="529" y="340" fill="#171b24" font-size="15" font-weight="700">Sitzung erstellen</text>
     <text x="472" y="381" fill="#b6c2d8" font-size="15">Einladung kopieren</text>
@@ -35,8 +35,8 @@
     <text x="886" y="170" fill="#f3f4ff" font-size="23" font-weight="700">Gast tritt bei</text>
     <text x="840" y="209" fill="#b6c2d8" font-size="16">Gleiches LAN oder Radmin-Netz:</text>
     <rect x="840" y="235" width="292" height="163" rx="8" fill="#333b50" stroke="#59657d"/>
-    <text x="858" y="265" fill="#e8ebff" font-size="16" font-weight="700">Ansicht → Collabsprite…</text>
-    <text x="858" y="296" fill="#b6c2d8" font-size="15">Beitreten · ohne Moduswahl</text>
+    <text x="858" y="265" fill="#e8ebff" font-size="16" font-weight="700">Datei → Multiplayer</text>
+    <text x="858" y="296" fill="#b6c2d8" font-size="15">(Collabsprite) → Beitreten</text>
     <rect x="858" y="316" width="255" height="36" rx="6" fill="#202635" stroke="#8f72ff"/>
     <text x="877" y="340" fill="#e8ebff" font-size="15">Einladungscode einfügen</text>
     <text x="858" y="381" fill="#b6c2d8" font-size="15">Beitreten → Verbunden</text>

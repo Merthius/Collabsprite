@@ -43,9 +43,9 @@ local env=setmetatable({app=fakeApp,
     return {new=function() return {log=function() end} end}
   end},{__index=_G})
 assert(loadfile(root..'/extension/main.lua','t',env))()
-env.init{path='test',version='0.8.0',preferences={},newMenuGroup=function(_,item) groups[item.id]=item end,
+env.init{path='test',version='0.8.0',preferences={},newMenuSeparator=function(_,item) groups.separator=item end,newMenuGroup=function(_,item) groups[item.id]=item end,
   newCommand=function(_,item) callbacks[item.id]=item.onclick;commands[item.id]=item end}
-assert(groups.CollabspriteMenu.group=='view_new' and commands.CollabspriteNotes.group=='CollabspriteMenu','Notes command missing from View > Collabsprite')
+assert(groups.separator.group=='file_import' and groups.CollabspriteMenu.group=='file_import' and groups.CollabspriteMenu.title=='Multiplayer (Collabsprite)' and commands.CollabspriteNotes.group=='CollabspriteMenu','Notes command missing from File > Multiplayer')
 callbacks.CollabspriteNotes();assert(notesShown==other and client==nil,'Notes require a multiplayer session')
 tick();assert(notesTicks==1 and client==nil,'Automatic notes polling requires a multiplayer session')
 assert(not commands.CollabspriteRestoreDeletion.onenabled(),'Recovery enabled without session')

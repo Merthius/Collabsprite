@@ -2,19 +2,19 @@
 
 # Collabsprite
 
-> **Neu in 0.10.1 Beta:** Kompaktere Fenster und Kontextmenüs, geglättete Schrift und zentrierte Texte auf der magnetischen Ideenwand. [Versionshinweise](docs/releases/v0.10.1.md).
+> **Neu in 0.11.0 Beta:** Schnellere Ideenwand-Bedienung mit kleiner Werkzeuginsel, Mehrfachauswahl und lesbarer 45-%-Übersicht. Die Diagnose ist scrollbar und kopiert nur die aktuelle Sitzung. [Versionshinweise](docs/releases/v0.11.0.md).
 
-[![Version](https://img.shields.io/badge/version-0.10.1%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.1) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/badge/version-0.11.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.11.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
 
 **Gemeinsam Pixel-Art und Animationen direkt in Aseprite bearbeiten.** Eine Person hostet, die anderen treten bei. Alle nutzen dieselbe Erweiterung und dieselben Rasterebenen und Frames. `Strg+Z`/`Strg+Y` wirken auf die eigenen synchronisierten Pixel-, Struktur- und Eigenschaftsänderungen, ohne neuere fremde Pixel zu entfernen.
 
-**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.10.1/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.11.0/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
 
-Version **0.10.1 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Neu: eine **gemeinsame Ideenwand mit magnetischen Text-, Listen- und Bildboxen**, direkt am Bild gespeichert. [Notiz-Tutorial](docs/shared-notes.md).
+Version **0.11.0 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Die **gemeinsame Ideenwand mit magnetischen Text-, Listen- und Bildboxen** bleibt direkt am Bild gespeichert. [Notiz-Tutorial](docs/shared-notes.md).
 
-Die **Diagnosekonsole ist dauerhaft enthalten**: **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren**. Das lokale Protokoll unter `%TEMP%\Collabsprite-debug.log` bleibt nach einem Neustart erhalten und ist auf 512 KiB begrenzt. Es enthält technische Ereignisse und Fehler, keine Bilddaten oder Einladungscodes. **Leeren** leert die Aufnahme; nur **vor** dem erneuten Auslösen eines Fehlers verwenden. Schutz gegen wiederholte Timer-Aufrufe während Freigabedialogen wurde ergänzt. Ob dies den gemeldeten „C stack overflow“ auf dem betroffenen Freund-PC behebt, bleibt dort zu prüfen.
+Die **Diagnosekonsole** erreichst du unter **Datei → Multiplayer (Collabsprite) → Diagnosekonsole**. Dort per Mausrad, Scrollleiste oder Bild-auf/Bild-ab ältere Einträge lesen. **Protokoll kopieren** kopiert nur den aktuellen Host-/Beitrittsversuch; vor einer Verbindung nur den aktuellen Aseprite-Start. Frühere Einträge bleiben zur Ansicht in `%TEMP%\Collabsprite-debug.log` (maximal 512 KiB). Das Protokoll enthält technische Ereignisse und Fehler, keine Bilddaten oder Einladungscodes. **Leeren** entfernt die gesamte lokale Aufnahme – nur vor einem erneuten Fehlertest verwenden. Ob der zuvor gemeldete „C stack overflow“ auf dem betroffenen Freund-PC behoben ist, muss dort geprüft werden.
 
-**0.10.1 ist mit 0.10.0 kompatibel**: Beide nutzen Protokoll **7**. Für ältere Versionen müssen alle Teilnehmenden aktualisieren; wir empfehlen überall denselben aktuellen Installer. Wiederverbindung, persönlicher Pixel-Verlauf, Löschwiederherstellung, Beitrittssperre und Diagnose bleiben enthalten. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
+**0.11.0 nutzt weiter Protokoll 7 und Notizformat 2**; der gemeinsame Zeichenstand bleibt mit 0.10.0/0.10.1 kompatibel. Für dieselbe Ideenwand-Oberfläche und Diagnosefunktion sollten alle den aktuellen Installer verwenden. Wiederverbindung, persönlicher Pixel-Verlauf, Löschwiederherstellung und Beitrittssperre bleiben enthalten. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
 
 ## Schnellstart
 
@@ -38,19 +38,19 @@ Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host
 
 ## Installation – auf jedem PC
 
-1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.1) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
+1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.11.0) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
 2. Öffne Aseprite → **Bearbeiten → Einstellungen → Erweiterungen → Erweiterung hinzufügen** und wähle die Datei. Ein Doppelklick auf die Datei kann ebenfalls funktionieren ([offizielle Aseprite-Anleitung](https://www.aseprite.org/docs/extensions/)).
-3. Starte Aseprite neu. Öffne **Ansicht → Collabsprite → Server erstellen / beitreten**.
+3. Starte Aseprite neu. Öffne **Datei → Multiplayer (Collabsprite) → Server erstellen / beitreten**.
 
 Für Host und Gäste gilt exakt dieselbe Installationsdatei. Du kannst jederzeit zwischen Erstellen und Beitreten wählen. Die enthaltene Node.js-Laufzeit (24.21.0) startet nur beim Hosten im Hintergrund.
 
 ### Eine ältere Version aktualisieren
 
 1. Sitzungskopie speichern und die laufende Sitzung über **Trennen** beenden.
-2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.10.1** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
-3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Ansicht → Collabsprite → Info** muss **0.10.1** stehen.
+2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.11.0** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
+3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Datei → Multiplayer (Collabsprite) → Info** muss **0.11.0** stehen.
 
-**In 0.10.1 enthalten:** **Ansicht → Collabsprite → Update** zeigt ein kompaktes Fortschrittsfenster für Versionsprüfung, Download, Paketprüfung und Installation. Nach dem Download öffnet sich Aseprites Installer automatisch mit der richtigen Datei. Die Installation/Aktualisierung dort bestätigen und anschließend Aseprite neu starten. Kein Suchen im Downloads-Ordner; keine automatische Beendigung deiner Arbeit. Eine laufende Multiplayer-Sitzung vorher über **Trennen** beenden. Die bisherige Installation und Einstellungen werden vorab unter `Aseprite/Collabsprite-backups` gesichert; Sitzungsdaten bleiben unangetastet. Schließen des Fortschrittsfensters vor der Installation verhindert die Installation; ein laufender Download kann noch fertig werden.
+**Datei → Multiplayer (Collabsprite) → Update** zeigt ein kompaktes Fortschrittsfenster für Versionsprüfung, Download, Paketprüfung und Installation. Nach dem Download öffnet sich Aseprites Installer automatisch mit der richtigen Datei. Die Installation/Aktualisierung dort bestätigen und anschließend Aseprite neu starten. Kein Suchen im Downloads-Ordner; keine automatische Beendigung deiner Arbeit. Eine laufende Multiplayer-Sitzung vorher über **Trennen** beenden. Die bisherige Installation und Einstellungen werden vorab unter `Aseprite/Collabsprite-backups` gesichert; Sitzungsdaten bleiben unangetastet. Schließen des Fortschrittsfensters vor der Installation verhindert die Installation; ein laufender Download kann noch fertig werden.
 
 **0.8.0 und ältere Versionen** laden über „Update“ nur herunter. Für den ersten Wechsel auf den neuen Update-Ablauf die heruntergeladene `.aseprite-extension` noch einmal wie oben installieren. Bei fehlerhaften Builds das Paket direkt von der Release-Seite laden.
 
@@ -59,7 +59,7 @@ Falls zuvor **„ws 8.21.3“** im Installationsdialog erschien: Das war ein Feh
 ## Sitzung erstellen – Host
 
 1. Öffne in Aseprite ein **RGB-Bild**. Collabsprite erzeugt beim Start eine **Sitzungskopie**; das Original bleibt unangetastet.
-2. Öffne **Ansicht → Collabsprite → Server erstellen / beitreten**, trage bei **Dein Name** einen Namen ein und wähle **Erstellen**.
+2. Öffne **Datei → Multiplayer (Collabsprite) → Server erstellen / beitreten**, trage bei **Dein Name** einen Namen ein und wähle **Erstellen**.
 3. Nur wenn ihr in **verschiedenen Netzwerken** seid: Starte Radmin VPN und tritt eurem gemeinsamen VPN-Netz bei.
 4. Klicke **Sitzung erstellen**. Der Host-Server startet im Hintergrund. Warte auf **Aktive Sitzung: Verbunden**.
 5. Klicke **Einladung kopieren** und sende den gesamten Code privat an deine Freunde. Der Code enthält erreichbare LAN- und gegebenenfalls Radmin-Adressen.
@@ -68,7 +68,7 @@ Radmin wird nicht automatisch geöffnet: Im LAN wird es nicht gebraucht, und fü
 
 ## Sitzung beitreten – Gast
 
-1. Installiere dieselbe Erweiterung, starte Aseprite neu und öffne **Ansicht → Collabsprite → Server erstellen / beitreten → Beitreten**. Ein eigenes Bild musst du dafür nicht öffnen.
+1. Installiere dieselbe Erweiterung, starte Aseprite neu und öffne **Datei → Multiplayer (Collabsprite) → Server erstellen / beitreten → Beitreten**. Ein eigenes Bild musst du dafür nicht öffnen.
 2. Falls ihr nicht im selben LAN seid: Starte Radmin VPN und tritt demselben VPN-Netz wie der Host bei.
 3. Füge den privaten **Einladungscode** ein und klicke **Beitreten**. Collabsprite probiert die enthaltenen Adressen der Reihe nach. Du kannst alternativ **Sitzungen suchen** verwenden; falls die Suche nichts zeigt, nutze den Einladungscode.
 4. Warte auf **Verbunden** und zeichne in der neuen Sitzungskopie.
@@ -77,16 +77,16 @@ Der Einladungscode hat etwa die Form `192.168.1.10:8766,26.1.2.3:8766/RAUM/TOKEN
 
 ## Gemeinsam planen – die Ideenwand
 
-Beim Erstellen oder Beitreten öffnet sich die **Ideenwand**. **X** schließt nur deine Ansicht. Wieder öffnen: **Ansicht → Collabsprite → Gemeinsame Notizen**. Gespeicherte Bildnotizen sind auch ohne Sitzung verfügbar und öffnen sich mit ihrer Datei.
+Beim Erstellen oder Beitreten öffnet sich die **Ideenwand**. **X** schließt nur deine Ansicht. Wieder öffnen: **Datei → Multiplayer (Collabsprite) → Gemeinsame Notizen**. Gespeicherte Bildnotizen sind auch ohne Sitzung verfügbar und öffnen sich mit ihrer Datei.
 
-![Beispiel der neuen Ideenwand mit Pastellboxen und magnetischen Stapeln](docs/idea-board-0.10.1.png)
+![Beispiel der Ideenwand 0.11.0 mit Werkzeuginsel und magnetischen Stapeln](docs/idea-board-0.11.0.png)
 
 *Mit der nativen Zeichenroutine gerenderte Beispielwand; kein vollständiger Aseprite-Fenster-Screenshot.*
 
-1. **Rechtsklick auf die freie Fläche** → **Text**, **Liste** (Checkliste, Punktliste oder nummerierte Liste) oder **Referenzbild**.
-2. **Direkt in die Box schreiben**. Enter ergänzt eine Zeile; Strg+Enter oder Klick daneben übernimmt.
-3. **Am Boxrand ziehen**: oben den ganzen Stapel, in der Mitte diese Box mit allem darunter, unten nur die letzte Box. Nahe unter eine andere Box ziehen, um magnetisch anzudocken.
-4. **Rechtsklick auf die Box** → Pastellfarbe. Text am Stapelanfang wird automatisch groß und fett.
+1. Über die kleine **Werkzeuginsel oben** Text, Checkliste, Punktliste, nummerierte Liste oder Referenzbild hinzufügen; direkt in die Box schreiben. Rechtsklick auf freie Fläche fügt kopierte Boxen, fremden Text oder ein Bild aus der Zwischenablage ein.
+2. **Am Boxrand ziehen**: oben den ganzen Stapel, in der Mitte diese Box mit allem darunter, unten nur die letzte Box. Nahe unter eine andere Box ziehen, um magnetisch anzudocken.
+3. Auf freier Fläche ein **Auswahlrechteck** ziehen, um mehrere Boxen gemeinsam zu verschieben, zu kopieren oder zu löschen. Rechtsklick auf eine Box zeigt die kräftigeren Farben direkt. Abgehakte Listeneinträge werden durchgestrichen.
+4. **Mausrad** zoomt; bei 45 % bleiben Texte lesbar. Unten rechts stehen Zoomwert und ein Knopf, der alle Boxen in die Ansicht einpasst. Text am Stapelanfang wird automatisch groß und fett.
 5. Der **Host speichert die Sitzungskopie als .aseprite**. Bilder und Notizen bleiben zusammen. PNG/Spritesheets enthalten keine Ideenwand.
 
 Eigener Notizverlauf und Feldschutz gegen gleichzeitiges Überschreiben sind enthalten. Unbestätigte Entwürfe sind nicht absturzfest. Alte Notizen werden übernommen; **vor dem ersten Speichern eine Dateikopie behalten**, da ältere Versionen das neue Format nicht bearbeiten können. [Bedienung und Grenzen](docs/shared-notes.md).
@@ -102,7 +102,7 @@ Der Host speichert das gemeinsame Bild. Bei Gästen blockiert Collabsprite die n
 - `Strg+Z`/`Strg+Y` gelten für eigene synchronisierte Pixel-, Struktur- und Eigenschaftsänderungen. Rücknahmen, die neuere fremde Beiträge entfernen würden, werden abgewiesen. Ein Strukturkonflikt bleibt als separater lokaler Entwurf-Tab erhalten.
 - Der **Host** speichert die Sitzungskopie über **Datei → Speichern unter** als `.aseprite`, damit Ebenen und Frames erhalten bleiben. Er legt zusätzlich automatische Sitzungs-Backups lokal im `data`-Ordner an; sie ersetzen kein eigenes Speichern. Ältere Sicherungen blockieren keinen neuen Hoststart; Collabsprite lädt die acht zuletzt geänderten Sitzungen und lässt ältere Dateien unangetastet.
 - Wenn der Host das Sitzungsbild oder Aseprite schließt, wird der Hintergrundserver nach dem Backup beendet und Port `8766` wieder frei. Die Gäste werden getrennt; ihre bereits bestätigten Beiträge bleiben im gemeinsamen Host-Bild und dessen Backup.
-- **Letzte Löschung wiederherstellen** unter **Ansicht → Collabsprite** fügt gelöschte Ebenen/Frames zurück, ohne neuere Zeichnungen in den übrigen Cels zurückzusetzen. Für alle Teilnehmenden verfügbar; die zuletzt ausgeführte gemeinsame Löschung zuerst. Bis zu 20 Löschaktionen / insgesamt 4.194.304 gelöschte Cel-Pixel, nur solange der Server läuft. Wiederhergestellte Pixel bilden eine neue Basis; ihr früherer Pixel-Undo wird nicht mit wiederhergestellt.
+- **Letzte Löschung wiederherstellen** unter **Datei → Multiplayer (Collabsprite)** fügt gelöschte Ebenen/Frames zurück, ohne neuere Zeichnungen in den übrigen Cels zurückzusetzen. Für alle Teilnehmenden verfügbar; die zuletzt ausgeführte gemeinsame Löschung zuerst. Bis zu 20 Löschaktionen / insgesamt 4.194.304 gelöschte Cel-Pixel, nur solange der Server läuft. Wiederhergestellte Pixel bilden eine neue Basis; ihr früherer Pixel-Undo wird nicht mit wiederhergestellt.
 - Nach einem **kurzen Netzabbruch** verbindet Collabsprite bis zu zwei Minuten lang automatisch neu: derselbe Tab, dieselbe Identität und der noch verfügbare eigene Pixel-Verlauf. Bestätigte Striche werden nicht doppelt angewendet; noch ausstehende werden über feste Ebenen-/Frame-Kennungen abgeglichen. Währenddessen pausiert die Bearbeitung. Wenn genau das Ziel eines unbestätigten Strichs gelöscht wurde oder das Bild trotz Pause lokal verändert wurde, bleibt die Ansicht offen und der Abgleich stoppt sicher. Kein allgemeines Offline-Merging.
 - **Trennen** beendet die Sitzungsteilnahme bewusst. Automatische Wiederaufnahme gilt nicht nach absichtlichem Verlassen, Aseprite-/Server-Neustart oder abgelaufener Frist. Nach einem harten Host-Absturz kann der Server noch bis zu zwei Minuten auf eine Wiederverbindung warten, bevor er beendet wird; beim regulären Schließen wird er sofort nach dem Backup beendet.
 
@@ -128,7 +128,7 @@ Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **o
 | **Aseprite reagiert nicht** | Speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
 | **Verbindung weg** | Bis zu zwei Minuten auf automatische Wiederverbindung warten und Netzwerk/Host prüfen. Bei Abbruch lokale Ansicht nicht voreilig schließen, Diagnose kopieren; Host speichert. Kein allgemeines Offline-Merging. |
 
-Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Slices, Farbprofile, versetzt verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. Ideenwand: bis 128 Boxen und 8 MiB inklusive Papierkorb; Referenzen bis 512×512 Pixel. Bei Netzabbruch während einer unbestätigten Strukturaktion bleibt die lokale Fassung erhalten; dafür gibt es noch keine automatische Wiederaufnahme. **0.10.1 und 0.10.0 verwenden Protokoll 7; ältere Protokolle sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
+Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Slices, Farbprofile, versetzt verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. Ideenwand: bis 128 Boxen und 8 MiB inklusive Papierkorb; Referenzen bis 512×512 Pixel. Bei Netzabbruch während einer unbestätigten Strukturaktion bleibt die lokale Fassung erhalten; dafür gibt es noch keine automatische Wiederaufnahme. **0.11.0, 0.10.1 und 0.10.0 verwenden Protokoll 7; ältere Protokolle sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
 
 ## Entwickeln und beitragen
 

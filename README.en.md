@@ -2,13 +2,13 @@
 
 # Collabsprite — English guide
 
-> **New in 0.10.1 beta:** Smaller windows and context menus, smoother fonts and centered text on the magnetic idea board. [Release notes (German)](docs/releases/v0.10.1.md).
+> **New in 0.11.0 beta:** Faster idea-board tools, multi-selection and a readable 45% overview. Diagnostics can be scrolled and copy only the current session. [Release notes (German)](docs/releases/v0.11.0.md).
 
-[Deutsch](README.md) · [Download v0.10.1 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.10.1/Collabsprite.aseprite-extension)
+[Deutsch](README.md) · [Download v0.11.0 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.11.0/Collabsprite.aseprite-extension)
 
-Version **0.10.1 beta** includes hosting and joining in **one installer**, with a bundled Windows x64 host runtime. No separate Node.js installation is needed. New: a **shared magnetic idea board embedded in the artwork**. **0.10.1 and 0.10.0 share protocol 7 and are compatible. Older versions must be updated; we recommend the same current installer for everyone.**
+Version **0.11.0 beta** includes hosting and joining in **one installer**, with a bundled Windows x64 host runtime. No separate Node.js installation is needed. The **shared magnetic idea board remains embedded in the artwork**. **0.11.0, 0.10.1 and 0.10.0 share protocol 7 and note format 2; we recommend the same current installer for everyone.**
 
-**Diagnostics are included in every build.** Open **Ansicht → Collabsprite → Diagnosekonsole → Protokoll kopieren** after an error. The local `%TEMP%\Collabsprite-debug.log` survives restarts and is bounded to 512 KiB. It contains technical events, not image data or invitation codes. Use **Leeren** only before reproducing an error. Guards prevent nested timer dispatch during permission dialogs; the reported guest-PC “C stack overflow” still needs a retest on that PC.
+**Diagnostics are included in every build.** Open **Datei/File → Multiplayer (Collabsprite) → Diagnosekonsole** after an error. Scroll older entries with the mouse wheel, scrollbar, or Page Up/Down. **Protokoll kopieren** copies only the current host/join attempt (or the current Aseprite launch before one starts). Earlier entries remain visible in `%TEMP%\Collabsprite-debug.log`, bounded to 512 KiB. It contains technical events, not image data or invitation codes. **Leeren** clears the entire local log; use it only before reproducing an error. The reported guest-PC “C stack overflow” still needs a retest on that PC.
 
 Collabsprite is an unofficial, open-source Aseprite extension for drawing together on the same pixel-art canvas. The host runs a small local server; everyone uses the **same** extension. Per-user undo/redo applies to synchronized pixel, structure and property operations without removing newer contributions by someone else.
 
@@ -34,22 +34,22 @@ The session server runs on the **host PC** (port `8766`). There is just **one wo
 
 ## Install on every computer
 
-1. On the [v0.10.1 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.1), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
+1. On the [v0.11.0 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.11.0), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
 2. In Aseprite, open **Edit → Preferences → Extensions → Add Extension** and select the file. Double-clicking the extension may work as well ([official Aseprite instructions](https://www.aseprite.org/docs/extensions/)).
-3. Restart Aseprite. Open **View → Collabsprite → Create / Join Server** (German UI: **Ansicht → Collabsprite → Server erstellen / beitreten**).
+3. Restart Aseprite. Open **File/Datei → Multiplayer (Collabsprite) → Server erstellen / beitreten**.
 
 ## Updating an older installation
 
-Save the session copy and disconnect. Add the new **`Collabsprite.aseprite-extension`** in Aseprite's extension settings and confirm the update of **pixelkollab-native / Collabsprite** to **0.10.1**. Restart Aseprite on every participating PC and check **Ansicht → Collabsprite → Info**. The technical package ID stays the same for update compatibility.
+Save the session copy and disconnect. Add the new **`Collabsprite.aseprite-extension`** in Aseprite's extension settings and confirm the update of **pixelkollab-native / Collabsprite** to **0.11.0**. Restart Aseprite on every participating PC and check **File/Datei → Multiplayer (Collabsprite) → Info**. The technical package ID stays the same for update compatibility.
 
-**Included in 0.10.1**, **View → Collabsprite → Update** shows checking, download, package verification and installation phases, then opens Aseprite's native installer automatically with the correct file. Confirm installation/update and restart Aseprite afterwards. Disconnect any multiplayer session first; no forced app exit. Existing code/settings are backed up under `Aseprite/Collabsprite-backups`; session data is left untouched. Closing the progress window before installation cancels installation, although the download may finish in the background.
+**File/Datei → Multiplayer (Collabsprite) → Update** shows checking, download, package verification and installation phases, then opens Aseprite's native installer automatically with the correct file. Confirm installation/update and restart Aseprite afterwards. Disconnect any multiplayer session first; no forced app exit. Existing code/settings are backed up under `Aseprite/Collabsprite-backups`; session data is left untouched. Closing the progress window before installation cancels installation, although the download may finish in the background.
 
 **0.8.0 and earlier** only download the installer: install the downloaded file manually once to receive the new updater. On a broken older build, download directly from GitHub. An older prompt for **“ws 8.21.3”** was caused by our archive layout, not by choosing the wrong file. GitHub's source-code ZIP is not the installer.
 
 ## Host
 
 1. Open an RGB sprite. Collabsprite creates a **separate session copy**; the original file is not modified.
-2. Open **View/Ansicht → Collabsprite → Create / Join Server** (the extension's controls currently use German labels), enter your name and select Create/Erstellen. If your friend is on a different network, start Radmin VPN and join your shared VPN network first.
+2. Open **File/Datei → Multiplayer (Collabsprite) → Server erstellen / beitreten** (the extension's controls currently use German labels), enter your name and select Create/Erstellen. If your friend is on a different network, start Radmin VPN and join your shared VPN network first.
 3. Click **Create session/Sitzung erstellen** and wait for **Connected/Verbunden**.
 4. Click **Copy invitation/Einladung kopieren** and privately send the full code to your friends.
 
@@ -57,7 +57,7 @@ Collabsprite does not open Radmin automatically because it is unnecessary on a s
 
 ## Join
 
-1. Install the same extension, restart Aseprite, and choose **View/Ansicht → Collabsprite → Create / Join Server → Join/Beitreten**. You do not need to open a sprite first.
+1. Install the same extension, restart Aseprite, and choose **File/Datei → Multiplayer (Collabsprite) → Server erstellen / beitreten → Join/Beitreten**. You do not need to open a sprite first.
 2. Only if you are on different networks, start Radmin VPN and join the host's VPN network.
 3. Paste the full **invitation code** and click **Join/Beitreten**. Collabsprite tries the listed LAN/VPN addresses. You may also search for active sessions; if discovery finds nothing, use the code.
 4. Wait for **Connected/Verbunden** and draw in the shared session copy.
@@ -66,15 +66,16 @@ An invitation may look like `192.168.1.10:8766,26.1.2.3:8766/ROOM/TOKEN`; withou
 
 ## Shared idea board
 
-The board opens once when hosting/joining, or when opening a saved document with notes. Close it with **X** without deleting notes or closing anyone else's panel. Reopen through **View/Ansicht → Collabsprite → Gemeinsame Notizen**. Controls currently use German labels.
+The board opens once when hosting/joining, or when opening a saved document with notes. Close it with **X** without deleting notes or closing anyone else's panel. Reopen through **File/Datei → Multiplayer (Collabsprite) → Gemeinsame Notizen**. Controls currently use German labels.
 
-![Rendered example of the magnetic idea board](docs/idea-board-0.10.1.png)
+![Rendered example of the 0.11.0 magnetic idea board](docs/idea-board-0.11.0.png)
 
 *Example rendered with the native drawing routine, not a full Aseprite-window screenshot.*
 
-- Right-click empty space to add **Text**, **Liste** (Checklist, Bullet or Numbered List), or a **Reference Image**. Type directly in the box. Enter adds a line; Ctrl+Enter or clicking outside commits.
+- Use the small island toolbar at the top to add **Text**, a Checklist, Bullet or Numbered List, or a **Reference Image**. Type directly in the box. Right-click empty space to paste copied boxes, external text, or an image.
 - Drag a box edge to move it and everything attached below. The top moves the entire stack; a middle box detaches that tail; the bottom detaches only itself. Move below another box to snap together.
-- Right-click a box to choose one of seven pastels. Text at the top of a stack automatically becomes larger and bold.
+- Drag a selection rectangle over empty space to move, copy, or delete multiple boxes. Right-click a box for immediately visible, stronger pastel colors. Checked list items are struck through; top-of-stack text is larger and bold.
+- The bottom-right corner shows the zoom percentage and a fit-all button. At 45% zoom, card text remains readable while card positions move closer together.
 - Host and guests can edit every box. Short field leases, revision checks, personal note undo and bounded trash protect collaboration.
 - **The host saves the session copy as .aseprite**. Notes and embedded image pixels travel with the file; PNG/spritesheets do not preserve the board. Saved boards also open offline with their artwork.
 - Old notes migrate into ordered stacks. Keep an original file copy before saving: older releases cannot edit the new format. Unconfirmed drafts are not crash-safe.
@@ -91,7 +92,7 @@ The board opens once when hosting/joining, or when opening a saved document with
 Normal save/export commands are blocked for guest session documents, including after disconnect. A normal **Disconnect** waits for the final outgoing edits to be acknowledged before closing the guest's session view. A timeout keeps that view open. Confirmed guest edits survive leaving; crashes or forced termination can still lose unsent edits. Unrelated local files and host saves are unaffected.
 
 **Not copy protection:** A guest's Aseprite must receive image data to edit it. Screenshots, clipboard copying, scripts, Aseprite recovery data, and modified/disabled extensions cannot be reliably prevented. Invite trusted people only. This is a UI workflow restriction, not a security boundary, and does not apply retroactively to old clients.
-- **Ansicht → Collabsprite → Letzte Löschung wiederherstellen** restores the most recent shared layer/frame deletion without rolling back newer peer pixels. Any participant can use it. Up to 20 deletion batches / 4,194,304 deleted cel-pixels total, only for the running server's lifetime. Recovered pixels become a base; their old deleted pixel history is not restored.
+- **File/Datei → Multiplayer (Collabsprite) → Letzte Löschung wiederherstellen** restores the most recent shared layer/frame deletion without rolling back newer peer pixels. Any participant can use it. Up to 20 deletion batches / 4,194,304 deleted cel-pixels total, only for the running server's lifetime. Recovered pixels become a base; their old deleted pixel history is not restored.
 - After a short network interruption, Collabsprite retries automatically for up to two minutes, keeping the same tab, identity and retained personal pixel undo. Already committed strokes are not duplicated; unconfirmed strokes use stable layer/frame IDs. Editing pauses during reconnection. If a pending stroke's target was deleted or the paused document was changed locally, reconciliation stops and keeps the local view open. This is not general offline merging.
 - Deliberate disconnect, Aseprite/server restart, or lease expiry ends resumability. Normal host closure stops the server after backup. A hard crash can leave it waiting up to two minutes for reconnection before shutdown.
 
@@ -99,7 +100,7 @@ The WebSocket connection has **no built-in end-to-end encryption**; use only a t
 
 ## Limitations and support
 
-RGB/RGBA raster layers are supported, with limits of 8 participants including reconnecting leases, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, slices, color profiles, offset linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Versions 0.10.1 and 0.10.0 use protocol 7; older protocols are incompatible.** A disconnect during an unacknowledged structure operation preserves the local draft but cannot yet automatically resume that operation. See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
+RGB/RGBA raster layers are supported, with limits of 8 participants including reconnecting leases, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, slices, color profiles, offset linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Versions 0.11.0, 0.10.1 and 0.10.0 use protocol 7; older protocols are incompatible.** A disconnect during an unacknowledged structure operation preserves the local draft but cannot yet automatically resume that operation. See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
 
 The bundled, unmodified Node.js 24.21.0 runtime carries its full notices in `runtime/LICENSE`. The board uses Atkinson Hyperlegible under the [SIL Open Font License](extension/notes-font-OFL.txt). Collabsprite is [MIT-licensed](LICENSE) and is not affiliated with Aseprite or Radmin VPN. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 

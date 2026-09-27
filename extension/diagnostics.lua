@@ -36,7 +36,8 @@ end
 
 function M.new(path)
   assert(type(path)=='string' and path~='','A diagnostics path is required')
-  local self={path=path,memory={},lastError=nil,writing=false}
+  local self={path=path,memory={},current='',sessionLabel='Aseprite-Start',
+    sessionStarted=os.date('%Y-%m-%d %H:%M:%S'),lastError=nil,writing=false}
   local initial=readFile(path)
   for line in tailBytes(initial,KEEP_BYTES):gmatch('[^\n]+') do
     self.memory[#self.memory+1]=line
@@ -49,6 +50,7 @@ function M.new(path)
     local line=os.date('%Y-%m-%d %H:%M:%S')..' | '..entry
     self.memory[#self.memory+1]=line
     if #self.memory>200 then table.remove(self.memory,1) end
+    self.current=tailBytes(self.current..line..'\n',KEEP_BYTES)
     local ok,file=pcall(io.open,self.path,'ab')
     if not ok or not file then self.lastError='Log file could not be opened';return false end
     local wrote=pcall(function() file:write(line,'\n');file:flush() end)
@@ -88,19 +90,35 @@ function M.new(path)
     return result
   end
 
+  function self:beginSession(action)
+    assert(action=='Host' or action=='Join','Unknown diagnostic session type')
+    self.current=''
+    self.sessionLabel=action=='Host' and 'Host' or 'Beitritt'
+    self.sessionStarted=os.date('%Y-%m-%d %H:%M:%S')
+    self:log('session','begin mode='..action)
+  end
+
   function self:read()
     local text=readFile(self.path)
     if text~='' then return text end
     return table.concat(self.memory,'\n')
   end
 
-  function self:tail(maxLines)
+  function self:window(maxLines,skipNewest)
     local lines={}
     for line in self:read():gmatch('[^\n]+') do lines[#lines+1]=line end
-    local first=math.max(1,#lines-(tonumber(maxLines) or 18)+1)
+    local count=math.max(1,math.floor(tonumber(maxLines) or 18))
+    local maxOffset=math.max(0,#lines-count)
+    local offset=math.min(maxOffset,math.max(0,math.floor(tonumber(skipNewest) or 0)))
+    local last=#lines-offset
+    local first=math.max(1,last-count+1)
     local result={}
-    for i=first,#lines do result[#result+1]=lines[i] end
-    return result
+    for i=first,last do result[#result+1]=lines[i] end
+    return result,#lines,maxOffset,offset
+  end
+
+  function self:tail(maxLines)
+    return self:window(maxLines,0)
   end
 
   function self:stats()
@@ -112,8 +130,10 @@ function M.new(path)
   end
 
   function self:export()
-    return 'Collabsprite-Diagnoseprotokoll (max. 512 KiB; ältere Einträge werden rotiert)\n'..
-      'Es enthält technische Ereignisse und Fehler, keine Pixel-/Bilddaten oder Einladungscodes.\n\n'..self:read()
+    return 'Collabsprite-Diagnoseprotokoll · aktuelle Sitzung ('..self.sessionLabel..
+      ', seit '..self.sessionStarted..')\n'..
+      'Technische Ereignisse und Fehler; keine Pixel-/Bilddaten oder Einladungscodes. ' ..
+      'Maximal 384 KiB; ältere Einträge der Sitzung können gekürzt sein.\n\n'..self.current
   end
 
   function self:clear()
@@ -122,7 +142,7 @@ function M.new(path)
     local wrote=pcall(function() file:write('');file:flush() end)
     pcall(function() file:close() end)
     if not wrote then self.lastError='Log file clear failed';return false end
-    self.memory={};self.lastError=nil
+    self.memory={};self.current='';self.sessionStarted=os.date('%Y-%m-%d %H:%M:%S');self.lastError=nil
     return true
   end
 

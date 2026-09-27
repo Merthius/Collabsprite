@@ -5,11 +5,13 @@ launch=Timer{interval=0.5,ontick=function()
   launch:stop()
   local callbacks={}
   local env=setmetatable({dofile=function(path)
-    if path:match('diagnostics%.lua$') then return {new=function() return {log=function() end,memoryTail=function() return {'UI preview · no network'} end} end} end
+    if path:match('diagnostics%.lua$') then return {new=function() return {
+      log=function() end,window=function() return {'UI preview · no network'},1,0,0 end,
+      export=function() return 'UI preview · no network' end,clear=function() return true end} end} end
     return dofile(path)
   end},{__index=_G})
   assert(loadfile(root..'/extension/main.lua','t',env))()
-  local plugin={path=root..'/extension',version='0.10.1',preferences={},newMenuGroup=function() end,
+  local plugin={path=root..'/extension',version='0.11.0',preferences={},newMenuGroup=function() end,newMenuSeparator=function() end,
     newCommand=function(_,spec) callbacks[spec.id]=spec.onclick end}
   env.init(plugin)
   local menu=Dialog{title='Collabsprite · UI-Test'}
@@ -20,7 +22,7 @@ launch=Timer{interval=0.5,ontick=function()
   end
   menu:button{text='Update-Ansicht',onclick=function()
     local U=dofile(root..'/extension/update-ui.lua').new{safely=function(fn) fn() end,log=function() end}
-    U.phase='current';U.detail='Du hast die neueste Version (0.10.1).';U:show()
+    U.phase='current';U.detail='Du hast die neueste Version (0.11.0).';U:show()
   end}
   menu:button{text='Schließen'}
   dofile(root..'/extension/ui-layout.lua').show(menu)

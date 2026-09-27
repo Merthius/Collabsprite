@@ -1,18 +1,14 @@
 # Ideenwand: freie Elemente und magnetische Stapel
 
-Diese Anleitung beschreibt **Collabsprite 0.10.1 Beta / Protokoll 7**. Die 0.10.x-Ideenwand ersetzt die Karten-/Unterpunkt-Bedienung aus 0.8.x. [Download und Versionshinweise](https://github.com/Merthius/Collabsprite/releases/tag/v0.10.1).
+Diese Anleitung beschreibt **Collabsprite 0.11.0 Beta / Protokoll 7**. Die Ideenwand ersetzt die Karten-/Unterpunkt-Bedienung aus 0.8.x.
 
-Ab 0.10.1 starten die Collabsprite-Fenster begrenzt auf einen Teil des Aseprite-Fensters. Die Ideenwand wird nicht zusätzlich mit der UI-Skalierung aufgeblasen. Geglättete Schrift, zentrierte Textboxen und dezente Pastellflächen bleiben auch beim Wand-Zoom lesbarer. Aseprites eigene Bildschirm-Skalierung und native Dateiauswahl/Sicherheitsdialoge bleiben unverändert.
+Die Collabsprite-Fenster starten begrenzt auf einen Teil des Aseprite-Fensters. Die Ideenwand wird nicht zusätzlich mit der UI-Skalierung aufgeblasen. Der Schriftatlas wird in vierfacher Auflösung geglättet; schmalere Boxen mit kleineren Abständen lassen mehr Platz. Bei **45 % Zoom** bleiben Boxen und Text in einer besser lesbaren Bildschirmgröße, während ihre Positionen näher zusammenrücken. Unterhalb von 45 % schrumpfen sie wieder, damit auch weit verteilte Wände in die Ansicht passen. Aseprites eigene Bildschirm-Skalierung und native Dateiauswahl/Sicherheitsdialoge bleiben unverändert.
 
 ## Eine freie Fläche
 
-Die Wand hat keine Suchleiste, Werkzeugleiste oder dauerhaften Aktionsbuttons. Öffnen über **Ansicht → Collabsprite → Gemeinsame Notizen**. Der Fenstertitel nennt das zugehörige Bild. **X** schließt nur diese Ansicht, nicht die Sitzung.
+Die Wand hat keine Suchleiste. Oben schwebt eine kleine abgerundete Werkzeuginsel mit **Text**, **Checkliste**, **Punktliste**, **nummerierter Liste** und **Referenzbild**. Ein Klick fügt die neue Box direkt in die sichtbare Wand ein; ein Text lässt sich sofort schreiben. Öffnen über **Datei → Multiplayer (Collabsprite) → Gemeinsame Notizen**. Der Fenstertitel nennt das zugehörige Bild. **X** schließt nur diese Ansicht, nicht die Sitzung.
 
-Rechtsklick auf die freie Fläche:
-
-- **Text**: eine leere Box erscheint, direkt losschreiben.
-- **Liste → Checkliste / Punktliste / Nummerierte Liste**: jede Zeile ist ein Listenpunkt; bei Checklisten Kästchen anklicken. In 0.10.0 stehen die drei Listenarten noch direkt im Hauptmenü.
-- **Referenzbild …**: im Dateidialog PNG, JPG/JPEG, WebP, GIF oder BMP auswählen. Bei Animationen wird das erste Bild verwendet.
+Ein **Rechtsklick auf freie Fläche** bietet nur **Einfügen**: kopierte Ideenwand-Boxen samt Eigenschaften/Verbindungen, Text aus anderen Programmen oder ein Bild aus der Zwischenablage. Für Referenzbilder per Werkzeuginsel öffnet sich ein Dateidialog für PNG, JPG/JPEG, WebP, GIF und BMP; bei Animationen wird das erste Bild verwendet.
 
 Text anklicken, um ihn zu ändern. **Enter** setzt eine neue Zeile. **Strg+Enter**, **Escape**, Klick daneben oder normales Schließen übernimmt den Entwurf. Escape verwirft keinen Text. Strg+A/C/X/V und Auswahl per Maus funktionieren im Textfeld. Lange Zeilen umbrechen automatisch.
 
@@ -30,17 +26,17 @@ Die Unterkante eines freien Stapels ist magnetisch: die gezogene Box nahe darunt
 
 Jede Box kann genau eine Box unter sich haben. Kreise und widersprüchliche Verbindungen werden abgewiesen. Ein **Text am Stapelanfang ist automatisch größer und fett**; weiter unten normal. Es gibt keine separate Titel-Einstellung.
 
-Rechtsklick auf eine Box zeigt **sieben Pastellfarben**. Die Farbe gehört nur dieser Box, nicht dem gesamten Stapel. **Listenart →** wechselt den Listentyp; **Neues Element →** fügt etwas hinzu. Die kurzen Menüs zeigen nur passende Aktionen. Bei sehr wenig Platz lässt sich das Menü mit dem Mausrad scrollen.
+Ein **Rechtsklick auf eine Box** zeigt **Löschen**, **Kopieren**, **Duplizieren** und direkt darunter sieben kräftigere Farbfelder ohne weiteres Untermenü. Unter Kopieren lässt sich ein einzelnes Element, ein Teilstapel oder eine Mehrfachauswahl kopieren. Die Farbe gehört nur dieser Box; bereits gespeicherte alte Pastellfarben bleiben erhalten. Ein noch nicht übernommener Konfliktentwurf zeigt aus Sicherheitsgründen stattdessen seine Wiederherstellungsaktionen, damit kein Text verloren geht. Bei sehr wenig Platz lässt sich das Menü mit dem Mausrad scrollen. Abgehakte Checklistenpunkte werden durchgestrichen.
 
 ## Auf der Wand bewegen
 
-- Leere Fläche ziehen oder mittlere Maustaste: Ausschnitt verschieben.
+- Mittlere Maustaste ziehen: Ausschnitt verschieben.
+- Linke Maustaste über freie Fläche ziehen: Auswahlrechteck für mehrere Boxen. Mit **Umschalt** wird zu einer vorhandenen Auswahl hinzugefügt. Ausgewählte Boxen am Rand gemeinsam verschieben.
 - Mausrad: um den Mauszeiger zoomen. Umschalt+Mausrad: vertikal verschieben.
-- Rechtsklick → **Alles einpassen** (0.10.0: **Alles ins Bild**): alle Elemente sichtbar machen.
-- Rechtsklick → **Element löschen**: nur diese Box löschen; der verbleibende Stapel wird wieder verbunden.
-- **Teilstapel löschen** entfernt zusätzlich alles darunter.
-- **Entf/Rücktaste** bei ausgewählter, nicht bearbeiteter Box löscht nur diese.
-- **Strg+Z/Y**: eigener Notizverlauf. Während der Texteingabe zunächst nur Eingabe-Undo. Rechtsklick bietet Rückgängig und die letzte Löschwiederherstellung.
+- Unten rechts: aktueller **Zoom in Prozent** und daneben **Alle Boxen**; der Knopf passt die Ansicht dynamisch an alle vorhandenen Boxen an, auch wenn sie weit auseinanderliegen.
+- **Entf/Rücktaste** löscht alle ausgewählten Boxen in einer gemeinsamen Aktion; der verbleibende Stapel wird wieder verbunden.
+- **Strg+A/C/V/D**: alles auswählen, kopieren, einfügen, duplizieren. Kopierte Boxen behalten Text, Listenstatus, Referenzbild und Verbindungen; beim Einfügen erhalten sie neue IDs.
+- **Strg+Z/Y**: eigener Notizverlauf, einschließlich der Mehrfachaktionen. Während der Texteingabe zunächst nur Eingabe-Undo.
 
 ## Gemeinsam bearbeiten
 

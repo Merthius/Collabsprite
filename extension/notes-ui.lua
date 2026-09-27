@@ -1,8 +1,9 @@
--- One free surface: context insertion, inline text and magnetic pastel boxes.
+-- A compact board surface with an island toolbar, marquee selection and boxes.
 local dir=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local N=dofile(app.fs.joinPath(dir,'notes.lua'))
 local T=dofile(app.fs.joinPath(dir,'notes-input.lua'))
 local S=dofile(app.fs.joinPath(dir,'notes-stack.lua'))
+local B=dofile(app.fs.joinPath(dir,'notes-board.lua'))
 local F=dofile(app.fs.joinPath(dir,'notes-style.lua'))
 local I=dofile(app.fs.joinPath(dir,'notes-image.lua'))
 local L=dofile(app.fs.joinPath(dir,'ui-layout.lua'))
@@ -14,7 +15,7 @@ function UI.new(getSession,guestGuard,safe)
   return setmetatable({states={},getSession=getSession,guestGuard=guestGuard,safe=safe},UI)
 end
 function UI:state(sprite)
-  if not self.states[sprite.id] then self.states[sprite.id]={sprite=sprite,board=N.read(sprite),history={undo={},redo={}},zoom=1,ox=24,oy=24,drafts={},seen=false,images={}} end
+  if not self.states[sprite.id] then self.states[sprite.id]={sprite=sprite,board=N.read(sprite),history={undo={},redo={}},zoom=1,ox=24,oy=56,drafts={},seen=false,images={},selection={}} end
   return self.states[sprite.id]
 end
 function UI:session(s) local c=self.getSession();return c and c.sprite==s.sprite and (c.connected or c.connecting or c.reconnecting) and c or nil end
@@ -65,6 +66,8 @@ function UI:refresh(s)
   if not s.inline or not s.inline.error then s.lastError=nil end
   if s.cachedBoard~=s.board then
     local images={}
+    for id in pairs(s.selection) do if not N.card(s.board,id) then s.selection[id]=nil end end
+    if s.selected and not N.card(s.board,s.selected) then s.selected=next(s.selection) end
     for _,c in ipairs(s.board.cards) do if c.kind=='image' then
       local old=s.images[c.id];images[c.id]=old and N.equal(old.data,c.image) and old or {data=c.image,image=I.unpack(c.image)}
     end end
@@ -72,33 +75,40 @@ function UI:refresh(s)
   end
   if s.dialog then s.dialog:repaint() end
 end
-function UI:layout(s) return S.layout(s.board,s.inline,s.drag) end
+function UI:layout(s)
+  if s.drag and s.drag.group and s.drag.moved then
+    local board=N.copy(s.drag.board)
+    for _,patch in ipairs(B.move(s.drag.board,s.drag.selection,s.drag.dx,s.drag.dy).patches) do
+      N.card(board,patch.id)[patch.field]=N.copy(patch.value)
+    end
+    return S.layout(board,s.inline)
+  end
+  return S.layout(s.board,s.inline,s.drag)
+end
 function UI:prepare(s) F.load();self:refresh(s) end
 function UI:fit(s)
-  local boxes=self:layout(s);if #boxes==0 then s.zoom=1;s.ox=24;s.oy=24;return end
-  local minx,miny,maxx,maxy=1e6,1e6,-1e6,-1e6
-  for _,b in ipairs(boxes) do minx=math.min(minx,b.x);miny=math.min(miny,b.y);maxx=math.max(maxx,b.x+b.w);maxy=math.max(maxy,b.y+b.h) end
-  s.zoom=math.max(0.25,math.min(1,((s.width or 660)-48)/(maxx-minx),((s.height or 410)-48)/(maxy-miny)))
-  s.ox=24-minx*s.zoom;s.oy=24-miny*s.zoom;self:refresh(s)
+  s.zoom,s.ox,s.oy=B.fit(s.board,s.width or 660,s.height or 410)
+  self:refresh(s)
 end
 function UI:reveal(s,id,caret)
-  local _,map=self:layout(s);local b=map[id];if not b then return end
-  local x,y=s.ox+b.x*s.zoom,s.oy+b.y*s.zoom
-  if x<12 then s.ox=s.ox+12-x elseif x+b.w*s.zoom>(s.width or 660)-12 then s.ox=s.ox+(s.width or 660)-12-x-b.w*s.zoom end
-  if y<12 then s.oy=s.oy+12-y elseif y+math.min(b.h,160)*s.zoom>(s.height or 410)-12 then s.oy=s.oy+(s.height or 410)-12-y-math.min(b.h,160)*s.zoom end
+  local _,map=B.display(self:layout(s),s.zoom,s.ox,s.oy);local v=map[id];if not v then return end
+  local b=v.box;local x,y=v.x,v.y
+  if x<12 then s.ox=s.ox+12-x elseif x+v.w>(s.width or 660)-12 then s.ox=s.ox+(s.width or 660)-12-x-v.w end
+  if y<12 then s.oy=s.oy+12-y elseif y+math.min(v.h,160)>(s.height or 410)-12 then s.oy=s.oy+(s.height or 410)-12-y-math.min(v.h,160) end
   if caret and s.inline then
     local row=1;for i,v in ipairs(b.rows) do if s.inline.cursor>=v.start then row=i end end
     local _,ry=S.rowPosition(b,row)
-    local cy=s.oy+(b.y+ry)*s.zoom
-    if cy<12 then s.oy=s.oy+12-cy elseif cy+b.lineHeight*s.zoom>(s.height or 410)-12 then s.oy=s.oy+(s.height or 410)-12-cy-b.lineHeight*s.zoom end
+    local _,current=B.display(self:layout(s),s.zoom,s.ox,s.oy)
+    local cy=current[id].y+ry*v.scale
+    if cy<12 then s.oy=s.oy+12-cy elseif cy+b.lineHeight*v.scale>(s.height or 410)-12 then s.oy=s.oy+(s.height or 410)-12-cy-b.lineHeight*v.scale end
   end
 end
 function UI:add(s,kind,style,point,image)
   if s.inline then return self:finishInline(s,function() self:add(s,kind,style,point,image) end) end
-  point=point or {x=math.floor((40-s.ox)/s.zoom),y=math.floor((40-s.oy)/s.zoom)}
+  point=point or {x=math.floor(((s.width or 660)/2-S.width*B.visualScale(s.zoom)/2-s.ox)/s.zoom),y=math.floor(((s.height or 410)/2-s.oy)/s.zoom)}
   local c=N.newCard('','',clamp(point.x),clamp(point.y));c.kind=kind or 'text';c.listStyle=style or 'check';c.color=F.colors[c.kind=='image' and 7 or c.kind=='list' and 2 or 1];c.image=image or false
   self:action(s,{action='patch',patches={{id=c.id,expected=false,value=c}}},function(ok,message)
-    if ok then s.selected=c.id;if c.kind~='image' then self:edit(s,c.id) end;self:reveal(s,c.id)
+    if ok then s.selected=c.id;s.selection={[c.id]=true};if c.kind~='image' then self:edit(s,c.id) end;self:reveal(s,c.id)
     else app.tip(message or 'Element konnte nicht erstellt werden.',5) end
   end)
 end
@@ -183,19 +193,74 @@ end
 function UI:remove(s,id,tail)
   local c=N.card(s.board,id);if c then self:action(s,{action='delete',id=id,versions=N.copy(c.versions),revision=s.board.revision,children=tail}) end
 end
+function UI:chosen(s,id)
+  if id and s.selection[id] then return N.copy(s.selection) end
+  return id and {[id]=true} or N.copy(s.selection)
+end
+function UI:copy(s,id,tail)
+  local text=tail and B.copyTail(s.board,id) or B.copy(s.board,id and {[id]=true} or s.selection)
+  app.clipboard.text=text
+end
+function UI:paste(s,x,y)
+  local clipboard=app.clipboard.content
+  local text=clipboard and clipboard.text
+  local image=clipboard and clipboard.image
+  local point={x=clamp(((x or (s.width or 660)/2)-s.ox)/s.zoom),y=clamp(((y or (s.height or 410)/2)-s.oy)/s.zoom)}
+  local operation,created
+  if type(text)=='string' and text:find('"idea-board-elements-v1"',1,true) then
+    operation,created=B.paste(s.board,text,point.x,point.y)
+  elseif image then
+    local c=N.newCard('','',point.x,point.y)
+    c.kind='image';c.image=I.pack(image,clipboard.palette,0);c.color=F.colors[7]
+    operation={action='patch',patches={{id=c.id,expected=false,value=c}}};created={c}
+  elseif type(text)=='string' and text~='' then
+    text=text:gsub('\r\n','\n'):gsub('\r','\n')
+    assert(N.field('text',text),'Text aus Zwischenablage ist zu lang (4096 Bytes).')
+    local c=N.newCard('','',point.x,point.y);c.text=text;c.color=F.colors[1]
+    operation={action='patch',patches={{id=c.id,expected=false,value=c}}};created={c}
+  else app.tip('Zwischenablage enthält keinen Text oder kein Bild.',4);return end
+  self:action(s,operation,function(ok,message)
+    if ok then
+      s.selection={};for _,c in ipairs(created) do s.selection[c.id]=true end
+      s.selected=created[1].id;self:reveal(s,created[1].id)
+    else app.tip(message or 'Einfügen fehlgeschlagen.',5) end
+  end)
+end
+function UI:duplicate(s,id,tail)
+  local selected=id and {[id]=true} or s.selection
+  local copied=tail and B.copyTail(s.board,id) or B.copy(s.board,selected)
+  local _,map=self:layout(s)
+  local minx,miny=1e6,1e6
+  for key in pairs(selected) do if map[key] then minx=math.min(minx,map[key].x);miny=math.min(miny,map[key].y) end end
+  local op,cards=B.paste(s.board,copied,minx+22,miny+22)
+  self:action(s,op,function(ok,message)
+    if ok then s.selection={};for _,c in ipairs(cards) do s.selection[c.id]=true end;s.selected=cards[1].id;self:reveal(s,cards[1].id)
+    else app.tip(message or 'Duplizieren fehlgeschlagen.',5) end
+  end)
+end
+function UI:deleteSelected(s)
+  local selected=self:chosen(s,s.selected)
+  if not next(selected) then return end
+  local count=0;for _ in pairs(selected) do count=count+1 end
+  if count==1 then
+    local id=next(selected);local c=N.card(s.board,id)
+    self:action(s,{action='delete',id=id,versions=N.copy(c.versions),revision=s.board.revision,children=false},function(ok,message)
+      if ok then s.selection={};s.selected=nil else app.tip(message or 'Element wurde inzwischen verändert.',5) end
+    end)
+    return
+  end
+  self:action(s,B.delete(s.board,selected),function(ok,message)
+    if ok then s.selection={};s.selected=nil else app.tip(message or 'Auswahl wurde inzwischen verändert.',5) end
+  end)
+end
 function UI:menu(s,id,x,y,page)
   local items={};local function item(label,fn) items[#items+1]={label=label,fn=fn} end
-  local point={x=clamp((x-s.ox)/s.zoom),y=clamp((y-s.oy)/s.zoom)}
   local c=id and N.card(s.board,id);local draft=s.inline
-  local function submenu(label,nextPage) item(label..' →',function() self:menu(s,id,x,y,nextPage) end) end
+  local function submenu(label,nextPage) item(label..' >',function() self:menu(s,id,x,y,nextPage) end) end
   if page then item('Zurück',function() self:menu(s,id,x,y) end) end
-  if page=='list' then
-    item('Checkliste',function() self:add(s,'list','check',point) end)
-    item('Punktliste',function() self:add(s,'list','bullet',point) end)
-    item('Nummerierte Liste',function() self:add(s,'list','number',point) end)
-  elseif page=='style' and c then
-    for _,style in ipairs({{'check','Checkliste'},{'bullet','Punktliste'},{'number','Nummeriert'}}) do item(style[2],function() self:action(s,{action='patch',patches={N.patch(N.card(s.board,id),'listStyle',style[1])}}) end) end
-  elseif draft and draft.error then
+  if draft and draft.error then
+    -- A conflicting unsent draft must remain recoverable even when the normal
+    -- element menu is deliberately reduced to four actions.
     item('Entwurf kopieren',function() app.clipboard.text=draft.value end)
     item('Gemeinsamen Text ansehen',function() local now=N.card(s.board,draft.id);self:compare(s,now and S.text(now) or 'Element wurde gelöscht.') end)
     item('Meinen Text übernehmen',function()
@@ -203,26 +268,27 @@ function UI:menu(s,id,x,y,page)
       draft.base=N.copy(now);draft.error=nil;draft.dirty=draft.value~=S.text(now);self:finishInline(s)
     end)
     item('Entwurf verwerfen',function() if not draft.sending then self:endInline(s,draft) end end)
-  else
-    if not c or page=='add' then
-      item('Text',function() self:add(s,'text',nil,point) end)
-      submenu('Liste','list')
-      item('Referenzbild …',function() self:import(s,point) end)
-    else
-      items[#items+1]={colors=true,id=id}
-      if c.kind~='image' then item('Text bearbeiten',function() self:edit(s,id) end) end
-      if c.kind=='list' then submenu('Listenart','style') end
-      submenu('Neues Element','add')
-      item('Element löschen',function() self:remove(s,id,false) end)
-      if #S.tail(s.board,id)>1 then item('Teilstapel löschen',function() self:remove(s,id,true) end) end
+  elseif page=='copy' and c then
+    item('Nur Element',function() self:copy(s,id,false) end)
+    if #S.tail(s.board,id)>1 then item('Stapel ab hier',function() self:copy(s,id,true) end) end
+    if s.selection[id] and next(s.selection,next(s.selection)) then
+      item('Auswahl',function() self:copy(s,nil,false) end)
     end
-    if not page then
-      item('Rückgängig  ·  Strg+Z',function() self:action(s,{action='undo'}) end)
-      if #s.board.trash>0 then item('Löschung wiederherstellen',function() self:action(s,{action='restore',id=s.board.trash[#s.board.trash].id}) end) end
-      item('Alles einpassen',function() self:fit(s) end)
+  else
+    if not c then
+      item('Einfügen',function() self:paste(s,x,y) end)
+    else
+      item('Löschen',function()
+        if s.selection[id] and next(s.selection,next(s.selection)) then self:deleteSelected(s)
+        else self:remove(s,id,false) end
+      end)
+      submenu('Kopieren','copy')
+      item('Duplizieren',function() self:duplicate(s,id,false) end)
+      items[#items+1]={label='Farbe',section=true}
+      items[#items+1]={colors=true,id=id}
     end
   end
-  local width=216
+  local width=160
   for _,v in ipairs(items) do if v.label then width=math.max(width,F.measure(v.label,false)+26) end end
   s.menu={x=x,y=y,w=width,items=items,offset=0};s.menuHover=nil
   self:refresh(s)
@@ -241,26 +307,28 @@ function UI:paint(s,ev)
   local gc=ev.context;s.width=gc.width;s.height=gc.height;s.hits={}
   gc.antialias=true;gc.opacity=255;gc.color=Color{r=39,g=40,b=43};gc:fillRect(Rectangle(0,0,gc.width,gc.height))
   local function hit(id,kind,r,extra) s.hits[#s.hits+1]={id=id,kind=kind,r=r,extra=extra} end
-  local z=s.zoom;local boxes=self:layout(s)
-  for _,b in ipairs(boxes) do
-    local c=b.card;local x,y=s.ox+b.x*z,s.oy+b.y*z;local w,h=b.w*z,b.h*z
+  local boxes=self:layout(s)
+  local moving=s.drag and s.drag.moved and (s.drag.group and s.drag.selection or {[s.drag.id]=true})
+  local displays,displayMap=B.display(boxes,s.zoom,s.ox,s.oy,moving)
+  for _,v in ipairs(displays) do
+    local b=v.box;local c=b.card;local x,y,w,h,z=v.x,v.y,v.w,v.h,v.scale
     if x+w>0 and y+h>0 and x<gc.width and y<gc.height then
       local d=s.inline and s.inline.id==c.id and s.inline or nil
       F.box(gc,x,y+2,w,h,Color{r=23,g=24,b=26,a=120},5*z)
-      local border=d and d.error and '#CF6F7E' or s.selected==c.id and '#AAC6D4' or '#5D6268'
+      local border=d and d.error and '#CF6F7E' or s.selection[c.id] and '#A9D6CA' or '#5D6268'
       F.box(gc,x-1,y-1,w+2,h+2,F.color(border),6*z)
       F.box(gc,x,y,w,h,F.paper(c.color),5*z)
       hit(c.id,'drag',rect(x,y,w,h),b)
       if c.kind=='image' then
         local cached=s.images[c.id]
         if cached then
-          local scale=math.min((b.w-24)/c.image.width,260/c.image.height)*z
+          local scale=math.min((b.w-20)/c.image.width,210/c.image.height)*z
           local iw,ih=c.image.width*scale,c.image.height*scale
-          gc:drawImage(cached.image,Rectangle(0,0,c.image.width,c.image.height),Rectangle(math.floor(x+(w-iw)/2),math.floor(y+14*z),math.max(1,math.floor(iw)),math.max(1,math.floor(ih))))
+          gc:drawImage(cached.image,Rectangle(0,0,c.image.width,c.image.height),Rectangle(math.floor(x+(w-iw)/2),math.floor(y+12*z),math.max(1,math.floor(iw)),math.max(1,math.floor(ih))))
         end
       else
         local rows=b.rows
-        hit(c.id,'text',rect(x+14*z,y+10*z,w-28*z,h-20*z),b)
+        hit(c.id,'text',rect(x+12*z,y+8*z,w-24*z,h-16*z),b)
         if d then d.draw={lines={},heading=b.heading,z=z} end
         local a,finish=0,0;if d then a,finish=T.selection(d) end
         for i,row in ipairs(rows) do
@@ -292,15 +360,80 @@ function UI:paint(s,ev)
           end
           if placeholder then gc.opacity=110;if not d then text=shown end end
           F.draw(gc,text,tx,ry,z,b.heading);gc.opacity=255
+          if c.kind=='list' and c.listStyle=='check' and c.checks:sub(row.index,row.index)=='1' and text~='' and not placeholder then
+            gc.color=Color{r=43,g=57,b=62,a=230}
+            gc:fillRect(Rectangle(math.floor(tx),math.floor(ry+10*z+0.5),math.max(1,math.floor(F.measure(text,b.heading)*z+0.5)),math.max(1,math.floor(z+0.5))))
+          end
         end
       end
-      if s.selected==c.id or s.hover==c.id then F.box(gc,x+w/2-10*z,y+4*z,20*z,2*z,Color{r=103,g=114,b=121,a=100},z) end
+      if s.selection[c.id] or s.hover==c.id then F.box(gc,x+w/2-10*z,y+3*z,20*z,2*z,Color{r=103,g=114,b=121,a=100},z) end
       if d and (d.error or d.sending) then F.box(gc,x+w-10*z,y+7*z,4*z,4*z,F.color(d.error and '#B74158' or '#7295AB'),2*z) end
     end
   end
-  if s.drag and s.drag.target then local b=s.drag.target;F.box(gc,s.ox+b.x*z,s.oy+(b.y+b.h+2)*z,S.width*z,3*z,F.color('#B7DBC7'),z) end
+  if s.drag and s.drag.target then local v=displayMap[s.drag.target.card.id];if v then
+    F.box(gc,v.x,v.y+v.h+2*v.scale,v.w,3*v.scale,F.color('#B7DBC7'),v.scale)
+  end end
+  if s.marquee then
+    local a=s.marquee;local x,y=math.min(a.x1,a.x2),math.min(a.y1,a.y2)
+    local w,h=math.abs(a.x2-a.x1),math.abs(a.y2-a.y1)
+    if w>2 and h>2 then
+      F.box(gc,x,y,w,h,Color{r=138,g=199,b=190,a=42},3)
+      gc.color=F.color('#8ECFC6');gc:strokeRect(Rectangle(x,y,w,h))
+    end
+  end
+  -- A small floating island replaces creation commands in the context menu.
+  local tools={
+    {label='Text',icon='T',run=function() self:add(s,'text') end},
+    {label='Checkliste',icon='✓',run=function() self:add(s,'list','check') end},
+    {label='Punktliste',icon='•',run=function() self:add(s,'list','bullet') end},
+    {label='Nummeriert',icon='1',run=function() self:add(s,'list','number') end},
+    {label='Bild',icon='▣',run=function() self:import(s) end},
+  }
+  local button=26;local gap=4;local islandW=5*button+6*gap;local islandX=math.floor((gc.width-islandW)/2);local islandY=7
+  F.box(gc,islandX+1,islandY+2,islandW,button+8,F.color('#17191C'),10)
+  F.box(gc,islandX,islandY,islandW,button+8,F.color('#3E4249'),10)
+  for i,tool in ipairs(tools) do
+    local tx=islandX+gap+(i-1)*(button+gap);local ty=islandY+4
+    local active=s.toolHover==i
+    F.box(gc,tx,ty,button,button,F.color(active and '#606F75' or '#34383E'),6)
+    if i==2 then
+      F.box(gc,tx+5,ty+6,5,5,F.color('#BDDAD4'),1);F.box(gc,tx+5,ty+15,5,5,F.color('#BDDAD4'),1)
+      F.box(gc,tx+12,ty+8,9,2,F.color('#E4E9EB'),1);F.box(gc,tx+12,ty+17,9,2,F.color('#E4E9EB'),1)
+    elseif i==3 then
+      F.box(gc,tx+5,ty+8,4,4,F.color('#BDDAD4'),2);F.box(gc,tx+5,ty+17,4,4,F.color('#BDDAD4'),2)
+      F.box(gc,tx+12,ty+9,9,2,F.color('#E4E9EB'),1);F.box(gc,tx+12,ty+18,9,2,F.color('#E4E9EB'),1)
+    elseif i==4 then
+      F.draw(gc,'1',tx+5,ty+1,0.75,false,true);F.draw(gc,'2',tx+5,ty+11,0.75,false,true)
+      F.box(gc,tx+13,ty+8,8,2,F.color('#E4E9EB'),1);F.box(gc,tx+13,ty+18,8,2,F.color('#E4E9EB'),1)
+    elseif i==5 then
+      gc.color=F.color('#E4E9EB');gc:strokeRect(Rectangle(tx+5,ty+6,16,14))
+      gc:beginPath();gc:moveTo(tx+7,ty+18);gc:lineTo(tx+12,ty+13);gc:lineTo(tx+16,ty+16);gc:lineTo(tx+20,ty+10);gc:stroke()
+    else F.draw(gc,tool.icon,tx+9,ty+4,1,false,true) end
+    hit(nil,'tool',rect(tx,ty,button,button),{index=i,run=tool.run})
+  end
+  if s.toolHover then
+    local label=tools[s.toolHover].label;local w=F.measure(label,false)+18
+    F.box(gc,islandX+(islandW-w)/2,islandY+button+11,w,22,F.color('#3E4249'),6)
+    F.draw(gc,label,islandX+(islandW-w)/2+9,islandY+button+13,1,false,true)
+  end
+  local fitW=26;local footerY=gc.height-34;local fitX=gc.width-fitW-9
+  local percent=math.floor(s.zoom*100+0.5)..' %';local labelW=F.measure(percent,false)+14
+  F.box(gc,fitX-labelW-4,footerY,labelW,25,F.color('#393D43'),7)
+  F.draw(gc,percent,fitX-labelW+3,footerY+3,1,false,true)
+  F.box(gc,fitX,footerY,fitW,25,F.color(s.fitHover and '#60756E' or '#47524F'),7)
+  gc.color=F.color('#E6F0EC');gc:beginPath()
+  for _,corner in ipairs({{6,10,6,6,10,6},{20,10,20,6,16,6},{6,15,6,19,10,19},{20,15,20,19,16,19}}) do
+    gc:moveTo(fitX+corner[1],footerY+corner[2]);gc:lineTo(fitX+corner[3],footerY+corner[4]);gc:lineTo(fitX+corner[5],footerY+corner[6])
+  end
+  gc:stroke()
+  hit(nil,'fit',rect(fitX,footerY,fitW,25),function() self:fit(s) end)
+  if s.fitHover then
+    local label='Alle Boxen';local tooltipW=F.measure(label,false)+18
+    F.box(gc,fitX+fitW-tooltipW,footerY-27,tooltipW,22,F.color('#3E4249'),6)
+    F.draw(gc,label,fitX+fitW-tooltipW+9,footerY-25,1,false,true)
+  end
   if s.menu then
-    local m=s.menu;local rowHeight=25
+    local m=s.menu;local rowHeight=22
     m.w=math.min(m.w,gc.width-8);m.visible=math.max(1,math.min(#m.items,math.floor((gc.height-18)/rowHeight)))
     m.offset=math.min(m.offset,#m.items-m.visible);local mh=m.visible*rowHeight+10
     m.x=math.max(4,math.min(m.x,gc.width-m.w-4));m.y=math.max(4,math.min(m.y,gc.height-mh-4))
@@ -311,10 +444,16 @@ function UI:paint(s,ev)
       local item=m.items[i];local r=rect(m.x+5,m.y+5+(i-m.offset-1)*rowHeight,m.w-10,rowHeight)
       if item.colors then
         local step=r.w/#F.colors
-        for n,color in ipairs(F.colors) do local cr=rect(r.x+3+(n-1)*step,r.y+4,step-6,17);F.box(gc,cr.x,cr.y,cr.w,cr.h,F.color(color),3);hit(item.id,'color',cr,color) end
+        local current=N.card(s.board,item.id)
+        for n,color in ipairs(F.colors) do
+          local cr=rect(r.x+2+(n-1)*step,r.y+2,step-4,18)
+          if current and current.color==color then F.box(gc,cr.x-1,cr.y-1,cr.w+2,cr.h+2,F.color('#E8F0F4'),4) end
+          F.box(gc,cr.x,cr.y,cr.w,cr.h,F.color(color),3);hit(item.id,'color',cr,color)
+        end
       else
-        if s.menuHover==i then F.box(gc,r.x,r.y,r.w,r.h,F.color('#50535B'),2) end
-        F.draw(gc,item.label,r.x+8,r.y+2,1,false,true);hit(nil,'menu',r,item.fn)
+        if s.menuHover==i and not item.section then F.box(gc,r.x,r.y,r.w,r.h,F.color('#50535B'),2) end
+        F.draw(gc,item.label,r.x+8,r.y+2,1,false,true)
+        if not item.section then hit(nil,'menu',r,item.fn) end
       end
     end
     if m.offset>0 then F.box(gc,m.x+m.w/2-8,m.y,16,2,F.color('#AEBECD'),1) end
@@ -334,6 +473,7 @@ end
 function UI:pointerDown(s,ev)
   s.pointerDown=true;local id,h=self:hit(s,ev.x,ev.y)
   if ev.button==MouseButton.RIGHT then
+    if id and not s.selection[id] then s.selection={[id]=true};s.selected=id end
     if s.inline and not s.inline.error then self:finishInline(s,function() self:menu(s,id,ev.x,ev.y) end)
     else self:menu(s,id,ev.x,ev.y) end;return
   end
@@ -346,36 +486,63 @@ function UI:pointerDown(s,ev)
   if ev.button==MouseButton.MIDDLE then s.drag={startX=ev.x,startY=ev.y,ox=s.ox,oy=s.oy};return end
   if ev.button~=MouseButton.LEFT then return end
   local d=s.inline
+  if h and (h.kind=='tool' or h.kind=='fit') then
+    local fn=h.kind=='tool' and h.extra.run or h.extra
+    if d then self:finishInline(s,fn) else fn() end
+    return
+  end
   if d and id==d.id and h.kind=='text' then self:placeCaret(d,ev.x,ev.y);if not ev.shiftKey then d.anchor=d.cursor end;s.selecting=true;self:refresh(s);return end
   local function activate()
     if not s.pointerDown then return end
     s.selected=id
-    if h and h.kind=='text' then self:edit(s,id);return end
+    if h and h.kind=='text' and not (s.selection[id] and next(s.selection,next(s.selection))) then
+      s.selection={[id]=true};self:edit(s,id);return
+    end
     if h and h.kind=='check' then self:toggle(s,id,h.extra);return end
-    if id and self:editable(s) then local b=h.extra;s.drag={id=id,board=N.copy(s.board),startX=ev.x,startY=ev.y,x=b.x,y=b.y,baseX=b.x,baseY=b.y}
-    elseif not id then s.drag={startX=ev.x,startY=ev.y,ox=s.ox,oy=s.oy} end
+    if id and self:editable(s) then
+      local b=h.extra
+      if not s.selection[id] then s.selection={[id]=true} end
+      local group=next(s.selection,next(s.selection))~=nil
+      s.drag={id=id,group=group,selection=N.copy(s.selection),board=N.copy(s.board),
+        startX=ev.x,startY=ev.y,x=b.x,y=b.y,baseX=b.x,baseY=b.y,dx=0,dy=0}
+    elseif not id then
+      s.marquee={x1=ev.x,y1=ev.y,x2=ev.x,y2=ev.y,previous=ev.shiftKey and N.copy(s.selection) or {}}
+    end
     self:refresh(s)
   end
   if d then self:finishInline(s,activate) else activate() end
 end
 function UI:pointerMove(s,ev)
   if s.pointerDown and s.selecting and s.inline then self:placeCaret(s.inline,ev.x,ev.y);self:refresh(s);return end
+  if s.pointerDown and s.marquee then s.marquee.x2=ev.x;s.marquee.y2=ev.y end
   local a=s.drag
   if a then
     if a.id then
-      a.x=clamp(a.baseX+(ev.x-a.startX)/s.zoom);a.y=clamp(a.baseY+(ev.y-a.startY)/s.zoom)
+      a.dx=math.floor((ev.x-a.startX)/s.zoom+0.5);a.dy=math.floor((ev.y-a.startY)/s.zoom+0.5)
+      a.x=clamp(a.baseX+a.dx);a.y=clamp(a.baseY+a.dy)
       a.moved=a.moved or math.abs(ev.x-a.startX)+math.abs(ev.y-a.startY)>4
-      if a.moved then a.target=S.target(a.board,self:layout(s),a) end
+      if a.moved and not a.group then a.target=B.target(a.board,self:layout(s),a,s.zoom,s.ox,s.oy) end
     else s.ox=a.ox+ev.x-a.startX;s.oy=a.oy+ev.y-a.startY end
   end
-  s.hover=self:hit(s,ev.x,ev.y);if s.menu then s.menuHover=s.menu.offset+math.floor((ev.y-s.menu.y-5)/25)+1 end
+  local id,h=self:hit(s,ev.x,ev.y);s.hover=id
+  s.toolHover=h and h.kind=='tool' and h.extra.index or nil
+  s.fitHover=h and h.kind=='fit' or false
+  if s.menu then s.menuHover=s.menu.offset+math.floor((ev.y-s.menu.y-5)/22)+1 end
   self:refresh(s)
 end
 function UI:pointerUp(s)
-  local a=s.drag;s.drag=nil;s.pointerDown=false;s.selecting=false
+  local a=s.drag;local marquee=s.marquee;s.drag=nil;s.marquee=nil;s.pointerDown=false;s.selecting=false
+  if marquee then
+    s.selection=marquee.previous
+    local selected=B.selectDisplay(B.display(self:layout(s),s.zoom,s.ox,s.oy),marquee.x1,marquee.y1,marquee.x2,marquee.y2)
+    for id in pairs(selected) do s.selection[id]=true end
+    s.selected=next(s.selection)
+  end
   if a and a.id and a.moved then
     local b=a.target
-    self:action(s,S.move(a.board,a.id,b and b.x or a.x,b and b.y+b.h+S.gap or a.y,b and b.card.id or nil),function(ok,message) if not ok then app.tip(message or 'Stapel wurde inzwischen verändert.',5) end end)
+    local operation=a.group and B.move(a.board,a.selection,a.dx,a.dy) or
+      S.move(a.board,a.id,b and b.x or a.x,b and b.y+b.h+S.gap or a.y,b and b.card.id or nil)
+    self:action(s,operation,function(ok,message) if not ok then app.tip(message or 'Stapel wurde inzwischen verändert.',5) end end)
   end
   self:refresh(s)
 end
@@ -384,10 +551,10 @@ function UI:show(sprite)
   local s=self:state(sprite);s.seen=true;if s.dialog then return end
   self:prepare(s)
   s.dialog=Dialog{title='Ideenwand · '..L.short(app.fs.fileTitle(sprite.filename~='' and sprite.filename or 'Bild'),32),onclose=function()
-    s.dialog=nil;s.pointerDown=false;s.selecting=false;s.drag=nil;s.menu=nil;self:run(function() self:finishInline(s) end)
+    s.dialog=nil;s.pointerDown=false;s.selecting=false;s.drag=nil;s.marquee=nil;s.menu=nil;self:run(function() self:finishInline(s) end)
   end}
   local d=s.dialog
-  local width,height=L.canvas(740,490);s.width=width;s.height=height
+  local width,height=L.canvas(900,600);s.width=width;s.height=height
   d:canvas{id='board',width=width,height=height,autoscaling=false,focus=true,
     onpaint=function(ev) self:paint(s,ev) end,
     onmousedown=function(ev) self:run(function() self:pointerDown(s,ev) end) end,
@@ -396,7 +563,7 @@ function UI:show(sprite)
     onwheel=function(ev)
       if s.menu then s.menu.offset=math.max(0,math.min(#s.menu.items-(s.menu.visible or 1),s.menu.offset+ev.deltaY));self:refresh(s);return end
       if ev.shiftKey then s.oy=s.oy-ev.deltaY*30
-      else local old=s.zoom;s.zoom=math.max(0.25,math.min(2,s.zoom*(ev.deltaY>0 and 0.85 or 1.18)));s.ox=ev.x-(ev.x-s.ox)*s.zoom/old;s.oy=ev.y-(ev.y-s.oy)*s.zoom/old end
+      else local old=s.zoom;s.zoom=math.max(0.01,math.min(3,s.zoom*(ev.deltaY>0 and 0.85 or 1.18)));s.ox=ev.x-(ev.x-s.ox)*s.zoom/old;s.oy=ev.y-(ev.y-s.oy)*s.zoom/old end
       self:refresh(s)
     end,
     onkeydown=function(ev)
@@ -405,8 +572,12 @@ function UI:show(sprite)
         if ev.code=='Escape' and s.menu then s.menu=nil;self:refresh(s);return end
         if s.inline then self:inlineKey(s,ev);return end
         if ev.ctrlKey or ev.metaKey then
-          if ev.code=='KeyZ' or ev.code=='KeyY' then self:action(s,{action=(ev.code=='KeyY' or ev.shiftKey) and 'redo' or 'undo'}) end
-        elseif (ev.code=='Delete' or ev.code=='Backspace') and s.selected then self:remove(s,s.selected,false)
+          if ev.code=='KeyZ' or ev.code=='KeyY' then self:action(s,{action=(ev.code=='KeyY' or ev.shiftKey) and 'redo' or 'undo'})
+          elseif ev.code=='KeyA' then s.selection={};for _,c in ipairs(s.board.cards) do s.selection[c.id]=true end;s.selected=next(s.selection);self:refresh(s)
+          elseif ev.code=='KeyC' and s.selected then self:copy(s,nil,false)
+          elseif ev.code=='KeyV' then self:paste(s)
+          elseif ev.code=='KeyD' and s.selected then self:duplicate(s,nil,false) end
+        elseif (ev.code=='Delete' or ev.code=='Backspace') and s.selected then self:deleteSelected(s)
         elseif ev.code=='Enter' and s.selected then self:edit(s,s.selected) end
       end)
     end}

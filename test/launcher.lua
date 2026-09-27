@@ -2,15 +2,16 @@
 local root=assert(app.params.root,'root fehlt')
 assert(app.isUIAvailable,'UI-Test braucht ein Aseprite-Fenster')
 assert(loadfile(root..'/extension/main.lua'))()
-local groups,commands={},{}
+local groups,commands,separators={},{},{}
 local plugin={path=root..'/extension',preferences={},
   newMenuGroup=function(_,item) groups[#groups+1]=item end,
+  newMenuSeparator=function(_,item) separators[#separators+1]=item end,
   newCommand=function(_,item) commands[#commands+1]=item end}
 local ok,err=pcall(function()
   init(plugin)
-  assert(#groups==1 and groups[1].title=='Collabsprite')
-  assert(#commands==4 and commands[1].group=='CollabspriteMenu' and commands[4].id=='CollabspriteDebugConsole')
-  commands[4].onclick()
+  assert(#groups==1 and groups[1].title=='Multiplayer (Collabsprite)' and groups[1].group=='file_import' and #separators==1 and separators[1].group=='file_import')
+  assert(#commands==6 and commands[1].group=='CollabspriteMenu' and commands[6].id=='CollabspriteDebugConsole')
+  commands[6].onclick()
   commands[1].onclick()
   local switched=false
   for i=1,32 do

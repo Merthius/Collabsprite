@@ -37,6 +37,20 @@ assert(report:find('C:\\Users\\[USER]',1,true),'User-profile path redaction miss
 assert(not report:find('192.168.2.36:8766',1,true) and report:find('[address:port]',1,true),
   'Network address was not redacted')
 assert(diagnostics:stats().lines==3,'Diagnostic line count mismatch')
+diagnostics:beginSession('Join')
+diagnostics:log('TEST','current join failure')
+local current=diagnostics:export()
+assert(current:find('current join failure',1,true) and not current:find('join requested',1,true),
+  'Copy must contain only the current multiplayer attempt')
+assert(diagnostics:read():find('join requested',1,true),'Older sessions must stay available for scrollback')
+local latest,total,maxOffset=diagnostics:window(2,0)
+local oldest=diagnostics:window(2,maxOffset)
+assert(total==5 and maxOffset==3 and #latest==2 and latest[2]:find('current join failure',1,true) and
+  #oldest==2 and oldest[1]:find('join requested',1,true),'Diagnostic scroll window omitted older entries')
+local restarted=Diagnostics.new(diagPath)
+restarted:log('TEST','new app launch')
+assert(restarted:export():find('new app launch',1,true) and not restarted:export():find('current join failure',1,true),
+  'A new Aseprite launch must not copy earlier sessions')
 local oversized=assert(io.open(diagPath,'wb'))
 oversized:write(string.rep('x',512*1024+1));oversized:close()
 diagnostics:log('LONG_EVENT','rotation check')

@@ -72,6 +72,9 @@ end
 local function beginBootstrap(action,endpoints,onReady)
   assert(not (updater and updater.busy),'Bitte zuerst das Update abschließen oder abbrechen.')
   assert(not startup,'Verbindung wird bereits vorbereitet.')
+  if action=='Host' or action=='Join' then
+    if diagnostics and diagnostics.beginSession then pcall(function() diagnostics:beginSession(action) end) end
+  end
   logDiagnostic('bootstrap','start action='..tostring(action))
   local temp=os.getenv('TEMP') or os.getenv('TMP')
   assert(temp and temp~='','Windows-Temp-Verzeichnis fehlt.')
@@ -195,28 +198,63 @@ local function showDiagnostics()
     if debugDialog then debugDialog.dialog:close();debugDialog=nil end
     local dlg=Dialog{title='Collabsprite - Diagnose',onclose=function() debugDialog=nil end}
     local width,height=Layout.canvas(660,370)
+    local view={scroll=0,total=0,maxOffset=0,visible=1,dragging=false}
+    local function moveScrollbar(y)
+      local track=view.track
+      if not track or view.maxOffset==0 then return end
+      local travel=math.max(1,track.h-track.thumb)
+      local fraction=math.max(0,math.min(1,(y-track.y-track.thumb/2)/travel))
+      view.scroll=math.floor(view.maxOffset*(1-fraction)+0.5)
+      dlg:repaint()
+    end
     dlg:label{text='Lokales Protokoll · ohne Bilddaten'}
       :newrow()
-      :canvas{id='tail',width=width,height=height,autoscaling=false,onpaint=function(ev)
+      :canvas{id='tail',width=width,height=height,autoscaling=false,focus=true,onpaint=function(ev)
         local gc=ev.context
         gc.color=Color{r=35,g=37,b=43,a=255}
         gc:fillRect(Rectangle(0,0,gc.width,gc.height))
         gc.color=Color{r=200,g=205,b=215,a=255}
-        local count=math.max(1,math.floor((gc.height-36)/20))
-        local lines=diagnostics:memoryTail(count)
-        local start=math.max(1,#lines-count+1)
-        for i=start,#lines do
-          gc:fillText(lines[i]:sub(1,130),12,10+(i-start)*20)
+        local count=math.max(1,math.floor((gc.height-36)/20));view.visible=count
+        local lines,total,maxOffset,offset=diagnostics:window(count,view.scroll)
+        if view.scroll>0 and total>view.total then
+          view.scroll=math.min(maxOffset,view.scroll+total-view.total)
+          lines,total,maxOffset,offset=diagnostics:window(count,view.scroll)
         end
+        view.total=total;view.maxOffset=maxOffset;view.scroll=offset
+        for i,line in ipairs(lines) do gc:fillText(line:sub(1,120),12,10+(i-1)*20) end
+        local trackY,trackH=8,math.max(24,gc.height-38)
+        local thumb=math.max(20,math.floor(trackH*math.min(1,count/math.max(1,total))))
+        local thumbY=trackY+(maxOffset>0 and math.floor((maxOffset-offset)/maxOffset*(trackH-thumb)) or 0)
+        view.track={x=gc.width-17,y=trackY,h=trackH,thumb=thumb}
+        gc.color=Color{r=59,g=62,b=70,a=255}
+        gc:fillRect(Rectangle(gc.width-17,trackY,9,trackH))
+        gc.color=Color{r=143,g=159,b=174,a=255}
+        gc:fillRect(Rectangle(gc.width-17,thumbY,9,thumb))
         gc.color=Color{r=145,g=153,b=168,a=255}
-        gc:fillText('Lokales Protokoll · höchstens 512 KiB · keine Bilddaten',12,gc.height-12)
+        gc:fillText('Einträge '..(total==0 and 0 or total-offset-#lines+1)..'–'..(total-offset)..' / '..total..' · Kopie: aktuelle Sitzung',12,gc.height-12)
+      end,onwheel=function(ev)
+        view.scroll=math.max(0,math.min(view.maxOffset,view.scroll-(ev.deltaY or 0)*3))
+        dlg:repaint()
+      end,onmousedown=function(ev)
+        if view.track and ev.x>=view.track.x-5 then view.dragging=true;moveScrollbar(ev.y) end
+      end,onmousemove=function(ev)
+        if view.dragging then moveScrollbar(ev.y) end
+      end,onmouseup=function() view.dragging=false end,
+      onkeydown=function(ev)
+        local step=ev.code=='PageUp' and view.visible or ev.code=='PageDown' and -view.visible or
+          ev.code=='ArrowUp' and 1 or ev.code=='ArrowDown' and -1 or 0
+        if ev.code=='Home' then view.scroll=view.maxOffset
+        elseif ev.code=='End' then view.scroll=0
+        elseif step~=0 then view.scroll=math.max(0,math.min(view.maxOffset,view.scroll+step))
+        else return end
+        ev:stopPropagation();dlg:repaint()
       end}
       :newrow()
       :button{text='Protokoll kopieren',onclick=function()
         safely(function()
           app.clipboard.text=diagnostics:export()
           logDiagnostic('diagnostics','report copied to clipboard')
-          app.tip('Diagnoseprotokoll kopiert. Jetzt hier einfügen.',5)
+          app.tip('Aktuelle Sitzung kopiert. Jetzt hier einfügen.',5)
           if debugDialog then debugDialog.dialog:repaint() end
         end)
       end}
@@ -225,6 +263,7 @@ local function showDiagnostics()
           assert(diagnostics:clear(),'Protokoll konnte nicht geleert werden.')
           logDiagnostic('diagnostics','new capture started; version='..installedVersion..'; aseprite='..tostring(app.version or 'unknown'))
           app.tip('Neues Protokoll gestartet. Jetzt den Beitritt erneut versuchen.',5)
+          view.scroll=0;view.total=0
           if debugDialog then debugDialog.dialog:repaint() end
         end)
       end}
@@ -342,8 +381,10 @@ function init(plugin)
       end
     end}
   logDiagnostic('startup','Collabsprite '..installedVersion..'; Aseprite '..tostring(app.version or 'unknown')..'; log file ready')
-  -- Aseprite exposes groups within existing menus, not a group on main_menu.
-  plugin:newMenuGroup{id='CollabspriteMenu',title='Collabsprite',group='view_new'}
+  -- file_import is the last built-in item before File > Scripts. Inserting a
+  -- separator and then our group there places a distinct submenu above Scripts.
+  plugin:newMenuSeparator{group='file_import'}
+  plugin:newMenuGroup{id='CollabspriteMenu',title='Multiplayer (Collabsprite)',group='file_import'}
   plugin:newCommand{id='PixelKollabMultiplayer',title='Server erstellen / beitreten...',group='CollabspriteMenu',onclick=show}
   plugin:newCommand{id='CollabspriteNotes',title='Gemeinsame Notizen...',group='CollabspriteMenu',
     onclick=function() safely(function() notesUI.failed=nil;notesUI:show(app.sprite) end) end}

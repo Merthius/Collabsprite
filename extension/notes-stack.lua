@@ -3,7 +3,7 @@ local dir=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local N=dofile(app.fs.joinPath(dir,'notes.lua'))
 local T=dofile(app.fs.joinPath(dir,'notes-input.lua'))
 local F=dofile(app.fs.joinPath(dir,'notes-style.lua'))
-local S={width=244,gap=7}
+local S={width=196,gap=6}
 function S.text(c) return c.title~='' and (c.title..(c.text~='' and '\n'..c.text or '')) or c.text end
 function S.lines(text,heading,width)
   local rows,start,index={},0,1
@@ -40,9 +40,9 @@ function S.layout(board,inline,drag)
       if drag and drag.moved and c.id==drag.id and root.id~=drag.id then break end
       local heading=c.kind=='text' and top
       local text=inline and inline.id==c.id and inline.value or S.text(c)
-      local rows=S.lines(text,heading,S.width-32-(c.kind=='list' and 24 or 0))
-      local lineHeight=heading and 29 or 20
-      local h=c.kind=='image' and 28+math.min(260,(S.width-24)*c.image.height/c.image.width) or math.max(58,28+#rows*lineHeight)
+      local rows=S.lines(text,heading,S.width-28-(c.kind=='list' and 20 or 0))
+      local lineHeight=heading and 26 or 19
+      local h=c.kind=='image' and 24+math.min(210,(S.width-20)*c.image.height/c.image.width) or math.max(48,18+#rows*lineHeight)
       local box={card=c,x=x,y=y,w=S.width,h=math.ceil(h),heading=heading,rows=rows,lineHeight=lineHeight}
       boxes[#boxes+1]=box;byId[c.id]=box;y=y+box.h+S.gap;top=false;c=children[c.id]
     end
@@ -54,13 +54,9 @@ end
 function S.rowPosition(box,index,text)
   local row=box.rows[index]
   local width=F.measure(text or row.text,box.heading)
-  -- Lists center the complete marker/text block, keeping markers and wrapped
-  -- continuation rows aligned. Plain text centers every line independently.
+  -- Plain text is centered; list rows always start at the same left inset.
   local x=(box.w-width)/2
-  if box.card.kind=='list' then
-    local widest=0;for _,r in ipairs(box.rows) do widest=math.max(widest,F.measure(r.text,false)) end
-    x=(box.w-widest-24)/2+24
-  end
+  if box.card.kind=='list' then x=30 end
   local y=(box.h-(#box.rows-1)*box.lineHeight)/2-F.inkCenter(box.heading)+(index-1)*box.lineHeight
   return x,y
 end

@@ -44,7 +44,7 @@ local env=setmetatable({app=fakeApp,
     end}
   end}, {__index=_G})
 assert(loadfile(root..'/extension/main.lua','t',env))()
-env.init{path='test',version='0.6.5',preferences={},newMenuGroup=function() end,
+env.init{path='test',version='0.6.5',preferences={},newMenuGroup=function() end,newMenuSeparator=function() end,
   newCommand=function(_,item) callbacks[item.id]=item.onclick end}
 callbacks.PixelKollabMultiplayer()
 controls.startHost.onclick()

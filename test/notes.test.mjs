@@ -84,3 +84,42 @@ test('Magnetic boxes: bounded RGBA references, list styles, stack uniqueness and
   assert.equal(set(b,'guest',5,'text','x\n'.repeat(128)).ok,false);
   assert.ok(run(b,'guest',{action:'undo'}).ok);assert.ok(run(b,'guest',{action:'redo'}).ok);
 });
+
+test('Marquee multi-edit stays atomic on the server and keeps foreign text during own undo', () => {
+  const b = new Notes();
+  for (const c of [card(1), card(2, id(1)), card(3)]) assert.ok(create(b, 'host', c).ok);
+  const first = b.data.cards.find(c => c.id === id(1));
+  const third = b.data.cards.find(c => c.id === id(3));
+  assert.ok(run(b, 'guest', { action: 'patch', patches: [
+    { id: id(1), field: 'x', expected: first.versions.x, value: 90 },
+    { id: id(3), field: 'x', expected: third.versions.x, value: 150 },
+  ] }).ok);
+  assert.ok(set(b, 'host', 3, 'text', 'Fremde Idee').ok);
+  assert.ok(run(b, 'guest', { action: 'undo' }).ok);
+  assert.equal(b.data.cards.find(c => c.id === id(1)).x, 30);
+  assert.equal(b.data.cards.find(c => c.id === id(3)).x, 30);
+  assert.equal(b.data.cards.find(c => c.id === id(3)).text, 'Fremde Idee');
+  const cloned = [card(4), card(5, id(4))];
+  assert.ok(run(b, 'guest', { action: 'patch', patches: cloned.map(c => ({ id: c.id, expected: false, value: c })) }).ok);
+  assert.ok(run(b, 'guest', { action: 'undo' }).ok);
+  assert.equal(b.data.cards.length, 3);
+  const before=b.snapshot();
+  assert.equal(run(b, 'guest', { action: 'patch', patches: [
+    { id: id(1), expected: before.cards[0], value: false },
+    { id: id(3), expected: before.cards[2], value: false },
+    { id: id(2), field: 'parent', expected: before.cards[1].versions.parent, value: '' },
+    { id: id(2), field: 'x', expected: before.cards[1].versions.x, value: 100000 },
+  ] }).ok, false);
+  assert.deepEqual(b.snapshot(), before, 'A rejected group must not partly delete elements');
+  assert.ok(run(b, 'guest', { action: 'patch', patches: [
+    { id: id(1), expected: before.cards[0], value: false },
+    { id: id(3), expected: before.cards[2], value: false },
+    { id: id(2), field: 'parent', expected: before.cards[1].versions.parent, value: '' },
+  ] }).ok);
+  assert.equal(b.data.cards.length, 1);
+  assert.equal(b.data.cards[0].parent, '');
+  assert.ok(run(b, 'guest', { action: 'undo' }).ok);
+  assert.equal(b.data.cards.length, 3);
+  assert.equal(b.data.cards.find(c => c.id === id(2)).parent, id(1));
+  assert.equal(b.data.cards.find(c => c.id === id(3)).text, 'Fremde Idee');
+});
