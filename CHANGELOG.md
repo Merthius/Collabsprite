@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.12.1 beta — 2026-10-01 — locally prepared, not published
+## 0.12.1 beta — 2026-10-01
 
 - Cooperative board loading, image/sketch encoding, thumbnails and host capture; prepare local metadata before an atomic native write. Native file/transaction steps remain indivisible.
 - Fix the re-entry guard silently dropping internal picker polling and sketch commits. PNG/JPG imports target the open sheet; indexed palettes survive closing temporary documents. Prepare drag-to-sheet imports and remote sheet updates.

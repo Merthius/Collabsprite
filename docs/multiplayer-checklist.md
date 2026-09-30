@@ -1,5 +1,11 @@
 # Multiplayer: notwendige Funktionen und Codeprüfung
 
+## Aktuell: 0.12.1 Beta — 01.10.2026
+
+Protokoll 14 / Notizformat 9; ein gemeinsamer Installer für Host und Gäste. Ideenwand-/Bildvorbereitung in kurzen Schritten, korrigierter PNG/JPG-Skizzenimport, zuverlässige Sitzungssuche und Häkchen/automatische Skizzenübernahme. Geprüft: 72 Node-Tests, 20 native Aseprite-Skripte, Host-/Gast-Dokumentabgleich, Updater, Windows-Importdaten und normal/hart beendeter Host mit Backup und freien Ports. Native Sichtprobe bei 400 %; native Dateioperationen bleiben unteilbar. Zwei physische PCs/Radmin, Grafiktablett, Explorer-Gesten und der konkrete Freund-PC-Fehler bleiben Praxisprüfungen. [Versionshinweise und Installation](releases/v0.12.1.md).
+
+Die folgenden datierten Abschnitte sind die historische Prüfung ab 0.8.0; alte Funktions-/UI-Beschreibungen werden durch die aktuelle [Ideenwand-Anleitung](shared-notes.md) ersetzt.
+
 Stand: 27.09.2026, **0.8.0 Beta**. Kein vollständiges Sicherheitsgutachten. Automatisierte Tests wurden an diesem Rechner ausgeführt; Aussagen über den betroffenen Freund-PC wären unbelegt. Die Härtungen aus 0.6.6/0.6.7/0.7.0 sind enthalten.
 
 ## Ergänzungen 0.8.0 – Ideenwand

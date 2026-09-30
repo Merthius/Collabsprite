@@ -2,13 +2,11 @@
 
 # Collabsprite — English guide
 
-> **Locally prepared: 0.12.1 beta.** Cooperative board/image preparation, fixed PNG/JPG sketch import, reliable discovery and a checkmark that turns the sheet into a full-resolution board image. Not published yet; download links below still point to public 0.12.0. All participants using 0.12.1 need protocol 14 / notes format 9. [Changes (German)](docs/releases/v0.12.1.md).
+> **New in 0.12.1 beta:** Cooperative board/image preparation, fixed PNG/JPG sketch import, reliable discovery and a checkmark that turns the sheet into a full-resolution board image. [Release notes (German)](docs/releases/v0.12.1.md). Host and guests must use the same new version.
 
-> **New in 0.12.0 beta:** A native pixel-perfect idea board, animation cards and shared sketch sheets. Pen: 5–20 px; eraser: 5–100 px. The server stops when its host image or Aseprite closes. [Release notes (German)](docs/releases/v0.12.0.md).
+[Deutsch](README.md) · [Download v0.12.1 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.12.1/Collabsprite.aseprite-extension)
 
-[Deutsch](README.md) · [Download v0.12.0 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.12.0/Collabsprite.aseprite-extension)
-
-Version **0.12.0 beta** includes hosting and joining in **one installer**, with a bundled Windows x64 host runtime. No separate Node.js installation is needed. The **shared magnetic idea board remains embedded in the artwork**. **Everyone must update: protocol 13 / notes format 8 is incompatible with older sessions.** Existing file notes migrate when read; keep an original file copy before saving.
+Version **0.12.1 beta** includes hosting and joining in **one installer**, with a bundled Windows x64 host runtime. No separate Node.js installation is needed. The **shared magnetic idea board remains embedded in the artwork**. **Everyone must update: protocol 14 / notes format 9 is incompatible with older sessions.** Existing file notes migrate when read; keep an original file copy before saving.
 
 **Diagnostics are included in every build.** Open **Datei/File → Multiplayer (Collabsprite) → Diagnosekonsole** after an error. Scroll older entries with the mouse wheel, scrollbar, or Page Up/Down. **Protokoll kopieren** copies only the current host/join attempt (or the current Aseprite launch before one starts). Earlier entries remain visible in `%TEMP%\Collabsprite-debug.log`, bounded to 512 KiB. It contains technical events, not image data or invitation codes. **Leeren** clears the entire local log; use it only before reproducing an error. The reported guest-PC “C stack overflow” still needs a retest on that PC.
 
@@ -36,13 +34,13 @@ The session server runs on the **host PC** (port `8766`). There is just **one wo
 
 ## Install on every computer
 
-1. On the [v0.12.0 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.12.0), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
+1. On the [v0.12.1 release page](https://github.com/Merthius/Collabsprite/releases/tag/v0.12.1), download **`Collabsprite.aseprite-extension`** from **Assets**. Do **not** use GitHub's automatically generated “Source code (zip)” as the installer.
 2. In Aseprite, open **Edit → Preferences → Extensions → Add Extension** and select the file. Double-clicking the extension may work as well ([official Aseprite instructions](https://www.aseprite.org/docs/extensions/)).
 3. Restart Aseprite. Open **File/Datei → Multiplayer (Collabsprite) → Server erstellen / beitreten**.
 
 ## Updating an older installation
 
-Save the session copy and disconnect. Add the new **`Collabsprite.aseprite-extension`** in Aseprite's extension settings and confirm the update of **pixelkollab-native / Collabsprite** to **0.12.0**. Restart Aseprite on every participating PC and check **File/Datei → Multiplayer (Collabsprite) → Info**. The technical package ID stays the same for update compatibility.
+Save the session copy and disconnect. Add the new **`Collabsprite.aseprite-extension`** in Aseprite's extension settings and confirm the update of **pixelkollab-native / Collabsprite** to **0.12.1**. Restart Aseprite on every participating PC and check **File/Datei → Multiplayer (Collabsprite) → Info** for **0.12.1**. The technical package ID stays the same for update compatibility.
 
 **File/Datei → Multiplayer (Collabsprite) → Update** shows checking, download, package verification and installation phases, then opens Aseprite's native installer automatically with the correct file. Confirm installation/update and restart Aseprite afterwards. Disconnect any multiplayer session first; no forced app exit. Existing code/settings are backed up under `Aseprite/Collabsprite-backups`; session data is left untouched. Closing the progress window before installation cancels installation, although the download may finish in the background.
 
@@ -99,7 +97,7 @@ The WebSocket connection has **no built-in end-to-end encryption**; use only a t
 
 ## Limitations and support
 
-RGB/RGBA raster layers are supported, with limits of 8 participants including reconnecting leases, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, slices, color profiles, offset linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.12.0 uses protocol 13; older sessions are incompatible.** A disconnect during an unacknowledged structure operation preserves the local draft but cannot yet automatically resume that operation. Two-PC/Radmin, actual tablet pressure and Windows Snap Assist need real-device testing. See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
+RGB/RGBA raster layers are supported, with limits of 8 participants including reconnecting leases, 1024×1024 pixels, 32 layers, 120 frames, and 4,194,304 cel-pixels. Tilemaps, reference layers, slices, color profiles, offset linked cels, and animated palettes are not fully synchronized. Selections, zoom, and color choices remain personal workspace state. **Version 0.12.1 uses protocol 14; older sessions are incompatible.** A disconnect during an unacknowledged structure operation preserves the local draft but cannot yet automatically resume that operation. Two-PC/Radmin, actual tablet pressure and Windows Snap Assist need real-device testing. See [technical notes](docs/technical-notes.md) and [open issues](https://github.com/Merthius/Collabsprite/issues).
 
 The bundled, unmodified Node.js 24.21.0 runtime carries its full notices in `runtime/LICENSE`. The native board uses Aseprite's own UI font and a bundled heading atlas under the [SIL Open Font License](extension/notes-font-OFL.txt). Collabsprite is [MIT-licensed](LICENSE) and is not affiliated with Aseprite or Radmin VPN. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -1,6 +1,6 @@
 # Technische Hinweise / Technical notes
 
-Lokaler Quellstand: **0.12.1 Beta, Protokoll 14, Notizformat 9**, noch nicht veröffentlicht. Öffentlicher Download: 0.12.0. Die nach Versionsnummern gegliederten älteren Abschnitte dokumentieren die Entwicklung und sind keine aktuelle Funktionsliste. Aktuelle Bedienung: [Zeichnen](cooperative-editing.md) und [Ideenwand](shared-notes.md).
+Aktueller Release: **0.12.1 Beta, Protokoll 14, Notizformat 9**. [Download und Versionshinweise](releases/v0.12.1.md). Die nach Versionsnummern gegliederten älteren Abschnitte dokumentieren die Entwicklung und sind keine aktuelle Funktionsliste. Aktuelle Bedienung: [Zeichnen](cooperative-editing.md) und [Ideenwand](shared-notes.md).
 
 ## 0.12.1: kooperative Vorbereitung und Übernehmen von Skizzen
 
