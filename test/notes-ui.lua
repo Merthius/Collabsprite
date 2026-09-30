@@ -15,7 +15,10 @@ local props=N.newCard('',staff.id);props.kind='list';props.listStyle='bullet';pr
 local look=N.newCard('','',300,20);look.text='Aussehen';look.color='#F0D8DC'
 local hair=N.newCard('',look.id);hair.text='Haare: silbern und lockig';hair.color='#F0D8DC'
 local todo=N.newCard('',hair.id);todo.kind='list';todo.text='Silhouette zeichnen\nFarben abstimmen\nAnimation testen';todo.checks='100';todo.color='#D4E8DB'
-board.cards={weapon,staff,props,look,hair,todo};N.write(sprite,board)
+board.cards={weapon,staff,props,look,hair,todo}
+board.authors[weapon.id]={created='Mert',edited='Mert'}
+board.authors[staff.id]={created='Mert',edited='Freundin'}
+N.write(sprite,board)
 local function safe(fn) local ok,err=xpcall(fn,debug.traceback);if not ok then print(err);io.stdout:flush();app.alert(tostring(err)) end end
 local ui=UI.new(function() end,function() return false end,safe)
 ui:show(sprite)

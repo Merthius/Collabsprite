@@ -117,7 +117,7 @@ function Client:connect(url,hello)
 end
 function Client:host(sprite,name,port)
   local snapshot=C.capture(sprite)
-  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=7,mode='host',name=name,snapshot=snapshot})
+  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=13,mode='host',name=name,snapshot=snapshot})
 end
 function Client:join(invite,name)
   invite=invite:gsub('%s',''):gsub('^ws://','')
@@ -125,7 +125,7 @@ function Client:join(invite,name)
   assert(address and #code==8 and #token==32,'Bitte den gesamten Einladungscode vom Host einfuegen.')
   self:trace('session','join-requested; address and invite hidden')
   self.invite=invite
-  self:connect('ws://'..address,{type='hello',protocol=7,mode='join',name=name,room=code,token=token})
+  self:connect('ws://'..address,{type='hello',protocol=13,mode='join',name=name,room=code,token=token})
 end
 function Client:unfreeze()
   if not self.frozen then return end
@@ -474,7 +474,7 @@ function Client:receive(message)
     end
   elseif message.type=='welcome' then
     assert(not self.connected,'Doppelte Anmeldung')
-    assert(message.protocol==nil or message.protocol==7,'Unpassende Erweiterungsversion')
+    assert(message.protocol==nil or message.protocol==13,'Unpassende Erweiterungsversion')
     local resumed=self.reconnecting
     if resumed then
       self.noteResend=true
@@ -516,13 +516,18 @@ function Client:receive(message)
     self.undoCount=message.undo;self.redoCount=message.redo;self.recovery=message.recovery;self.recoveryCount=message.recoveryCount or 0;self.notify(self)
   elseif message.type=='presence' then
     local previous={}
-    for _,member in ipairs(self.members or {}) do previous[member.author]=true end
-    self.members=message.members
+    for _,member in ipairs(self.members or {}) do previous[member.author]=member.name end
+    self.members=message.members or {}
     if self.hadPresence then
+      local current={}
       for _,member in ipairs(self.members or {}) do
+        current[member.author]=true
         if member.author~=self.author and not previous[member.author] then
           app.tip(member.name..' ist der Sitzung beigetreten.',3)
         end
+      end
+      for author,name in pairs(previous) do
+        if author~=self.author and not current[author] then app.tip(name..' hat die Sitzung verlassen.',3) end
       end
     end
     self.hadPresence=true;self.notify(self)
@@ -741,12 +746,14 @@ function Client:tick()
       if os.time()>=self.resumeDeadline then self:disconnect('Wiederverbindung abgelaufen. Lokale Ansicht bleibt offen.');return end
       if self.connecting and os.time()-self.started>10 then self:suspend() end
       if not self.connecting and os.time()>=self.retryAt then
-        self:connect(self.url,{type='hello',protocol=7,mode='resume',room=self.room,author=self.author,resumeToken=self.resumeToken})
+        self:connect(self.url,{type='hello',protocol=13,mode='resume',room=self.room,author=self.author,resumeToken=self.resumeToken})
       end
     elseif self.connecting and os.time()-self.started>20 then error('Keine Verbindung: Host, LAN/Radmin und Firewall prüfen.') end
     if self.connected or self.reconnecting then
       local exists=false
-      for _,s in ipairs(app.sprites) do if s==self.sprite then exists=true;break end end
+      if self.sprite and self.sprite.isValid then
+        for _,s in ipairs(app.sprites) do if s.id==self.sprite.id then exists=true;break end end
+      end
       if not exists then self:disconnect('Sitzungsbild geschlossen.');return end
     end
     if self.connected then

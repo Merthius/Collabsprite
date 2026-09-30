@@ -10,8 +10,9 @@ local plugin={path=root..'/extension',preferences={},
 local ok,err=pcall(function()
   init(plugin)
   assert(#groups==1 and groups[1].title=='Multiplayer (Collabsprite)' and groups[1].group=='file_import' and #separators==1 and separators[1].group=='file_import')
-  assert(#commands==6 and commands[1].group=='CollabspriteMenu' and commands[6].id=='CollabspriteDebugConsole')
-  commands[6].onclick()
+  assert(#commands==5 and commands[1].group=='CollabspriteMenu' and commands[5].id=='CollabspriteDebugConsole')
+  for _,item in ipairs(commands) do assert(item.id~='CollabspriteRestoreDeletion') end
+  commands[5].onclick()
   commands[1].onclick()
   local switched=false
   for i=1,32 do

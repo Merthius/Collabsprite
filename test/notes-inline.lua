@@ -29,7 +29,9 @@ local list=s.board.cards[2];ui:toggle(s,list.id,2);assert(s.board.cards[2].check
 assert(dialogs==2,'Text/list editing opened popups')
 local image=Image(660,410,ColorMode.RGB);ui:paint(s,{context=image.context})
 local hit;for _,h in ipairs(s.hits) do if h.kind=='text' and h.id==card.id then hit=h end end
-ui:pointerDown(s,{x=hit.r.x+5,y=hit.r.y+5,button=MouseButton.LEFT});assert(s.inline.id==card.id)
+ui:pointerDown(s,{x=hit.r.x+5,y=hit.r.y+5,button=MouseButton.LEFT});assert(s.drag and not s.inline,'Single click must select/drag')
+ui:pointerUp(s);assert(type(controls.board.ondblclick)=='function','Native double-click event is not wired')
+controls.board.ondblclick({x=hit.r.x+5,y=hit.r.y+5});assert(s.inline.id==card.id)
 ui:paint(s,{context=image.context});assert(s.inline.draw);ui:finishInline(s)
 local stopped=false;controls.board.onkeydown{code='KeyB',stopPropagation=function() stopped=true end};assert(stopped)
 local buffer=T.new('ä🙂');T.key(buffer,{code='Backspace'},'text',{});assert(buffer.value=='ä');T.key(buffer,{code='KeyZ',ctrlKey=true},'text',{});assert(buffer.value=='ä🙂')

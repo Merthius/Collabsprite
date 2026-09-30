@@ -28,7 +28,7 @@ async function connect(port,hello,address='127.0.0.1') {
     return new Promise((resolve,reject)=>{const p={type,resolve};p.timeout=setTimeout(()=>reject(Error('Timeout '+type)),4000);pending.push(p);});
   };
   await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
-  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:7,...hello});
+  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:13,...hello});
   return {ws,send,next};
 }
 async function waitFor(check,description) {
@@ -77,12 +77,13 @@ test('Shared notes: three peers, leases, late join, lost ack resume, host save a
   const id='c'.repeat(32),fields=['title','text','parent','x','y','color','status'];
   const card={id,title:'Hexe',text:'',parent:'',x:10,y:20,color:'',status:'idea',versions:Object.fromEntries(fields.map(f=>[f,0]))};
   a.send({type:'note',seq:1,action:'patch',patches:[{id,expected:false,value:card}]});assert.equal((await a.next('noteAck')).ok,true);
-  const state=await host.next('notes');assert.equal(state.board.cards[0].title,'Hexe');await a.next('notes');
+  const state=await host.next('notes');assert.equal(state.board.cards[0].title,'Hexe');
+  assert.deepEqual(state.board.authors[id],{created:'Gast A',edited:'Gast A'});await a.next('notes');
   const b=await connect(service.port,{mode:'join',room,token,name:'Gast B'});await b.next('welcome');assert.equal((await b.next('notes')).board.cards[0].title,'Hexe');
   a.send({type:'noteLock',id,field:'text'});assert.equal((await b.next('noteLocks')).locks[0].author,aw.author);
   b.send({type:'note',seq:1,action:'patch',patches:[{id,field:'text',expected:1,value:'blocked'}]});assert.equal((await b.next('noteAck')).ok,false);await b.next('notes');
   a.send({type:'note',seq:2,action:'patch',patches:[{id,field:'text',expected:1,value:'Besen leuchtet'}]});
-  await host.next('notes'); // Do not consume A's acknowledgement: simulate its loss.
+  const edited=await host.next('notes');assert.deepEqual(edited.board.authors[id],{created:'Gast A',edited:'Gast A'}); // Do not consume A's acknowledgement: simulate its loss.
   a.ws.terminate();await once(a.ws,'close');
   const resumed=await connect(service.port,{mode:'resume',room,author:aw.author,resumeToken:aw.resumeToken});const rw=await resumed.next('welcome');
   assert.equal(rw.snapshot.notes.cards[0].text,'Besen leuchtet');const ns=await resumed.next('notes');assert.equal(ns.history.undo,2);
@@ -91,6 +92,7 @@ test('Shared notes: three peers, leases, late join, lost ack resume, host save a
   host.send({type:'noteSaved',revision:2});assert.equal((await resumed.next('noteSaved')).revision,2);
   resumed.send({type:'leave'});await once(resumed.ws,'close');await service.flush();
   const saved=JSON.parse(await readFile(join(dataDir,room+'.json'),'utf8'));assert.equal(saved.snapshot.notes.cards[0].text,'Besen leuchtet');
+  assert.deepEqual(saved.snapshot.notes.authors[id],{created:'Gast A',edited:'Gast A'});
   host.send({type:'undo'});await host.next('history');assert.equal(service.rooms.get(room).core.notes.data.cards[0].text,'Besen leuchtet');
   b.send({type:'noteSaved',revision:2});await b.next('error');
 });
@@ -106,6 +108,47 @@ test('Magnetic reference image reaches peers, persists, survives late join and p
   guest.send({type:'note',seq:2,action:'undo'});assert.equal((await guest.next('noteAck')).ok,true);assert.equal((await host.next('notes')).board.cards.length,0);await guest.next('notes');
   guest.send({type:'note',seq:3,action:'redo'});assert.equal((await guest.next('noteAck')).ok,true);assert.deepEqual((await host.next('notes')).board.cards[0].image,ref.image);
   guest.send({type:'leave'});await once(guest.ws,'close');assert.deepEqual(service.rooms.get(room).core.snapshot().notes.cards[0].image,ref.image);
+});
+
+test('Full-resolution sketch reaches host, guest and a later joiner',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});t.after(()=>service.close());
+  const host=await connect(service.port,{mode:'host',snapshot:snapshot()});const hw=await host.next('welcome');await host.next('notes');
+  const [,room,token]=hw.invite.split('/');const guest=await connect(service.port,{mode:'join',room,token});await guest.next('welcome');await guest.next('notes');
+  const image={width:1000,height:1000,encoding:'b64',pixels:Buffer.alloc(1000*1000*4).toString('base64')};
+  const fields=['title','text','parent','x','y','color','status','kind','listStyle','checks','image'];
+  const paper={id:'f'.repeat(32),title:'',text:'',parent:'',x:20,y:30,color:'',status:'idea',kind:'paper',listStyle:'check',checks:'',image,
+    versions:Object.fromEntries(fields.map(f=>[f,0]))};
+  guest.send({type:'note',seq:1,action:'patch',patches:[{id:paper.id,expected:false,value:paper}]});
+  assert.equal((await guest.next('noteAck')).ok,true);
+  assert.deepEqual((await host.next('notes')).board.cards[0].image,image);await guest.next('notes');
+  const late=await connect(service.port,{mode:'join',room,token});await late.next('welcome');
+  assert.deepEqual((await late.next('notes')).board.cards[0].image,image);
+  guest.send({type:'leave'});await once(guest.ws,'close');
+  assert.deepEqual(service.rooms.get(room).core.notes.data.cards[0].image,image);
+});
+
+test('Three-sided idea links converge for host and guest',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});t.after(()=>service.close());
+  const host=await connect(service.port,{mode:'host',snapshot:snapshot()});const hw=await host.next('welcome');await host.next('notes');
+  const [,room,token]=hw.invite.split('/');const guest=await connect(service.port,{mode:'join',room,token});await guest.next('welcome');await guest.next('notes');
+  const keys=['title','text','parent','dock','x','y','color','status','kind','listStyle','checks','image'];
+  const make=(letter,parent='',dock='below')=>({id:letter.repeat(32),title:letter,text:'',parent,dock,x:20,y:30,color:'',status:'idea',kind:'text',listStyle:'check',checks:'',image:false,versions:Object.fromEntries(keys.map(key=>[key,0]))});
+  const root=make('a');host.send({type:'note',seq:1,action:'patch',patches:[{id:root.id,expected:false,value:root}]});assert.equal((await host.next('noteAck')).ok,true);await host.next('notes');await guest.next('notes');
+  const left=make('b',root.id,'left');guest.send({type:'note',seq:1,action:'patch',patches:[{id:left.id,expected:false,value:left}]});assert.equal((await guest.next('noteAck')).ok,true);await guest.next('notes');await host.next('notes');
+  const right=make('c',root.id,'right');host.send({type:'note',seq:2,action:'patch',patches:[{id:right.id,expected:false,value:right}]});assert.equal((await host.next('noteAck')).ok,true);await host.next('notes');
+  const joined=await guest.next('notes');assert.deepEqual(joined.board.cards.map(c=>c.dock),['below','left','right']);
+  const duplicate=make('d',root.id,'left');guest.send({type:'note',seq:2,action:'patch',patches:[{id:duplicate.id,expected:false,value:duplicate}]});assert.equal((await guest.next('noteAck')).ok,false);await guest.next('notes');
+  assert.equal(service.rooms.get(room).core.notes.data.cards.length,3);
+  const animation={...make('e'),kind:'animation',tag:'Hexe läuft',tagStart:1};
+  host.send({type:'note',seq:3,action:'patch',patches:[{id:animation.id,expected:false,value:animation}]});
+  assert.equal((await host.next('noteAck')).ok,true);const hostBoard=(await host.next('notes')).board;
+  assert.equal((await guest.next('notes')).board.cards[3].tag,'Hexe läuft');
+  host.send({type:'note',seq:4,action:'patch',patches:[{id:animation.id,field:'frame',expected:hostBoard.cards[3].versions.frame,value:2}]});
+  assert.equal((await host.next('noteAck')).ok,true);await host.next('notes');
+  assert.equal((await guest.next('notes')).board.cards[3].frame,2);
+  const late=await connect(service.port,{mode:'join',room,token});await late.next('welcome');
+  const lateBoard=(await late.next('notes')).board;
+  assert.equal(lateBoard.cards[3].kind,'animation');assert.equal(lateBoard.cards[3].frame,2);
 });
 
 test('Authenticated reconnect retains identity, undo and pending sequence across a locked session',async t=>{
@@ -291,7 +334,7 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
   t.after(()=>service.close());
   assert.deepEqual(await (await fetch(`http://127.0.0.1:${service.port}/status`)).json(),
-    {app:'Collabsprite',protocol:7,localOnly:true,port:service.port});
+    {app:'Collabsprite',protocol:13,localOnly:true,port:service.port});
   const a=await connect(service.port,{mode:'host',name:'Local A',snapshot:snapshot()});
   const welcome=await a.next('welcome');
   assert.equal(welcome.localOnly,true);
@@ -434,6 +477,9 @@ test('Peers receive layer/frame deletion, metadata and join presence',async t=>{
   assert.equal(layerDelete.kind,'layer');
   assert.equal(layerDelete.layers[0].name,'Figur');
   assert.equal(service.rooms.get(room).core.snapshot().cels.length,1);
+  b.send({type:'leave'});await once(b.ws,'close');
+  const afterLeave=await a.next('presence');
+  assert.ok(!afterLeave.members.some(member=>member.author===guest.author),'Departed guest remained in presence');
 });
 test('A multi-frame deletion reaches peers as ordered, atomic events',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});

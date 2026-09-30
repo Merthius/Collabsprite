@@ -8,6 +8,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Room, OperationRejected } from './core.mjs';
 import { NoteRejected } from './notes.mjs';
+import { watchOwner } from './owner-watch.mjs';
 
 const hash = value => createHash('sha256').update(String(value)).digest('hex');
 const isLocal = address => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
@@ -66,7 +67,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   const server = http.createServer((req, res) => {
     if (req.url === '/status' && allowedPeer(req.socket.remoteAddress, localOnly)) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 7, localOnly, port: server.address()?.port }));
+      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 13, localOnly, port: server.address()?.port }));
       return;
     }
     if (!allowedPeer(req.socket.remoteAddress, localOnly)) { res.writeHead(403); res.end(); return; }
@@ -142,7 +143,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
         if (!message || typeof message !== 'object' || Array.isArray(message) || typeof message.type !== 'string') throw new Error('Ungueltige Nachricht');
         if (socket.room && !['paint','document'].includes(message.type) && data.length > (message.type === 'note' ? 9 * 1024 * 1024 : 8192)) throw new Error('Steuernachricht zu gross');
         if (!socket.room) {
-          if (message.type !== 'hello' || message.protocol !== 7) throw new Error('Unpassende Erweiterungsversion');
+          if (message.type !== 'hello' || message.protocol !== 13) throw new Error('Unpassende Erweiterungsversion');
           socket.name = String(message.name || 'Kuenstler').replace(/[\x00-\x1f]/g, '').slice(0, 30);
           socket.author = randomBytes(16).toString('hex');
           let room, code, token, resumeToken = randomBytes(32).toString('hex');
@@ -184,7 +185,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           socket.room = room; socket.code = code; room.clients.add(socket); room.core.user(socket.author);
           room.leases.set(socket.author, { tokenHash: hash(resumeToken), name: socket.name, socket, expires: Infinity });
           const actualPort = server.address().port;
-          send(socket, { type: 'welcome', protocol: 7, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision, structure: room.core.structure,
+          send(socket, { type: 'welcome', protocol: 13, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision, structure: room.core.structure,
             invite: token ? invite(localOnly ? [] : addresses(), actualPort, code, token) : undefined,
             localOnly, restored: room.restored, acceptingGuests: room.acceptingGuests !== false, snapshot: room.core.snapshot(),
             resumed: message.mode === 'resume', resumeToken, resumeMs, confirmedSeq: room.core.user(socket.author).seq });
@@ -205,7 +206,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
         let event;
         if (message.type === 'note') {
           const revision = room.core.notes.data.revision;
-          const result = room.core.notes.execute(socket.author, message);
+          const result = room.core.notes.execute(socket.author, message, socket.name);
           send(socket, { type: 'noteAck', ...result });
           if (room.core.notes.data.revision !== revision) { room.dirty = true; noteState(room); }
           else noteState(room, socket);
@@ -362,7 +363,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
       visible.push({ name: room.hostName || 'Kuenstler', image: room.core.meta.name,
         invite: invite([address], server.address().port, code, room.discoveryToken) });
     }
-    const response = Buffer.from(JSON.stringify({ protocol: 7, rooms: visible }));
+    const response = Buffer.from(JSON.stringify({ protocol: 13, rooms: visible }));
     if (response.length <= 1200) discovery.send(response, peer.port, peer.address);
   });
   discovery.on('error', error => log(`Sitzungssuche: ${error.message}`));
@@ -398,12 +399,19 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const mode = process.argv.includes('--local') ? 'local' : 'global';
   const requestedPort = process.argv.find(arg => arg.startsWith('--port='));
+  const ownerPid = process.argv.find(arg => arg.startsWith('--owner-pid='))?.slice(12);
+  const ownerStart = process.argv.find(arg => arg.startsWith('--owner-start='))?.slice(14);
+  if ((ownerPid || ownerStart) && (!process.argv.includes('--managed') ||
+      !/^[1-9][0-9]{0,9}$/.test(ownerPid ?? '') || Number(ownerPid)>2147483647 || !/^[0-9]{18,19}$/.test(ownerStart ?? '')))
+    throw new Error('Ungueltiger Hostprozess');
   const port = Number(requestedPort?.slice(7) || process.env.COLLABSPRITE_PORT || (mode === 'local' ? 8765 : 8766));
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Ungueltiger Serverport');
   const service = await startServer({ port, host: mode === 'local' ? '127.0.0.1' : '0.0.0.0' });
-  let stopping = false;
-  const stop = async () => { if (stopping) return; stopping = true; await service.close(); };
+  let stopping = false, cancelOwner;
+  const stop = async () => { if (stopping) return; stopping = true; cancelOwner?.(); await service.close(); };
   if (process.argv.includes('--managed')) {
+    if (ownerPid) cancelOwner = watchOwner({ pid: Number(ownerPid), start: ownerStart,
+      onExit: () => void stop(), onError: () => console.error('Hostprozess-Pruefung nicht verfuegbar; Verbindungsende bleibt aktiv.') });
     service.server.on('collabsprite:last-host-left', () => void stop());
     let idleSince = Date.now();
     const idleTimer = setInterval(() => {

@@ -40,9 +40,9 @@ local function safely(action)
 end
 
 local function refresh(s)
-  if s.sprite then guarded[s.sprite.id]={guest=s.isHost==false} end
+  if s.sprite and s.sprite.isValid then guarded[s.sprite.id]={guest=s.isHost==false} end
   for _,sprite in ipairs(s.recoverySprites or {}) do if sprite.isValid then guarded[sprite.id]={guest=s.isHost==false} end end
-  if notesUI and s.sprite and not s.notesAttached then notesUI:attach(s);s.notesAttached=true end
+  if notesUI and s.sprite and s.sprite.isValid and not s.notesAttached then notesUI:attach(s);s.notesAttached=true end
   if not dialog then return end
   local busy=startup~=nil or s.reconnecting
   dialog:modify{id='status',text=Layout.short(s.reconnecting and 'Verbinde erneut ...' or busy and 'Vorbereitung ...' or s.connected and (s.syncStatus or 'Verbunden') or s.connecting and 'Verbinde ...' or 'Nicht verbunden',36)}
@@ -137,7 +137,7 @@ local function searchSessionsNow(output)
     local choices,seen={},{}
     for line in (output or ''):gmatch('[^\r\n]+') do
       local ok,result=pcall(function() return decodeJson(line) end)
-      if ok and result and result.protocol==7 then
+      if ok and result and result.protocol==13 then
         for _,room in ipairs(result.rooms or {}) do
           local invite=tostring(room.invite or '')
           local address=invite:match('^([^/]+)/') or ''
@@ -365,7 +365,13 @@ function init(plugin)
   decodeJson=dofile(app.fs.joinPath(plugin.path,'json.lua')).decode
   Client=dofile(app.fs.joinPath(plugin.path,'client.lua'))
   notesUI=dofile(app.fs.joinPath(plugin.path,'notes-ui.lua')).new(function() return session end,
-    function(sprite) return sprite and guarded[sprite.id] and guarded[sprite.id].guest end,safely)
+    function(sprite) return sprite and guarded[sprite.id] and guarded[sprite.id].guest end,safely,artistName,
+    function(token)
+      local script=app.fs.joinPath(plugin.path,'Window.vbs')
+      if app.fs.isFile(script) and token:match('^[a-f0-9]+$') and #token==32 then
+        os.execute('wscript.exe //B //Nologo "'..script..'" '..token)
+      end
+    end,dofile(app.fs.joinPath(plugin.path,'board-files.lua')))
   preferences=plugin.preferences
   installedVersion=plugin.version and tostring(plugin.version) or '0.0.0'
   updater=dofile(app.fs.joinPath(plugin.path,'update-ui.lua')).new{
@@ -389,9 +395,6 @@ function init(plugin)
   plugin:newCommand{id='CollabspriteNotes',title='Gemeinsame Notizen...',group='CollabspriteMenu',
     onclick=function() safely(function() notesUI.failed=nil;notesUI:show(app.sprite) end) end}
   plugin:newCommand{id='CollabspriteUpdate',title='Update...',group='CollabspriteMenu',onclick=update}
-  plugin:newCommand{id='CollabspriteRestoreDeletion',title='Letzte Löschung wiederherstellen',group='CollabspriteMenu',
-    onenabled=function() return session~=nil and session.connected and session.recovery~=nil end,
-    onclick=function() safely(function() if session then session:restoreDeletion() end end) end}
   plugin:newCommand{id='CollabspriteInfo',title='Info...',group='CollabspriteMenu',onclick=info}
   plugin:newCommand{id='CollabspriteDebugConsole',title='Diagnosekonsole...',group='CollabspriteMenu',onclick=showDiagnostics}
   commandListener=app.events:on('beforecommand',function(ev)
@@ -410,14 +413,16 @@ function init(plugin)
       logDiagnostic('aseprite command',tostring(ev.name or 'unknown'))
     end
     if session and (session.connected or session.reconnecting) then
-      if ev.name=='CloseAllFiles' or ev.name=='Exit' or (ev.name=='CloseFile' and app.sprite==session.sprite) then
+      if ev.name=='CloseAllFiles' or ev.name=='Exit' or (ev.name=='CloseFile' and app.sprite and
+          session.sprite and session.sprite.isValid and app.sprite.id==session.sprite.id) then
         ev.stopPropagation()
         local leaving,name,params,target=session,ev.name,ev.params,app.sprite
+        local targetId=target and target.id
         safely(function()
           leaving:requestLeave(function()
             local guest=leaving.isHost==false
             if guest and leaving.sprite and leaving.sprite.isValid then leaving.sprite:close() end
-            if name=='CloseFile' and not guest and app.sprite~=target then
+            if name=='CloseFile' and not guest and (not app.sprite or app.sprite.id~=targetId) then
               app.tip('Verbindung getrennt. Das Sitzungsbild kann jetzt geschlossen werden.',5)
               return
             end

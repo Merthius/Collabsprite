@@ -3,7 +3,8 @@ param([ValidateSet('Host','Join','Search')][string]$Action,
       [ValidateSet('Network','Test')][string]$Mode,
       [ValidateRange(1,65535)][int]$Port = 8766,
       [string]$ResultPath = '',
-      [string]$Endpoints = '0')
+      [string]$Endpoints = '0',
+      [ValidateRange(0,2147483647)][int]$OwnerPid = 0)
 $ErrorActionPreference = 'Stop'
 function Report([string]$line) {
     if ($ResultPath) {
@@ -39,7 +40,7 @@ try {
             if (-not $private) { continue }
             try {
                 $status = Invoke-RestMethod -Uri ('http://' + $candidate + '/status') -TimeoutSec 1 -UseBasicParsing
-                if ($status.app -eq 'Collabsprite' -and $status.protocol -eq 7 -and $status.port -eq $candidatePort) {
+                if ($status.app -eq 'Collabsprite' -and $status.protocol -eq 13 -and $status.port -eq $candidatePort) {
                     Report ('READY ' + $candidate); exit 0
                 }
             } catch { }
@@ -52,7 +53,7 @@ try {
     if (-not (Test-Path -LiteralPath $serverFile)) { Fail 'Serverdateien fehlen. Collabsprite neu installieren.' }
     $status = ServerStatus
     if ($status) {
-        if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 7 -or [bool]$status.localOnly -ne ($Mode -eq 'Test')) {
+        if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 13 -or [bool]$status.localOnly -ne ($Mode -eq 'Test')) {
             Fail ('Port ' + $Port + ' ist durch einen anderen Server belegt.')
         }
         Report ('READY ' + $Port); exit 0
@@ -74,12 +75,19 @@ try {
     }
     $serverMode = if ($Mode -eq 'Test') { '--local' } else { '--network' }
     $arguments = @(('"' + $serverFile + '"'), $serverMode, ('--port=' + $Port), '--managed')
+    if ($OwnerPid) {
+        $owner = Get-Process -Id $OwnerPid -ErrorAction Stop
+        try {
+            if ($owner.ProcessName -ne 'aseprite' -or $owner.HasExited) { Fail 'Host-Aseprite wurde bereits geschlossen.' }
+            $arguments += @(('--owner-pid='+$OwnerPid), ('--owner-start='+$owner.StartTime.ToUniversalTime().Ticks))
+        } finally { $owner.Dispose() }
+    }
     $serverProcess = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(8)
     while ([DateTime]::UtcNow -lt $deadline) {
         Start-Sleep -Milliseconds 150
         $status = ServerStatus
-        if ($status -and $status.app -eq 'Collabsprite' -and $status.protocol -eq 7 -and [bool]$status.localOnly -eq ($Mode -eq 'Test')) {
+        if ($status -and $status.app -eq 'Collabsprite' -and $status.protocol -eq 13 -and [bool]$status.localOnly -eq ($Mode -eq 'Test')) {
             Report ('READY ' + $Port); exit 0
         }
         if ($serverProcess.HasExited) { break }

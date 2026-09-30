@@ -1,6 +1,6 @@
 Option Explicit
 
-Dim fso, shell, arguments, action, mode, port, resultPath, endpoints, worker, command
+Dim fso, shell, arguments, action, mode, port, resultPath, endpoints, worker, command, ownerPid
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
 Set arguments = WScript.Arguments
@@ -41,8 +41,10 @@ If action = "Update" Then
   command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Quote(worker) & _
     " -ResultPath " & Quote(resultPath) & " -InstalledVersion " & Quote(endpoints)
 Else
+  ownerPid = 0
+  If action = "Host" Then ownerPid = FindAsepriteOwner()
   command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Quote(worker) & _
-    " -Action " & action & " -Mode " & mode & " -Port " & port & " -ResultPath " & Quote(resultPath) & " -Endpoints " & Quote(endpoints)
+    " -Action " & action & " -Mode " & mode & " -Port " & port & " -ResultPath " & Quote(resultPath) & " -Endpoints " & Quote(endpoints) & " -OwnerPid " & ownerPid
 End If
 On Error Resume Next
 shell.Run command, 0, False
@@ -54,6 +56,36 @@ On Error GoTo 0
 
 Function Quote(value)
   Quote = Chr(34) & Replace(value, Chr(34), "") & Chr(34)
+End Function
+
+Function FindAsepriteOwner()
+  ' Only this unique launcher and its real ancestors, never other Aseprites.
+  On Error Resume Next
+  Dim service, candidates, proc, current, matches, parents, parent, depth
+  FindAsepriteOwner = 0
+  Set service = GetObject("winmgmts:\\.\root\cimv2")
+  Set candidates = service.ExecQuery("SELECT ProcessId,ParentProcessId,Name,CommandLine,CreationDate FROM Win32_Process WHERE Name='wscript.exe' OR Name='cscript.exe'")
+  matches = 0
+  For Each proc In candidates
+    If InStr(1, Replace(CStr(proc.CommandLine), "/", "\"), resultPath, vbTextCompare) > 0 Then
+      Set current = proc
+      matches = matches + 1
+    End If
+  Next
+  If Err.Number <> 0 Or matches <> 1 Then Exit Function
+  For depth = 1 To 8
+    Set parents = service.ExecQuery("SELECT ProcessId,ParentProcessId,Name,CreationDate FROM Win32_Process WHERE ProcessId=" & CLng(current.ParentProcessId))
+    If Err.Number <> 0 Or parents.Count <> 1 Then Exit Function
+    For Each parent In parents
+      If CStr(parent.CreationDate) > CStr(current.CreationDate) Then Exit Function
+      If LCase(parent.Name) = "aseprite.exe" Then
+        FindAsepriteOwner = CLng(parent.ProcessId)
+        Exit Function
+      End If
+      Set current = parent
+    Next
+  Next
+  On Error GoTo 0
 End Function
 
 Function ValidVersion(value)

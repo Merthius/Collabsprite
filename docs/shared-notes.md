@@ -1,54 +1,71 @@
-# Ideenwand: freie Elemente und magnetische Stapel
+# Ideenwand: freie Elemente und magnetische Verbindungen
 
-Diese Anleitung beschreibt **Collabsprite 0.11.0 Beta / Protokoll 7**. Die Ideenwand ersetzt die Karten-/Unterpunkt-Bedienung aus 0.8.x.
+**Collabsprite 0.12.0 Beta** verwendet Protokoll 13 und Notizformat 8. Alle Beteiligten einer Sitzung müssen aktualisieren; Sitzungen mit älteren Versionen sind nicht kompatibel. Alte Dateien werden beim Lesen übernommen.
 
-Die Collabsprite-Fenster starten begrenzt auf einen Teil des Aseprite-Fensters. Die Ideenwand wird nicht zusätzlich mit der UI-Skalierung aufgeblasen. Der Schriftatlas wird in vierfacher Auflösung geglättet; schmalere Boxen mit kleineren Abständen lassen mehr Platz. Bei **45 % Zoom** bleiben Boxen und Text in einer besser lesbaren Bildschirmgröße, während ihre Positionen näher zusammenrücken. Unterhalb von 45 % schrumpfen sie wieder, damit auch weit verteilte Wände in die Ansicht passen. Aseprites eigene Bildschirm-Skalierung und native Dateiauswahl/Sicherheitsdialoge bleiben unverändert.
+Die Ideenwand bleibt vollständig in Aseprite. Normale Texte verwenden Aseprites UI-Schrift, größere Haupttitel einen hart gerasterten, mitgelieferten OFL-Schriftatlas. Das Canvas wird automatisch an die UI-Skalierung angepasst; Karten und Bedienelemente haben klare Pixelkanten. Es öffnet sich kein Browser und kein lokaler Ideenwand-Dienst.
+
+Die Karten sind kleiner und behalten eine feste, lesbare Größe. Die Wand lässt sich verschieben, aber bewusst nicht zoomen; so werden Schrift und Boxen nicht auf krumme Zwischenwerte skaliert. Aseprites native Dateiauswahl und Sicherheitsdialoge bleiben unverändert.
 
 ## Eine freie Fläche
 
-Die Wand hat keine Suchleiste. Oben schwebt eine kleine abgerundete Werkzeuginsel mit **Text**, **Checkliste**, **Punktliste**, **nummerierter Liste** und **Referenzbild**. Ein Klick fügt die neue Box direkt in die sichtbare Wand ein; ein Text lässt sich sofort schreiben. Öffnen über **Datei → Multiplayer (Collabsprite) → Gemeinsame Notizen**. Der Fenstertitel nennt das zugehörige Bild. **X** schließt nur diese Ansicht, nicht die Sitzung.
+Die Wand hat keine Suchleiste. Oben sitzt eine kleine pixelgenaue Werkzeuginsel mit **Text**, einem **Listenknopf** (ausklappbar: Checkliste, Punktliste, nummerierte Liste), **Referenzbild** und **Skizzenblatt**; eine separate Insel links enthält **Animationen/Tags**, rechts eine eigene Insel mit **Undo** und **Redo** als klare Links-/Rechtspfeile. Bei wenig Fensterbreite rücken Undo/Redo in die nächste Zeile. Text und Liste erscheinen direkt auf der Wand. Öffnen über **Datei → Multiplayer (Collabsprite) → Gemeinsame Notizen**. Die zusätzlichen Split- und Fensterleistenknöpfe entfallen; Schließen und Maximieren bleiben die normalen Windows-Fensterknöpfe.
 
-Ein **Rechtsklick auf freie Fläche** bietet nur **Einfügen**: kopierte Ideenwand-Boxen samt Eigenschaften/Verbindungen, Text aus anderen Programmen oder ein Bild aus der Zwischenablage. Für Referenzbilder per Werkzeuginsel öffnet sich ein Dateidialog für PNG, JPG/JPEG, WebP, GIF und BMP; bei Animationen wird das erste Bild verwendet.
+Die Ideenwand ist ein **eigenständiges Windows-Fenster**. Sie ordnet Aseprite nicht mehr automatisch an. Ziehe ihre native Titelleiste selbst an den linken oder rechten Bildschirmrand, um Windows Snap Assist zu nutzen und anschließend Aseprite für die andere Seite auszuwählen. Dafür muss Aseprites experimentelle Einstellung **Mehrere Fenster** aktiviert sein; nach einer Änderung Aseprite neu starten. Ein kurzer, unsichtbarer Windows-Helfer löst nur die Fenster-Eigentümerbindung und aktiviert den üblichen Taskleistenstil; er verändert weder Aseprites Fenstergröße noch Einstellungen. Die Ideenwand kann weiterhin normal verschoben, skaliert, maximiert oder geschlossen werden. Die tatsächliche Snap-Assist-Auswahl auf dem Nutzerbildschirm bleibt vor Ort zu prüfen.
 
-Text anklicken, um ihn zu ändern. **Enter** setzt eine neue Zeile. **Strg+Enter**, **Escape**, Klick daneben oder normales Schließen übernimmt den Entwurf. Escape verwirft keinen Text. Strg+A/C/X/V und Auswahl per Maus funktionieren im Textfeld. Lange Zeilen umbrechen automatisch.
+Der **Animationsknopf in der linken Insel** öffnet die Tag-Liste des geöffneten Aseprite-Bildes. Sie zeigt Name und Startframe-Vorschau jedes Tags. Einen Eintrag anklicken setzt ihn in die Mitte der Ideenwand; in die Wand ziehen setzt ihn am gewünschten Ort ab. Ein Animationselement zeigt zunächst den ersten Frame. Ein Klick darauf entfaltet eine waagerechte Frame-Leiste direkt auf der Wand: Klick auf ein Nachbarbild oder **Pfeil links/rechts** wählt einen anderen Frame; waagerechtes Ziehen blättert ebenfalls. Der hervorgehobene Frame bleibt stets am Ort der Box, die übrigen Bilder rücken daran vorbei. **Enter** oder ein zweiter Klick auf den hervorgehobenen Frame bestätigt die Auswahl; die gewählte absolute Aseprite-Framenummer wird am Bild gespeichert und geteilt. **Escape** oder Klick auf freie Fläche schließt die Leiste ohne neue Auswahl. Unten links stehen die absolute Framenummer und die Zahl aller Frames im Bild, unten rechts startet/stoppt der kleine Knopf eine lokale Vorschau. Der Knopf direkt daneben schaltet **¼-Geschwindigkeit** ein oder aus; das betrifft nur deine Vorschau, nicht die Framedauern des Bildes oder andere Personen. Kleine Sprites werden in der Box mit ganzzahliger, pixelgenauer Vergrößerung angezeigt (16 × 16 → 160 × 160).
+
+Ein **Rechtsklick auf freie Fläche** bietet **Einfügen**, **Sortieren**, **Undo** und **Redo**. Einfügen übernimmt kopierte Ideenwand-Boxen samt Eigenschaften/Verbindungen, Text aus anderen Programmen oder ein Bild aus der Zwischenablage. Sortieren rückt getrennte Stapel zu einer annähernd quadratischen Anordnung zusammen und hält zuvor benachbarte Stapel möglichst beieinander; auch diese Anordnung lässt sich mit dem eigenen Undo zurücknehmen. Der Bildknopf öffnet direkt die Windows-Dateiauswahl für ein oder mehrere Bilder (PNG, JPG/JPEG, WebP, GIF, BMP). Bilddateien lassen sich auch direkt aus dem Explorer auf die Ideenwand ziehen. Dafür muss die Ideenwand als eigenes Fenster laufen (Aseprite: Mehrere Fenster). Höchstens 32 Dateien bis je 64 MiB pro Import; der gesamte Import ist eine gemeinsame Undo-Aktion. Ein unsichtbarer Windows-Helfer nimmt die Dateien entgegen und endet mit der Ideenwand. Aseprites Sicherheitsfreigaben für den Helfer und die temporäre Ergebnisdatei bleiben erforderlich. Bei animierten Bilddateien wird das erste Bild verwendet.
+
+Ein **Doppelklick auf eine freie Stelle** erstellt sofort ein bearbeitbares Textelement. Ein **Doppelklick auf ein Text- oder Listenelement** beginnt dessen Bearbeitung; ein einzelner Klick wählt es aus, Ziehen bewegt es. **Enter** setzt eine neue Zeile. **Strg+Enter**, **Escape**, Klick daneben oder normales Schließen übernimmt den Entwurf. Escape verwirft keinen Text. Strg+A/C/X/V und Auswahl per Maus funktionieren im Textfeld. Lange Zeilen umbrechen automatisch.
+
+Ein einfacher Klick auf ein Referenzbild öffnet eine Aseprite-Vorschau bei **100 % der eingebetteten Bildpixel**. Ein Klick auf den freien Rand oder das **X** schließt sie. Bei Bildern größer als die Vorschau kann man mit dem Mausrad bzw. Umschalt+Mausrad den Ausschnitt bewegen. Die Quelle bleibt unverändert; vor dem Einbetten wird sie weiterhin auf maximal 512 × 512 Pixel verkleinert.
+
+## Skizzenblatt
+
+Der Blatt-Knopf hängt eine kleine Papiervorschau an den Mauszeiger; ein Klick auf freie Wand platziert das **1000 × 1000-Pixel-Blatt** als eigenes Element. Auf der Wand bleibt seine Vorschau klein; feine Striche werden in der Kartenminiatur sichtbar gehalten. Ein Klick öffnet die Zeichenansicht **im selben Ideenwandfenster**; das X rechts oben kehrt zur Wand zurück. Die Werkzeuge sind links in einer schmalen Seitenleiste, während das Blatt rechts den verfügbaren quadratischen Platz nutzt. Das Mausrad vergrößert es nicht. Der Stift hat einen kurzen Größenregler und ein Zahlenfeld für **5 bis 20 Pixel**. Der Blockradierer behält separat **5 bis 100 Pixel**. **Alles löschen** leert das ganze Blatt und lässt sich mit Undo rückgängig machen. Die erste Palette des geöffneten Aseprite-Bildes ist darunter sichtbar. **Undo/Redo** in der Seitenleiste oder mit Strg+Z/Strg+Y gelten den letzten Strichen dieses Blatts; nach einer fremden Blattänderung wird ein alter Verlauf nicht über die neue Fassung geschrieben. **Drucksensitivität** ist standardmäßig aus; nur wenn sie eingeschaltet ist und das Eingabegerät Druckwerte an Aseprite liefert, ändert sich die Strichbreite. **Stabilisierung** gilt ausschließlich für den Stift und ist beim Radierer inaktiv. Die Wirkung mit einem echten S-Pen/Grafiktablett und die Darstellung bei 400 % Aseprite-Skalierung müssen noch vor Ort geprüft werden. Bereits gespeicherte 128 × 128-Blätter bleiben lesbar und werden beim Bearbeiten pixelgenau auf 1000 × 1000 hochskaliert.
+
+Ein Referenzbild oder eine Animationsbox lässt sich auf das Blatt ziehen. Aus dem geöffneten Filmstreifen lässt sich auch ein bestimmter Frame auf das Blatt ziehen. Das Bild wird passend auf die Blattfläche skaliert und ist danach Teil der dort bearbeitbaren Pixel; die ursprüngliche Referenz oder Animation bleibt unverändert. Jeder bestätigte Strich wird mit der gemeinsamen Ideenwand geteilt. Bei einem Versionskonflikt oder Netzabbruch bleibt ein noch nicht bestätigter Blattentwurf in der laufenden App offen, statt fremde Arbeit still zu überschreiben.
 
 ## Stapel verbinden und trennen
 
-Eine Box **am Rand bzw. am kleinen oberen Griff** ziehen. Der Textbereich dient zum Schreiben. Bildboxen lassen sich auch innen greifen.
+Eine Box **an beliebiger Stelle** ziehen – auch am Text. Ein Klick alleine bearbeitet nichts. Die nachfolgenden verbundenen Elemente bewegen sich mit. Um eine Verbindung zu lösen, die gewünschte Box über den magnetischen Bereich hinaus auf eine freie Stelle ziehen und loslassen.
 
-Die Unterkante eines freien Stapels ist magnetisch: die gezogene Box nahe darunter bewegen. Eine helle Linie zeigt die Andockstelle; loslassen verbindet die Boxen.
+Unten, links und rechts gibt es je eine magnetische Andockstelle. Eine helle Linie zeigt das Ziel; loslassen verbindet die Boxen. Die Ansicht verteilt die Zweige so, dass sie sich nicht überlagern. Jede der drei Seiten kann genau ein direkt verbundenes Element haben; weitere Elemente können daran hängen.
+
+Beim Darüberfahren oder schon beim Annähern von außen erscheint ein **+** nur an den freien Seiten **unten, links und rechts**; oben nie. Zwischen verbundenen Boxen steht kein Plus. Das Plus bleibt beim Anfahren anklickbar und öffnet eine kleine Auswahl für Text, die drei Listenarten oder ein Bild. Das neue Element wird an genau dieser freien Seite angeheftet.
 
 | Gegriffenes Element | Was sich bewegt |
 | --- | --- |
-| Ganz oben | Der gesamte Stapel |
-| In der Mitte | Dieses Element und alle darunter; der obere Teil bleibt stehen |
+| Ganz oben | Der gesamte verbundene Zweig |
+| In der Mitte | Dieses Element mit seinen nachfolgenden Zweigen; der obere Teil bleibt stehen |
 | Ganz unten | Nur das letzte Element |
 
-Jede Box kann genau eine Box unter sich haben. Kreise und widersprüchliche Verbindungen werden abgewiesen. Ein **Text am Stapelanfang ist automatisch größer und fett**; weiter unten normal. Es gibt keine separate Titel-Einstellung.
+Kreise und widersprüchliche Verbindungen werden abgewiesen. Ein **Text am Anfang eines freien Zweigs ist automatisch größer und fett** und als Haupttitel erkennbar; verbundene Texte sind normal. Es gibt keine separate Titel-Einstellung.
 
-Ein **Rechtsklick auf eine Box** zeigt **Löschen**, **Kopieren**, **Duplizieren** und direkt darunter sieben kräftigere Farbfelder ohne weiteres Untermenü. Unter Kopieren lässt sich ein einzelnes Element, ein Teilstapel oder eine Mehrfachauswahl kopieren. Die Farbe gehört nur dieser Box; bereits gespeicherte alte Pastellfarben bleiben erhalten. Ein noch nicht übernommener Konfliktentwurf zeigt aus Sicherheitsgründen stattdessen seine Wiederherstellungsaktionen, damit kein Text verloren geht. Bei sehr wenig Platz lässt sich das Menü mit dem Mausrad scrollen. Abgehakte Checklistenpunkte werden durchgestrichen.
+Ein **Rechtsklick auf eine Box** zeigt **Löschen**, **Kopieren**, **Ausschneiden**, **Duplizieren** und direkt darunter sieben kräftigere Farbfelder ohne weiteres Untermenü. **Kopieren** oder **Ausschneiden** nimmt genau das angeklickte Element samt allen daran hängenden Nachfolgern mit – niemals die Elemente oberhalb. Eine Mehrfachauswahl lässt sich mit **Strg+C** kopieren oder mit **Strg+X** ausschneiden. Erst nach erfolgreichem Kopieren in die Zwischenablage wird gelöscht. Die Farbe gehört nur dieser Box; bereits gespeicherte alte Pastellfarben bleiben erhalten. Ein noch nicht übernommener Konfliktentwurf zeigt aus Sicherheitsgründen stattdessen seine Wiederherstellungsaktionen, damit kein Text verloren geht. Bei sehr wenig Platz lässt sich das Menü mit dem Mausrad scrollen. Abgehakte Checklistenpunkte werden durchgestrichen.
 
 ## Auf der Wand bewegen
 
-- Mittlere Maustaste ziehen: Ausschnitt verschieben.
-- Linke Maustaste über freie Fläche ziehen: Auswahlrechteck für mehrere Boxen. Mit **Umschalt** wird zu einer vorhandenen Auswahl hinzugefügt. Ausgewählte Boxen am Rand gemeinsam verschieben.
-- Mausrad: um den Mauszeiger zoomen. Umschalt+Mausrad: vertikal verschieben.
-- Unten rechts: aktueller **Zoom in Prozent** und daneben **Alle Boxen**; der Knopf passt die Ansicht dynamisch an alle vorhandenen Boxen an, auch wenn sie weit auseinanderliegen.
-- **Entf/Rücktaste** löscht alle ausgewählten Boxen in einer gemeinsamen Aktion; der verbleibende Stapel wird wieder verbunden.
-- **Strg+A/C/V/D**: alles auswählen, kopieren, einfügen, duplizieren. Kopierte Boxen behalten Text, Listenstatus, Referenzbild und Verbindungen; beim Einfügen erhalten sie neue IDs.
+- Rechte oder mittlere Maustaste über freie Fläche ziehen: Ausschnitt verschieben. Ein ruhiger Rechtsklick öffnet das Kontextmenü.
+- **Linke Maustaste** über freie Fläche ziehen: Auswahlrechteck für mehrere Boxen. Am Fensterrand verschiebt sich der Ausschnitt weiter, solange die Taste gehalten wird; so erreicht die Auswahl auch Elemente außerhalb des sichtbaren Bereichs. **Strg oder Umschalt + Ziehen** ergänzt die vorhandene Auswahl. Ausgewählte Boxen von jeder Stelle aus gemeinsam verschieben.
+- Mausrad: Wand vertikal verschieben. Umschalt+Mausrad: horizontal verschieben. Karten und Schrift behalten ihre feste Pixelgröße.
+- **Entf/Rücktaste** löscht alle ausgewählten Boxen in einer gemeinsamen Aktion; übrig gebliebene Zweige werden als freie Elemente erhalten.
+- **Strg+A/C/X/V/D**: alles auswählen, kopieren, ausschneiden, einfügen, duplizieren. Kopierte Boxen behalten Text, Listenstatus, Referenzbild, Tag-Verknüpfung, gewählten absoluten Frame und Verbindungen; beim Einfügen erhalten sie neue IDs.
 - **Strg+Z/Y**: eigener Notizverlauf, einschließlich der Mehrfachaktionen. Während der Texteingabe zunächst nur Eingabe-Undo.
 
 ## Gemeinsam bearbeiten
 
 Alle dürfen Elemente erstellen, ändern und verschieben. Bestätigte Änderungen werden geteilt. Text wird beim Übernehmen gesendet, nicht bei jedem Buchstaben.
 
-Kurze Feldreservierungen und Revisionsprüfungen verhindern stilles Überschreiben. Bei einem Konflikt bleibt der lokale Entwurf erhalten; ein roter Rand/Punkt markiert ihn. **Rechtsklick** bietet gemeinsamen Text ansehen, eigenen Text übernehmen, kopieren oder Entwurf verwerfen. Ein Übernehmen erfolgt nie automatisch über fremden Text.
+Oben rechts in jeder Box steht der Name der Person, die sie zuletzt geändert hat; direkt nach dem Einfügen ist dies die erstellende Person. Der Host-Server ordnet Änderungen dem angemeldeten Sitzungsnamen zu. Die Zuordnung bleibt mit dem Bild gespeichert. Bereits vorhandene Boxen aus alten Dateien haben keine nachträglich erfundene Autorenschaft. Aseprite zeigt den Beitritt und das Verlassen anderer Personen als kurze native Hinweise unten rechts.
+
+Kurze Feldreservierungen und Revisionsprüfungen verhindern stilles Überschreiben. Bei einem Konflikt bleibt der lokale Entwurf erhalten; ein roter Rand/Punkt markiert ihn. **Rechtsklick** bietet „Entwurf kopieren“, „Gemeinsamen Text ansehen“, „Meinen Text übernehmen“ oder „Entwurf verwerfen“. Ein Übernehmen erfolgt nie automatisch über fremden Text.
 
 Eine kurz unterbrochene Sitzung kann ausstehende Aktionen wiederholen, ohne sie doppelt anzuwenden. Gastbeiträge bleiben beim Host nach dem Verlassen. Bild-Undo und Notiz-Undo bleiben getrennt.
 
 ## Am Bild gespeichert
 
-**Host: die Sitzungskopie als .aseprite oder .ase speichern.** Text, Listen, Farben, Verbindungen und Referenzbild-Pixel liegen in der Datei. Es werden keine externen Bildpfade gespeichert. Referenzen bleiben deshalb nach Umbenennen, Verschieben oder auf einem anderen PC sichtbar.
+**Host: die Sitzungskopie als .aseprite oder .ase speichern.** Text, Listen, Farben, Verbindungen und Referenzbild-Pixel liegen in der Datei. Animationsboxen speichern den Namen und ursprünglichen Startframe des Tags sowie den bestätigten Auswahlframe; ihre Vorschau rendert die Pixel aus dem geöffneten Bild. Nach dem Umbenennen oder Entfernen eines Tags meldet die Box „Tag fehlt“, bis der Bezug wiederhergestellt wird. Es werden keine externen Bildpfade gespeichert. Referenzbilder bleiben deshalb nach Umbenennen, Verschieben oder auf einem anderen PC sichtbar.
 
 Ohne aktive Sitzung lassen sich eigene Bildnotizen ebenfalls bearbeiten. Beim Öffnen einer Datei mit Notizen erscheint die Wand automatisch einmal; nach bewusstem Schließen bleibt sie bis zum erneuten Öffnen geschlossen. Eine leere Datei öffnet nicht ungefragt die Wand.
 
@@ -56,15 +73,16 @@ PNG, GIF und Spritesheets enthalten keine Ideenwand. Die native Arbeitsdatei zus
 
 ## Alte Notizen und Grenzen
 
-Alte Karten werden beim Lesen übernommen: pro Hauptkarte entsteht ein Stapel in bisheriger Reihenfolge, Unterzweige werden hintereinander angeordnet. IDs, Titel, Notiztexte, Farben und alte Status-Metadaten bleiben erhalten. Alte Status-/Hierarchie-Bedienelemente existieren nicht mehr. Die ursprüngliche Datei wird erst beim Speichern aktualisiert. Vor dem ersten Speichern mit dieser Beta eine Dateikopie behalten; ältere Collabsprite-Versionen können Format 2 nicht bearbeiten.
+Alte Karten werden beim Lesen übernommen: Format 1 wird zuerst in bisheriger Reihenfolge zu Stapeln gewandelt, Format 2 erhält seine vertikalen Verbindungen und bekommt freie Seitenplätze, Format 3 bleibt einschließlich aller Verzweigungen erhalten, Format 4 übernimmt bei Animationsboxen den bisherigen Tag-Startframe als Auswahl, Format 5 erhält die neue Autorenliste und Format 6 bleibt mitsamt der Autoren erhalten. IDs, Titel, Notiztexte, Farben und alte Status-Metadaten bleiben erhalten. Die ursprüngliche Datei wird erst beim Speichern aktualisiert. Vor dem ersten Speichern mit dieser Version eine Dateikopie behalten; ältere Collabsprite-Versionen können Format 8 nicht bearbeiten.
 
 - Maximal **128 Boxen**, **4096 UTF-8-Bytes Text pro Box** und **128 Listenpunkte**.
 - Referenzen werden proportional auf höchstens **512 × 512** verkleinert; Originaldateien bleiben unverändert. Sehr große Quellen über 8192 × 8192 werden abgewiesen.
-- Insgesamt **8 MiB** inklusive bis zu 20 Löschgruppen im Papierkorb. Bilder benötigen den meisten Platz.
+- Animationsvorschauen rendern nur Sprites bis **4 Millionen Canvas-Pixel**. Bei größeren Sprites bleiben Tag-Verknüpfung und Frame-Auswahl erhalten, die Miniaturbilder werden aus Speicherschutzgründen nicht erzeugt.
+- Insgesamt **8 MiB** inklusive bis zu 20 Löschgruppen im Papierkorb. Bilder und Skizzen benötigen den meisten Platz. Beim Speichern als `.aseprite` verteilt Collabsprite die Ideenwand auf überprüfte Metadatenabschnitte unter Aseprites Einzelwert-Grenze, damit auch ein Blatt nach dem erneuten Öffnen vollständig bleibt.
 - Persönlicher Notizverlauf: bis 32 Aktionen / 16 MiB pro Person während der laufenden Sitzung. Das Gesamtlimit kann große Löschgruppen aus dem Papierkorb verdrängen.
 - Unbestätigte Entwürfe existieren nur in der laufenden App. **Ein Absturz oder erzwungenes Beenden kann sie verlieren.**
 - Gemeinsame Bestätigung ist noch keine manuelle Dateispeicherung durch den Host.
-- Die gebündelte Schrift deckt vor allem lateinische Zeichen ab. Nicht unterstützte Zeichen werden als Ersatzzeichen dargestellt; der gespeicherte Unicode-Text bleibt unverändert.
-- Das ist ein frei bewegliches Aseprite-Fenster, keine fest angedockte Editorleiste.
+- Die native Aseprite-Schrift bestimmt, welche Zeichen sichtbar sind; der gespeicherte Unicode-Text bleibt unverändert.
+- Die Ideenwand ist ein separates **Aseprite-Dialogfenster**, keine angedockte Leiste und kein Browserfenster.
 
-Die Schrift basiert auf **Atkinson Hyperlegible** vom Braille Institute, SIL Open Font License 1.1. Lizenz: `extension/notes-font-OFL.txt`; reproduzierbarer Atlas: `tools/build-notes-font.py`.
+Normale Texte kommen direkt von Aseprite. Für Haupttitel ist eine eingebettete Variante von Atkinson Hyperlegible unter der [SIL Open Font License](../extension/notes-font-OFL.txt) enthalten.

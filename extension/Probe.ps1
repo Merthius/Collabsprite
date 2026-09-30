@@ -52,7 +52,7 @@ try {
             $reply = $probeClient.Receive([ref]$sender)
             if ($reply.Length -le 2000 -and (IsAllowed $sender.Address)) {
                 $line = [Text.Encoding]::UTF8.GetString($reply)
-                if ($line.StartsWith('{"protocol":7,"rooms":',[StringComparison]::Ordinal)) { [Console]::WriteLine($line) }
+                if ($line.StartsWith('{"protocol":13,"rooms":',[StringComparison]::Ordinal)) { [Console]::WriteLine($line) }
             }
         } catch [Net.Sockets.SocketException] {
             if ([DateTime]::UtcNow -ge $deadline) { break }

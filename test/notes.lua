@@ -51,7 +51,7 @@ local empty=Sprite(4,4,ColorMode.RGB);poll()
 assert(#opened==3,'Unannotated image opened an unwanted empty popup')
 offline:show(empty);assert(#opened==4,'Empty image cannot open notes manually');empty:close()
 local client=Client.new()
-client:receive{type='welcome',protocol=7,host=true,author='host',room='test',snapshot=snap,revision=0,structure=0}
+client:receive{type='welcome',protocol=13,host=true,author='host',room='test',snapshot=snap,revision=0,structure=0}
 client.ws={sendText=function() end,close=function() end}
 client:receive{type='notes',board=changed,history={seq=0,undo=0,redo=0},locks={},saved=-1}
 assert(N.equal(N.read(client.sprite),changed),'Received notes not embedded')

@@ -4,6 +4,7 @@ local RealClient=dofile(root..'/extension/client.lua')
 local callbacks,controls,events,commands={}, {}, {}, {}
 local tick,client,notify,closed,continued=nil,nil,nil,0,0
 local notesShown,notesTicks,groups=nil,0,{}
+local bootstrapResult='READY 127.0.0.1:8766'
 local owned={id=1,isValid=true,close=function() closed=closed+1 end}
 local other={id=2}
 local dlg={data={name='Test',manual='127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef'},sizeHint={width=300,height=200},bounds=Rectangle(0,0,300,200)}
@@ -33,12 +34,12 @@ end}
 local env=setmetatable({app=fakeApp,
   Dialog=function() return dlg end,Timer=function(t) tick=t.ontick;return {start=function() end,stop=function() end} end,
   os={time=os.time,getenv=function() return 'test-temp' end,execute=function() return true end,remove=function() end},
-  io={open=function() return {read=function() return 'READY 127.0.0.1:8766' end,close=function() end} end},
+  io={open=function() return {read=function() return bootstrapResult end,close=function() end} end},
   dofile=function(path)
     if path:find('ui-layout.lua',1,true) then return dofile(root..'/extension/ui-layout.lua') end
     if path:find('update-ui.lua',1,true) then return {new=function() return {tick=function() end,close=function() end} end} end
     if path:find('client.lua',1,true) then return fakeClient end
-    if path:find('json.lua',1,true) then return {decode=function() return {} end} end
+    if path:find('json.lua',1,true) then return dofile(root..'/extension/json.lua') end
     if path:find('notes-ui.lua',1,true) then return {new=function() return {states={},attach=function() end,tick=function() notesTicks=notesTicks+1 end,close=function() end,show=function(_,sprite) notesShown=sprite end} end} end
     return {new=function() return {log=function() end} end}
   end},{__index=_G})
@@ -48,11 +49,8 @@ env.init{path='test',version='0.8.0',preferences={},newMenuSeparator=function(_,
 assert(groups.separator.group=='file_import' and groups.CollabspriteMenu.group=='file_import' and groups.CollabspriteMenu.title=='Multiplayer (Collabsprite)' and commands.CollabspriteNotes.group=='CollabspriteMenu','Notes command missing from File > Multiplayer')
 callbacks.CollabspriteNotes();assert(notesShown==other and client==nil,'Notes require a multiplayer session')
 tick();assert(notesTicks==1 and client==nil,'Automatic notes polling requires a multiplayer session')
-assert(not commands.CollabspriteRestoreDeletion.onenabled(),'Recovery enabled without session')
+assert(not commands.CollabspriteRestoreDeletion,'Removed recovery command is still in the menu')
 callbacks.PixelKollabMultiplayer();controls.joinManual.onclick();tick()
-client.recovery='test-recovery'
-assert(commands.CollabspriteRestoreDeletion.onenabled(),'Recovery missing for connected guest')
-callbacks.CollabspriteRestoreDeletion();assert(client.restored,'Recovery menu is not wired')
 client.reconnecting=true;client.connected=false;notify(client)
 assert(not controls.joinManual.enabled and not controls.startHost.enabled and controls.disconnect.visible,'Reconnect controls allow second session')
 client.reconnecting=false;client.connected=true;notify(client)
@@ -95,6 +93,18 @@ assert(command('CloseFile'),'Host CloseFile not intercepted')
 fakeApp.sprite=other
 client:disconnect();client.completeLeave()
 assert(continued==1,'Delayed CloseFile targeted an unrelated newly selected document')
+client.connected=true
+fakeApp.sprite={id=owned.id,isValid=true}
+assert(command('CloseFile'),'Fresh wrapper for host tab bypassed the close barrier')
+client:disconnect();client.completeLeave()
+assert(continued==2,'Host tab with a fresh wrapper did not resume native close')
+
+bootstrapResult='SEARCH\n{"protocol":13,"rooms":[{"name":"Host","image":"Bild","invite":"127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef"}]}'
+controls.search.onclick();tick()
+assert(controls.sessions.visible and controls.joinFound.visible and #controls.sessions.options==1,'Current protocol sessions hidden by discovery UI')
+bootstrapResult=bootstrapResult:gsub('"protocol":13','"protocol":11')
+controls.search.onclick();tick()
+assert(not controls.sessions.visible and not controls.joinFound.visible,'Discovery accepted an incompatible session')
 env.exit({})
 print('PASS: controller guest save/close, detached role, local document and host close routing')
 io.stdout:flush();app.exit()

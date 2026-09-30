@@ -28,6 +28,7 @@ local ui=UI.new(function() end,function() return false end,function(fn) fn() end
 local s=ui:state(sprite);ui:prepare(s)
 local boxes=S.layout(board)
 assert(boxes[1].heading and not boxes[2].heading)
+assert(F.measure('Hexe',true)>F.measure('Hexe',false)*1.2 and boxes[1].lineHeight>boxes[2].lineHeight,'Main title is not larger')
 for i,row in ipairs(boxes[1].rows) do
   local x,y=S.rowPosition(boxes[1],i)
   assert(math.abs(x+F.measure(row.text,true)/2-boxes[1].w/2)<0.01,'Text not horizontally centered')
@@ -48,20 +49,22 @@ assert(count==2,'Wrapped row duplicated a checkbox')
 for _,id in ipairs({'',a.id,b.id}) do
   ui:menu(s,id~='' and id or nil,630,420)
   ui:paint(s,{context=image.context})
-  assert(#s.menu.items<=8 and s.menu.x+s.menu.w<=640 and s.menu.y+s.menu.visible*22+10<=430,'Oversized context menu')
+  assert(#s.menu.items<=8 and s.menu.x+s.menu.w<=640 and s.menu.y+s.menu.visible*17+10<=430,'Oversized context menu')
 end
-ui:menu(s,nil,630,420);assert(#s.menu.items==1 and s.menu.items[1].label=='Einfügen')
-ui:menu(s,a.id,630,420);assert(#s.menu.items==5 and s.menu.items[1].label=='Löschen' and s.menu.items[4].section and s.menu.items[5].colors)
+ui:menu(s,nil,630,420);assert(#s.menu.items==4 and s.menu.items[1].label=='Einfügen' and s.menu.items[2].label=='Sortieren' and s.menu.items[3].label=='Undo' and s.menu.items[4].label=='Redo')
+ui:menu(s,a.id,630,420);assert(#s.menu.items==5 and s.menu.items[1].label=='Löschen' and s.menu.items[3].label=='Ausschneiden' and s.menu.items[5].colors)
 ui:paint(s,{context=image.context})
 local swatches=0;for _,target in ipairs(s.hits) do if target.kind=='color' then swatches=swatches+1 end end
 assert(swatches==#F.colors,'Pastel colors are not visible directly on the right-click menu')
 local small=Image(260,82,ColorMode.RGB)
 ui:menu(s,b.id,255,76);ui:paint(s,{context=small.context})
-assert(s.menu.visible<#s.menu.items and s.menu.y+s.menu.visible*22+10<=82,'Small canvas menu cannot scroll')
+assert(s.menu.visible<#s.menu.items and s.menu.y+s.menu.visible*17+10<=82,'Small canvas menu cannot scroll')
 s.menu=nil;s.zoom=1.65;ui:paint(s,{context=image.context})
 local toolbar,fit=0,0
 for _,target in ipairs(s.hits) do if target.kind=='tool' then toolbar=toolbar+1 elseif target.kind=='fit' then fit=fit+1 end end
-assert(toolbar==5 and fit==1,'Island toolbar or zoom-to-all missing')
+assert(toolbar==7 and fit==0,'Native tool/history islands changed unexpectedly')
+local animationTool=false;for _,target in ipairs(s.hits) do if target.kind=='tool' and target.extra.index==5 then animationTool=true end end
+assert(animationTool,'Animation selector is missing from the toolbar')
 image:saveAs(root..'/test-results/notes-type-165.png')
 s.zoom=0.45;ui:paint(s,{context=image.context})
 image:saveAs(root..'/test-results/notes-type-45.png')

@@ -1,6 +1,20 @@
 # Technische Hinweise / Technical notes
 
-Aktueller öffentlicher Stand: **0.10.0 Beta, Protokoll 7, Notizformat 2**. Die nach Versionsnummern gegliederten älteren Abschnitte dokumentieren die Entwicklung und sind keine aktuelle Funktionsliste. Aktuelle Bedienung: [Zeichnen](cooperative-editing.md) und [Ideenwand](shared-notes.md).
+Aktueller Stand: **0.12.0 Beta, Protokoll 13, Notizformat 8**. Die nach Versionsnummern gegliederten älteren Abschnitte dokumentieren die Entwicklung und sind keine aktuelle Funktionsliste. Aktuelle Bedienung: [Zeichnen](cooperative-editing.md) und [Ideenwand](shared-notes.md).
+
+## 0.12.0: native Ideenwand und Host-Lebenszyklus
+
+Die Ideenwand arbeitet ohne Browser bei einer festen pixelgenauen Größe. Verbindungen haben freie Unter-, Links- und Rechtsplätze; alte Notizformate werden eingelesen. Die 1000×1000-Blätter liegen als begrenzte RGBA-Lauf-/Base64-Daten in Notizen. Beim nativen Speichern werden große Metadaten in geprüfte Abschnitte unter Aseprites Einzelwertgrenze zerlegt. UI-Regler und Zahlenfeld begrenzen den Stift auf 5–20 und den Radierer auf 5–100 px. Drucksensitivität verändert nur die wirksame Strichbreite; Stabilisierung bleibt beim Radierer aus.
+
+Der zusätzliche Wiederherstellungs-Menübefehl ist entfernt; die historischen `restore`-Handler bleiben intern vorhanden. Persönliches strukturelles Undo/Redo ist weiterhin der normale Rücknahmeweg.
+
+Beim Hoststart ermittelt `Launcher.vbs` ausschließlich die eigene, über den eindeutigen temporären Statuspfad erkannte Prozesskette. Der zugehörige Aseprite-Vorfahre wird mit PID und Prozessstartzeit an den verwalteten Server gebunden. `owner-watch.mjs` startet den unsichtbaren `OwnerWatch.ps1`, der Name und Startzeit prüft und ein Handle auf genau diesen Prozess hält. Nach dessen Ende wird der Server geordnet gesichert und geschlossen, auch wenn die Verbindung noch eine Resume-Lease hat. Ein wiederverwendeter PID wird niemals als laufender alter Host behandelt. Ein Prüffehler schließt keinen möglicherweise lebenden Host; bestehende Verbindungs-/Lease-Regeln bleiben die Rückfallebene.
+
+Normale Tab-Schließbefehle behalten ihre Bestätigungsbarriere für letzte Änderungen. Sowohl Menü-Routing als auch die Prüfung geschlossener Bilder verwenden stabile `sprite.id`-Werte statt Lua-Wrapperidentität; das Schließen eines anderen Tabs beendet keine Sitzung. Direkt per Skript geschlossene Sitzungsbilder werden beim nächsten Client-Tick getrennt. Nur bestätigte Änderungen sind nach einem harten Ende dauerhaft gesichert.
+
+`test/host-owner.mjs` startet zwei isolierte echte Aseprite-Batchprozesse über denselben Launcher: normales `app.exit()` und erzwungenes Prozessende. Es prüft die ermittelte Besitzer-PID, finale Backups und erneut bindbare TCP-/UDP-Ports. `test/bootstrap.ps1` führt es aus, wenn Aseprite lokal vorhanden ist; GitHub-CI ohne Aseprite überspringt nur diese native Probe und führt die übrigen Tests aus.
+
+Windows-Bildimport/Drop und Fenstereigentümer-Helfer sind rein lokal. Keine Quelldateipfade werden in die Notizen übertragen. Echte Explorer-Gesten, Windows Snap Assist, Grafiktablett und zwei physische PCs bleiben eigene Praxisprüfungen.
 
 ## Architektur
 

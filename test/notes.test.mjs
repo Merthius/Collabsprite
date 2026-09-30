@@ -17,6 +17,19 @@ test('Notes: field revisions, personal undo and foreign ABA conflict protection'
   set(b, 'b', 1, 'title', 'Fremd');set(b, 'b', 1, 'title', 'Hexe A');
   assert.equal(run(b, 'a', { action: 'undo' }).ok, false);
 });
+test('Ideas board attributes creation and last real edit to authenticated session names', () => {
+  const board = new Notes();
+  assert.ok(board.execute('host', { seq: 1, action: 'patch', patches: [
+    { id: id(11), expected: false, value: card(11) }] }, 'Mert').ok);
+  assert.deepEqual(board.data.authors[id(11)], { created: 'Mert', edited: 'Mert' });
+  assert.ok(board.execute('guest', { seq: 1, action: 'patch', patches: [
+    { id: id(11), field: 'text', value: 'Blauer Besen', expected: 1 }] }, 'Freundin').ok);
+  assert.deepEqual(board.data.authors[id(11)], { created: 'Mert', edited: 'Freundin' });
+  assert.ok(board.execute('guest', { seq: 2, action: 'undo' }, 'Freundin').ok);
+  assert.equal(board.data.authors[id(11)].edited, 'Freundin');
+  assert.deepEqual(new Notes(board.snapshot()).data.authors[id(11)], board.data.authors[id(11)]);
+  assert.equal(validateNotes({ ...board.snapshot(), format: 5, authors: undefined }).format, 8);
+});
 test('Notes: atomic validation, cycle and size protection', () => {
   const b = new Notes();create(b, 'a', card(1));create(b, 'a', card(2, id(1)));
   const before = b.snapshot();assert.equal(set(b, 'a', 1, 'parent', id(2)).ok, false);assert.deepEqual(b.snapshot(), before);
@@ -27,6 +40,10 @@ test('Notes: atomic validation, cycle and size protection', () => {
     { id: id(1), field: 'title', expected: b.data.cards[0].versions.title, value: 'good' },
     { id: id(2), field: 'x', expected: 0, value: 1e10 }] });
   assert.equal(result.ok, false);assert.deepEqual(b.snapshot(), before);
+});
+test('Aseprite empty author table serializes as [] and is normalized safely', () => {
+  assert.deepEqual(validateNotes({...emptyNotes(),authors:[]}).authors,{});
+  assert.throws(() => validateNotes({...emptyNotes(),authors:['invalid']}));
 });
 test('Notes: multiple own undos/redos traverse the history without invalidating it', () => {
   const b=new Notes();create(b,'a',card(1));set(b,'a',1,'title','Two');set(b,'a',1,'title','Three');
@@ -68,13 +85,16 @@ test('Notes: pixel undo and structural restore never roll back the board', () =>
 test('Magnetic boxes: bounded RGBA references, list styles, stack uniqueness and legacy migration', () => {
   const original={format:1,revision:0,cards:[card(1),card(2,id(1)),card(3,id(1))],trash:[]};
   const migrated=validateNotes(original);
-  assert.equal(migrated.format,2);assert.equal(migrated.cards[2].parent,id(2));assert.equal(original.cards[2].parent,id(1));
+  assert.equal(migrated.format,8);assert.equal(migrated.cards[2].parent,id(2));assert.equal(original.cards[2].parent,id(1));
   assert.equal(migrated.cards[2].title,'Hexe');
   const b=new Notes(migrated);
   assert.equal(create(b,'guest',card(4,id(1))).ok,false,'A box cannot have two magnetic children');
+  assert.ok(create(b,'guest',{...card(6,id(1)),dock:'left'}).ok,'Left branch should coexist with the lower branch');
+  assert.ok(create(b,'guest',{...card(7,id(1)),dock:'right'}).ok,'Right branch should coexist with both branches');
+  assert.equal(create(b,'guest',{...card(8,id(1)),dock:'left'}).ok,false,'Same side must remain unique');
   assert.equal(set(b,'guest',1,'parent',id(3)).ok,false,'Cycle accepted');
   const picture={...card(4),kind:'image',image:{width:512,height:512,pixels:'abcdef12'.repeat(512*512)}};
-  assert.ok(create(b,'guest',picture).ok);assert.deepEqual(new Notes(b.snapshot()).data.cards[3].image,picture.image);
+  assert.ok(create(b,'guest',picture).ok);assert.deepEqual(new Notes(b.snapshot()).data.cards.find(c=>c.id===id(4)).image,picture.image);
   assert.equal(set(b,'guest',4,'image',{width:513,height:1,pixels:'00000000'.repeat(513)}).ok,false);
   assert.equal(set(b,'guest',4,'image',{width:1,height:1,pixels:'000000zz'}).ok,false);
   assert.equal(set(b,'guest',4,'image',{width:1,height:1,pixels:'00000000',path:'private.png'}).ok,false);
@@ -122,4 +142,36 @@ test('Marquee multi-edit stays atomic on the server and keeps foreign text durin
   assert.equal(b.data.cards.length, 3);
   assert.equal(b.data.cards.find(c => c.id === id(2)).parent, id(1));
   assert.equal(b.data.cards.find(c => c.id === id(3)).text, 'Fremde Idee');
+});
+test('Animation tag cards validate and survive format-3 migration and personal undo', () => {
+  const old=emptyNotes();old.format=3;old.cards=[card(1)];
+  const migrated=validateNotes(old);
+  assert.equal(migrated.format,8);assert.equal(migrated.cards[0].tag,'');assert.equal(migrated.cards[0].tagStart,0);
+  const oldAnimation={...emptyNotes(),format:4,cards:[{...card(9),kind:'animation',tag:'Besenflug',tagStart:4}]};
+  const upgraded=validateNotes(oldAnimation);
+  assert.equal(upgraded.format,8);assert.equal(upgraded.cards[0].frame,4);
+  const notes=new Notes();
+  const animation={...card(2),kind:'animation',tag:'Hexe läuft',tagStart:1,image:false};
+  assert.ok(create(notes,'host',animation).ok);
+  assert.equal(notes.snapshot().cards[0].tag,'Hexe läuft');assert.equal(notes.snapshot().cards[0].frame,1);
+  assert.ok(run(notes,'host',{action:'undo'}).ok);assert.equal(notes.data.cards.length,0);
+  assert.ok(run(notes,'host',{action:'redo'}).ok);assert.equal(notes.data.cards[0].tagStart,1);
+  assert.ok(set(notes,'guest',2,'frame',2).ok);
+  assert.equal(notes.snapshot().cards[0].frame,2);
+  assert.equal(create(notes,'guest',{...card(3),kind:'animation',tag:'',tagStart:0,image:false}).ok,false);
+});
+test('Shared 1000 px sketch sheets enforce dimensions, synchronize pixels and keep personal undo', () => {
+  const notes=new Notes();
+  const blank={width:1000,height:1000,encoding:'rle',pixels:'ffff00000000'.repeat(15)+'424f00000000'};
+  const paper={...card(21),kind:'paper',image:blank};
+  assert.ok(create(notes,'host',paper).ok);
+  const painted={...blank,pixels:'0001ff0000ff'+'fffe00000000'+'ffff00000000'.repeat(14)+'424f00000000'};
+  assert.ok(set(notes,'guest',21,'image',painted).ok);
+  assert.equal(notes.snapshot().cards[0].image.pixels.slice(0,12),'0001ff0000ff');
+  assert.ok(run(notes,'guest',{action:'undo'}).ok);
+  assert.deepEqual(notes.snapshot().cards[0].image,blank);
+  assert.ok(run(notes,'guest',{action:'redo'}).ok);
+  assert.deepEqual(new Notes(notes.snapshot()).snapshot().cards[0].image,painted);
+  assert.equal(create(notes,'guest',{...card(22),kind:'paper',image:{width:127,height:128,pixels:'00000000'.repeat(127*128)}}).ok,false);
+  assert.equal(create(notes,'guest',{...card(23),kind:'paper',image:{...blank,pixels:'000000000000'}}).ok,false);
 });

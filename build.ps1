@@ -5,9 +5,10 @@ $stage = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) ('Collabsp
 $pluginBundle = Join-Path $stage 'plugin'
 try {
 New-Item -ItemType Directory -Force -Path $pluginBundle,(Join-Path $pluginBundle 'node_modules') | Out-Null
-$pluginFiles = @('client.lua','codec.lua','structure.lua','notes.lua','notes-input.lua','notes-ui.lua','notes-stack.lua','notes-board.lua','notes-style.lua','notes-image.lua','notes-font.png','notes-font-data.lua','notes-font-OFL.txt','ui-layout.lua','diagnostics.lua','json.lua','main.lua','update-ui.lua','package.json','Probe.ps1','Bootstrap.ps1','Update.ps1','Launcher.vbs','LICENSE')
+  $pluginFiles = @('client.lua','codec.lua','structure.lua','notes.lua','notes-input.lua','notes-ui.lua','notes-stack.lua','notes-board.lua','notes-style.lua','notes-heading-data.lua','notes-font-OFL.txt','notes-image.lua','notes-animation.lua','notes-paper.lua','notes-paper-view.lua','ui-layout.lua','diagnostics.lua','json.lua','main.lua','update-ui.lua','package.json','Probe.ps1','Bootstrap.ps1','Update.ps1','Launcher.vbs','Window.ps1','Window.vbs','LICENSE')
+$pluginFiles += @('board-files.lua','BoardFiles.vbs','BoardFiles.ps1','BoardFiles.cs','OwnerWatch.ps1')
 foreach ($name in $pluginFiles) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('extension\'+$name)) -Destination (Join-Path $pluginBundle $name) -Force }
-foreach ($name in @('server.mjs','core.mjs','document.mjs','notes.mjs','network.mjs','firewall.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $pluginBundle $name) -Force }
+foreach ($name in @('server.mjs','core.mjs','document.mjs','notes.mjs','network.mjs','owner-watch.mjs','firewall.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $pluginBundle $name) -Force }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'node_modules\ws') -Destination (Join-Path $pluginBundle 'node_modules') -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'extension\Runtime.ps1') -Destination $pluginBundle
 # One installer for hosts and guests. Pin official, unmodified Node binaries.
@@ -25,6 +26,7 @@ foreach ($asset in $runtimeSpec.assets) {
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'runtime.json') -Destination (Join-Path $pluginBundle 'runtime\runtime.json')
 $extensionZip = Join-Path $stage 'Collabsprite-extension-build.zip'
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::Open($extensionZip, [IO.Compression.ZipArchiveMode]::Create)
 try {

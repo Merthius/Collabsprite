@@ -33,7 +33,9 @@ const bridge=http.createServer(async(req,res)=>{
 await new Promise(yes=>bridge.listen(0,'127.0.0.1',yes));
 try{
   const exe=process.env.ASEPRITE_EXE||'C:/Program Files (x86)/Steam/steamapps/common/Aseprite/aseprite.exe';
-  const pending=promisify(execFile)(exe,['--batch','--script-param',`root=${resolve('.')}`,'--script-param',`bridge=${bridge.address().port}`,'--script-param',`token=${token}`,'--script',resolve('test/native-document.lua')],{windowsHide:true,timeout:90000,maxBuffer:4*1024*1024});
+  // Windows starts a separate curl process for every deterministic bridge
+  // exchange. Leave headroom for slower machines without an unbounded test.
+  const pending=promisify(execFile)(exe,['--batch','--script-param',`root=${resolve('.')}`,'--script-param',`bridge=${bridge.address().port}`,'--script-param',`token=${token}`,'--script',resolve('test/native-document.lua')],{windowsHide:true,timeout:180000,maxBuffer:4*1024*1024});
   pending.child.stdout.on('data',data=>process.stdout.write(data));
   const result=await pending;if(result.stderr)console.error(result.stderr);
   if(!result.stdout.includes('PASS: native cooperative document transactions'))throw Error('Native PASS missing');
