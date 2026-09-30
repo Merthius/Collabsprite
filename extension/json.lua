@@ -40,6 +40,10 @@ function M.decode(text)
     pos=pos+1
     local chunks,start={},pos
     while pos<=length do
+      -- Native pattern scanning skips long image strings in one operation.
+      local special=text:find('["\\%z\1-\31]',pos)
+      if not special then fail('unterminated string') end
+      pos=special
       local byte=text:byte(pos)
       if byte==34 then
         if pos>start then chunks[#chunks+1]=text:sub(start,pos-1) end

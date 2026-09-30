@@ -23,7 +23,7 @@ ui:add(s,'text');assert(dialogs==1 and s.inline.value=='','Creation opened popup
 key('Unidentified','Haare');key('Enter');key('Unidentified','Blau');key('Enter','',{ctrlKey=true})
 local card=s.board.cards[1];assert(card.text=='Haare\nBlau' and not s.inline)
 ui:edit(s,card.id);key('KeyA','',{ctrlKey=true});key('Unidentified','Härtegrad');assert(ui:canLeave(s) and N.read(sprite).cards[1].text=='Härtegrad')
-ui:edit(s,card.id);key('Unidentified','!');s.dialog:close();assert(not s.inline and s.board.cards[1].text=='Härtegrad!')
+ui:edit(s,card.id);key('Unidentified','!');s.dialog:close();ui:tick();assert(not s.inline and s.board.cards[1].text=='Härtegrad!')
 ui:show(sprite);ui:add(s,'list','check',{x=30,y=200});key('Unidentified','Erste');key('Enter');key('Unidentified','Zweite');ui:finishInline(s)
 local list=s.board.cards[2];ui:toggle(s,list.id,2);assert(s.board.cards[2].checks=='01')
 assert(dialogs==2,'Text/list editing opened popups')

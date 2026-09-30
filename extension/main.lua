@@ -11,6 +11,9 @@ local debugDialog=nil
 local callbackBusy=false
 local notesUI
 local Layout
+local windowToken
+local pendingCommand
+local cancelledStarts={}
 
 local function traceback(err)
   return debug and debug.traceback and debug.traceback(tostring(err),2) or tostring(err)
@@ -44,15 +47,18 @@ local function refresh(s)
   for _,sprite in ipairs(s.recoverySprites or {}) do if sprite.isValid then guarded[sprite.id]={guest=s.isHost==false} end end
   if notesUI and s.sprite and s.sprite.isValid and not s.notesAttached then notesUI:attach(s);s.notesAttached=true end
   if not dialog then return end
-  local busy=startup~=nil or s.reconnecting
-  dialog:modify{id='status',text=Layout.short(s.reconnecting and 'Verbinde erneut ...' or busy and 'Vorbereitung ...' or s.connected and (s.syncStatus or 'Verbunden') or s.connecting and 'Verbinde ...' or 'Nicht verbunden',36)}
+  local busy=not not (startup~=nil or s.reconnecting or s.preparing)
+  local status=startup and (startup.action=='Search' and 'Suche läuft ...' or 'Vorbereitung ...') or
+    s.preparing and 'Bild wird vorbereitet ...' or s.reconnecting and 'Verbinde erneut ...' or
+    s.connected and (s.syncStatus or 'Verbunden') or s.connecting and 'Verbinde ...' or 'Nicht verbunden'
+  dialog:modify{id='status',text=Layout.short(status,36)}
   dialog:modify{id='startHost',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='joinManual',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='joinFound',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='search',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='copy',visible=s.connected and s.isHost}
   dialog:modify{id='admission',visible=s.connected and s.isHost,selected=s.acceptingGuests~=false}
-  dialog:modify{id='disconnect',visible=busy or s.connected or s.connecting}
+  dialog:modify{id='disconnect',visible=not not (busy or s.connected or s.connecting),text=s.connected and 'Trennen' or 'Abbrechen'}
   Layout.fit(dialog,280*(app.uiScale or 1),(pane=='host' and 160 or 210)*(app.uiScale or 1))
 end
 
@@ -64,7 +70,7 @@ local function artistName()
 end
 
 local function newSession()
-  if session and (session.connected or session.connecting or session.reconnecting) then error('Bereits mit einer Sitzung verbunden.') end
+  if session and (session.connected or session.connecting or session.reconnecting or session.preparing) then error('Bereits mit einer Sitzung verbunden.') end
   session=Client.new(refresh,logDiagnostic)
   return session
 end
@@ -83,6 +89,8 @@ local function beginBootstrap(action,endpoints,onReady)
   local resultPath=app.fs.joinPath(temp,'Collabsprite-start-'..id..'.status')
   local script=app.fs.joinPath(extensionPath,'Launcher.vbs')
   local command='wscript.exe //B //Nologo "'..script..'" '..action..' Network '..PORT..' "'..resultPath..'" "'..(endpoints or '0')..'"'
+  if action=='Host' and dialog and windowToken and app.preferences and app.preferences.experimental and
+    app.preferences.experimental.multiple_windows~=false then command=command..' '..windowToken end
   -- WScript exits immediately after spawning the detached worker. Never wait for
   -- a pipe here: a child inheriting it can freeze Aseprite's UI indefinitely.
   local launched=os.execute(command)
@@ -116,8 +124,7 @@ local function pollBootstrap()
   else logDiagnostic('bootstrap error','unexpected worker response');alert('Verbindungsstart fehlgeschlagen.') end
 end
 
-local function joinCode(code)
-  safely(function()
+local function joinCodeNow(code)
     assert(code and code~='','Bitte eine Sitzung auswaehlen oder einen Einladungscode eingeben.')
     code=code:gsub('%s',''):gsub('^ws://','')
     local endpoints,room,token=code:match('^([^/]+)/(%x+)/(%x+)$')
@@ -126,8 +133,8 @@ local function joinCode(code)
     logDiagnostic('session','join input validated; invite and address hidden')
     local name=artistName()
     beginBootstrap('Join',endpoints,function(address) newSession():join(address..'/'..room..'/'..token,name) end)
-  end)
 end
+local function joinCode(code) safely(function() joinCodeNow(code) end) end
 
 local function searchSessionsNow(output)
   do
@@ -137,7 +144,7 @@ local function searchSessionsNow(output)
     local choices,seen={},{}
     for line in (output or ''):gmatch('[^\r\n]+') do
       local ok,result=pcall(function() return decodeJson(line) end)
-      if ok and result and result.protocol==13 then
+      if ok and result and result.protocol==14 then
         for _,room in ipairs(result.rooms or {}) do
           local invite=tostring(room.invite or '')
           local address=invite:match('^([^/]+)/') or ''
@@ -161,6 +168,9 @@ local function searchSessionsNow(output)
       table.sort(choices)
       dialog:modify{id='sessions',options=choices,option=choices[1],visible=true}
       dialog:modify{id='joinFound',visible=true}
+      if #choices==1 and not (session and (session.connected or session.connecting or session.reconnecting or session.preparing)) then
+        joinCodeNow(discovered[choices[1]])
+      end
     end
   end
 end
@@ -288,7 +298,8 @@ end
 
 local function show()
   if dialog then dialog:close();dialog=nil end
-  dialog=Dialog{title='Collabsprite',onclose=function()
+  windowToken=tostring(Uuid()):gsub('-',''):lower()
+  dialog=Dialog{title='Collabsprite #'..windowToken:sub(1,12),onclose=function()
     if dialog then preferences.name=dialog.data.name end
     dialog=nil
   end}
@@ -303,7 +314,7 @@ local function show()
       end
       safely(function()
         local sprite,name=app.sprite,artistName()
-        beginBootstrap('Host',nil,function() newSession():host(sprite,name,PORT) end)
+        beginBootstrap('Host',nil,function() newSession():host(sprite,name,PORT,true) end)
       end)
     end}
     :newrow():entry{id='manual',label='Einladungscode',text='',visible=false}
@@ -340,11 +351,13 @@ end
 
 disconnect=function()
   if startup then
-    startup.cancelled=true
+    local job=startup;startup=nil;cancelledStarts[#cancelledStarts+1]=job
+    pcall(function() local f=assert(io.open(job.path..'.cancel','wb'));f:write('CANCEL');f:close() end)
+    refresh(session or {})
     app.tip('Collabsprite: Vorbereitung abgebrochen. Ein bereits gestarteter Server beendet sich bei Leerlauf.',5)
     return
   end
-  if not session or not (session.connected or session.connecting or session.reconnecting) then return end
+  if not session or not (session.connected or session.connecting or session.reconnecting or session.preparing) then return end
   safely(function()
     local leaving=session
     leaving:requestLeave(function()
@@ -371,7 +384,7 @@ function init(plugin)
       if app.fs.isFile(script) and token:match('^[a-f0-9]+$') and #token==32 then
         os.execute('wscript.exe //B //Nologo "'..script..'" '..token)
       end
-    end,dofile(app.fs.joinPath(plugin.path,'board-files.lua')))
+    end,dofile(app.fs.joinPath(plugin.path,'board-files.lua')),logDiagnostic)
   preferences=plugin.preferences
   installedVersion=plugin.version and tostring(plugin.version) or '0.0.0'
   updater=dofile(app.fs.joinPath(plugin.path,'update-ui.lua')).new{
@@ -382,7 +395,7 @@ function init(plugin)
       end
       if notesUI then
         for _,s in pairs(notesUI.states) do
-          if s.sprite.isValid and not notesUI:canLeave(s) then return 'Bitte zuerst den Notizentwurf übernehmen oder verwerfen.' end
+          if s.sprite.isValid and not notesUI:canLeave(s) then return 'Bitte warten, bis die Ideenwand ihre Änderungen bestätigt hat.' end
         end
       end
     end}
@@ -407,7 +420,12 @@ function init(plugin)
       elseif ev.name=='CloseFile' or ev.name=='SaveFile' or ev.name=='SaveFileAs' or ev.name=='SaveFileCopyAs' then
         if app.sprite and notesUI.states[app.sprite.id] then targets[1]=notesUI.states[app.sprite.id] end
       end
-      for _,s in ipairs(targets) do if not notesUI:canLeave(s) then ev.stopPropagation();return end end
+      for _,s in ipairs(targets) do if not notesUI:canLeave(s) then
+        ev.stopPropagation()
+        pendingCommand={name=ev.name,params=ev.params,targetId=app.sprite and app.sprite.id,targets=targets,started=os.time()}
+        app.tip('Skizze wird übernommen. Danach geht es automatisch weiter.',4)
+        return
+      end end
     end
     if session and (session.connected or session.connecting) then
       logDiagnostic('aseprite command',tostring(ev.name or 'unknown'))
@@ -418,7 +436,7 @@ function init(plugin)
         ev.stopPropagation()
         local leaving,name,params,target=session,ev.name,ev.params,app.sprite
         local targetId=target and target.id
-        safely(function()
+        local ok,problem=xpcall(function()
           leaving:requestLeave(function()
             local guest=leaving.isHost==false
             if guest and leaving.sprite and leaving.sprite.isValid then leaving.sprite:close() end
@@ -428,7 +446,8 @@ function init(plugin)
             end
             if name~='CloseFile' or not guest then app.command[name](params or {}) end
           end)
-        end)
+        end,traceback)
+        if not ok then logDiagnostic('close error',problem);app.tip(friendly(problem),6) end
         return
       end
       local ok,error=xpcall(function() session:beforeCommand(ev) end,function(err)
@@ -462,6 +481,13 @@ function init(plugin)
     callbackBusy=true
     local ok,err=xpcall(function()
       pollBootstrap()
+      for index=#cancelledStarts,1,-1 do
+        local job=cancelledStarts[index]
+        local f=io.open(job.path,'rb');local reply=f and f:read('*a');if f then f:close() end
+        if (reply and reply~='QUEUED') or os.time()-job.started>95 then
+          os.remove(job.path);os.remove(job.path..'.cancel');table.remove(cancelledStarts,index)
+        end
+      end
       if updater then
         -- An update problem must not disconnect a drawing session.
         local updateOk,installed=xpcall(function() return updater:tick() end,traceback)
@@ -475,6 +501,16 @@ function init(plugin)
         if not noteOk then
           notesUI.failed=true;logDiagnostic('Notes UI paused',noteError)
           app.tip('Notizfenster pausiert. Diagnose prüfen und Gemeinsame Notizen erneut öffnen. Zeichnen bleibt möglich.',8)
+        end
+      end
+      if pendingCommand then
+        local command=pendingCommand;local ready=true
+        for _,s in ipairs(command.targets) do if s.sprite.isValid and not notesUI:canLeave(s) then ready=false;break end end
+        if ready then
+          pendingCommand=nil
+          if command.name~='CloseFile' or (app.sprite and app.sprite.id==command.targetId) then app.command[command.name](command.params or {}) end
+        elseif os.time()-command.started>25 then
+          pendingCommand=nil;app.tip('Entwurf bleibt erhalten. Verbindung oder Diagnose prüfen; nichts wurde verworfen.',7)
         end
       end
       if debugDialog and os.time()~=debugDialog.lastPaint then

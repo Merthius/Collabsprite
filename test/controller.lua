@@ -4,6 +4,8 @@ local RealClient=dofile(root..'/extension/client.lua')
 local callbacks,controls,events,commands={}, {}, {}, {}
 local tick,client,notify,closed,continued=nil,nil,nil,0,0
 local notesShown,notesTicks,groups=nil,0,{}
+local notesReady=true
+local notesStates={}
 local bootstrapResult='READY 127.0.0.1:8766'
 local owned={id=1,isValid=true,close=function() closed=closed+1 end}
 local other={id=2}
@@ -40,7 +42,7 @@ local env=setmetatable({app=fakeApp,
     if path:find('update-ui.lua',1,true) then return {new=function() return {tick=function() end,close=function() end} end} end
     if path:find('client.lua',1,true) then return fakeClient end
     if path:find('json.lua',1,true) then return dofile(root..'/extension/json.lua') end
-    if path:find('notes-ui.lua',1,true) then return {new=function() return {states={},attach=function() end,tick=function() notesTicks=notesTicks+1 end,close=function() end,show=function(_,sprite) notesShown=sprite end} end} end
+    if path:find('notes-ui.lua',1,true) then return {new=function() return {states=notesStates,canLeave=function() return notesReady end,attach=function() end,tick=function() notesTicks=notesTicks+1 end,close=function() end,show=function(_,sprite) notesShown=sprite end} end} end
     return {new=function() return {log=function() end} end}
   end},{__index=_G})
 assert(loadfile(root..'/extension/main.lua','t',env))()
@@ -99,12 +101,30 @@ assert(command('CloseFile'),'Fresh wrapper for host tab bypassed the close barri
 client:disconnect();client.completeLeave()
 assert(continued==2,'Host tab with a fresh wrapper did not resume native close')
 
-bootstrapResult='SEARCH\n{"protocol":13,"rooms":[{"name":"Host","image":"Bild","invite":"127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef"}]}'
+bootstrapResult='SEARCH\n{"protocol":14,"rooms":[{"name":"Host","image":"Bild","invite":"127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef"}]}'
 controls.search.onclick();tick()
 assert(controls.sessions.visible and controls.joinFound.visible and #controls.sessions.options==1,'Current protocol sessions hidden by discovery UI')
-bootstrapResult=bootstrapResult:gsub('"protocol":13','"protocol":11')
+assert(controls.disconnect.text=='Abbrechen','Discovery/connect preparation falsely shows Disconnect')
+bootstrapResult='READY 127.0.0.1:8766';tick()
+assert(client.connected and controls.disconnect.text=='Trennen','Single discovered session did not join automatically')
+client:disconnect()
+bootstrapResult='SEARCH\n{"protocol":11,"rooms":[]}'
 controls.search.onclick();tick()
 assert(not controls.sessions.visible and not controls.joinFound.visible,'Discovery accepted an incompatible session')
+assert(not controls.disconnect.visible,'Failed search still shows Disconnect')
+bootstrapResult='QUEUED';controls.search.onclick()
+assert(controls.disconnect.visible and controls.disconnect.text=='Abbrechen','Search has no cancellation state')
+controls.disconnect.onclick()
+assert(not controls.disconnect.visible and controls.search.enabled,'Cancellation left the UI stuck busy')
+-- Sketch completion delays a native close, then resumes once without reentrant guards.
+fakeApp.sprite=owned;notesStates[owned.id]={sprite=owned};notesReady=false
+local before=continued
+assert(command('CloseFile') and continued==before,'Sketch close resumed before its image was committed')
+tick();assert(continued==before,'Pending close bypassed sketch completion')
+notesReady=true;tick();assert(continued==before+1,'Pending close never resumed after sketch completion')
+tick();assert(continued==before+1,'Pending close resumed twice')
+notesReady=false;assert(command('CloseFile'));fakeApp.sprite=other;notesReady=true;tick()
+assert(continued==before+1,'Pending sketch close targeted a different document')
 env.exit({})
 print('PASS: controller guest save/close, detached role, local document and host close routing')
 io.stdout:flush();app.exit()

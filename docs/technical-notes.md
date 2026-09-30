@@ -1,6 +1,16 @@
 # Technische Hinweise / Technical notes
 
-Aktueller Stand: **0.12.0 Beta, Protokoll 13, Notizformat 8**. Die nach Versionsnummern gegliederten älteren Abschnitte dokumentieren die Entwicklung und sind keine aktuelle Funktionsliste. Aktuelle Bedienung: [Zeichnen](cooperative-editing.md) und [Ideenwand](shared-notes.md).
+Lokaler Quellstand: **0.12.1 Beta, Protokoll 14, Notizformat 9**, noch nicht veröffentlicht. Öffentlicher Download: 0.12.0. Die nach Versionsnummern gegliederten älteren Abschnitte dokumentieren die Entwicklung und sind keine aktuelle Funktionsliste. Aktuelle Bedienung: [Zeichnen](cooperative-editing.md) und [Ideenwand](shared-notes.md).
+
+## 0.12.1: kooperative Vorbereitung und Übernehmen von Skizzen
+
+`jobs.lua` teilt Lua-Bildverarbeitung über Coroutinen und ein 8-ms-CPU-Budget. `notes-ui.lua` lädt gespeicherte Boards/Vorschauen verzögert, verarbeitet Import-/Thumbnail-Aufgaben und bereitet lokale Aktionen einschließlich Prüfsumme vor der nativen Metadaten-Transaktion auf. Native Image-Laden/Resize, JSON-Kodierung und Transaktionen bleiben unteilbar; das Budget ist keine garantierte maximale Wandzeit. Langsame Aufgaben/Abschlussfehler werden ohne Bildinhalt oder Einladungscodes protokolliert; Dateifehler können technische Pfadangaben enthalten, die Benutzernamen werden im Diagnoseprotokoll maskiert.
+
+Timer und Pointer-Callbacks besitzen bereits den Wiedereintrittsschutz. Ihre internen Poll-/Commit-Aufrufe dürfen ihn nicht erneut erwerben: Sonst wurden Bildauswahl und Skizzenstriche still übersprungen. Der Schutz gegen tatsächlich verschachtelte Sicherheitsdialoge bleibt bestehen. `Probe.ps1` liefert `Write-Output`, damit Bootstrap die Suchergebnisse über den PowerShell-Erfolgsstrom einsammeln kann.
+
+Bestätigen eines Blatts ändert `kind` auf `image`, behält dessen komprimierte 1000×1000-Pixel und lässt Kopieren/Preview/erneutes Auflegen zu. Format 9 validiert solche vollauflösenden Bildkarten. Schließen wartet auf ausstehende Bestätigungen und setzt den ursprünglichen Befehl nur auf dem passenden Bild fort. Fremdänderung oder Löschung bewahrt einen offenen eigenen Entwurf als neue Bildkarte. Fehlgeschlagene Übernahmen lassen den Entwurf stehen und stoppen automatische Wiederholungen bis zum nächsten ausdrücklichen Versuch.
+
+Host-Capture läuft schrittweise und bricht sicher ab, wenn das Ausgangsbild währenddessen verändert/geschlossen wird. Der native Mehrfenster-Start kann den Besitzer über den eindeutigen Dialogtitel im Hintergrund auflösen, ohne WMI auf dem UI-Thread; Batch-/Einfenster-Modus behält die geprüfte Vorfahren-Erkennung. Am echten Erweiterungsdialog in einer isolierten Aseprite-1.3.18.6-Testinstanz wurde die genaue Besitzer-PID geprüft: Der Launcher kehrte nach 0,19 Sekunden zurück, der Hintergrundserver war korrekt an diese Instanz gebunden. Aseprite-Toolfenster können in Fensterinventaren verborgen sein; die Hintergrundsuche berücksichtigt sie trotzdem. Keine beliebige Aseprite-PID verwenden.
 
 ## 0.12.0: native Ideenwand und Host-Lebenszyklus
 

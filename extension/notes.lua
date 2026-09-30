@@ -1,8 +1,9 @@
 -- File storage and bounded local editing. No network, UI or private text logs.
 local dir=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local decode=dofile(app.fs.joinPath(dir,'json.lua')).decode
+local J=dofile(app.fs.joinPath(dir,'jobs.lua'))
 local N={key='Merthius/Collabsprite',bytes=8*1024*1024,fields={'title','text','parent','dock','x','y','color','status','kind','listStyle','checks','image','tag','tagStart','frame'}}
-function N.empty() return {format=8,revision=0,cards={},trash={},authors={}} end
+function N.empty() return {format=9,revision=0,cards={},trash={},authors={}} end
 function N.copy(v)
   if type(v)~='table' then return v end
   local r={};for k,x in pairs(v) do r[k]=N.copy(x) end;return r
@@ -77,10 +78,10 @@ function N.migrate(b)
 end
 function N.validate(b)
   if type(b)=='table' and b.format==1 then b=N.migrate(b) end
-  if type(b)=='table' and (b.format==2 or b.format==3 or b.format==4 or b.format==5 or b.format==6 or b.format==7) then
-    b=N.copy(b);b.format=8;b.authors=b.authors or {}
+  if type(b)=='table' and (b.format==2 or b.format==3 or b.format==4 or b.format==5 or b.format==6 or b.format==7 or b.format==8) then
+    b=N.copy(b);b.format=9;b.authors=b.authors or {}
   end
-  assert(type(b)=='table' and b.format==8 and integer(b.revision,0,1e12),'Unbekanntes Notizformat')
+  assert(type(b)=='table' and b.format==9 and integer(b.revision,0,1e12),'Unbekanntes Notizformat')
   assert(type(b.cards)=='table' and #b.cards<=128 and type(b.trash)=='table' and #b.trash<=20,'Notizwand ist zu groß')
   assert(type(b.authors)=='table','Ungültige Autorenangaben')
   local authorCount=0
@@ -96,7 +97,7 @@ function N.validate(b)
     for f,v in pairs({kind='text',listStyle='check',checks='',image=false,dock='below',tag='',tagStart=0}) do if c[f]==nil then c[f]=v;c.versions[f]=0 end end
     if c.frame==nil then c.frame=c.kind=='animation' and c.tagStart or 0;c.versions.frame=0 end
     for _,f in ipairs(N.fields) do assert(N.field(f,c[f]) and integer(c.versions[f],0,b.revision),'Ungültiges Notizfeld') end
-    assert(c.kind~='image' or (c.image and not c.image.encoding),'Referenzbild fehlt')
+    assert(c.kind~='image' or c.image,'Referenzbild fehlt')
     assert(c.kind~='paper' or (c.image and ((c.image.width==128 and c.image.height==128 and not c.image.encoding) or
       (c.image.width==1000 and c.image.height==1000 and c.image.encoding))),'Skizzenblatt fehlt')
     assert(c.kind~='animation' or (c.tagStart>0 and c.frame>0 and c.image==false),'Animations-Tag fehlt')
@@ -122,7 +123,9 @@ function N.validate(b)
   local relevant={};for _,c in ipairs(b.cards) do relevant[c.id]=true end
   for _,t in ipairs(b.trash) do for _,c in ipairs(t.cards) do relevant[c.id]=true end end
   for key in pairs(b.authors) do if not relevant[key] then b.authors[key]=nil end end
+  J.checkpoint()
   assert(#json.encode(b)<=N.bytes,'Ideenwand ist voll (8 MiB inklusive Papierkorb)')
+  J.checkpoint()
   return b
 end
 function N.read(sprite)
@@ -149,30 +152,43 @@ function N.read(sprite)
 end
 function N.checksum(value)
   local a,b=1,0
-  for i=1,#value do
+  local last=#value-#value%8
+  for i=1,last,8 do
+    local c1,c2,c3,c4,c5,c6,c7,c8=value:byte(i,i+7)
+    b=(b+8*a+8*c1+7*c2+6*c3+5*c4+4*c5+3*c6+2*c7+c8)%65521
+    a=(a+c1+c2+c3+c4+c5+c6+c7+c8)%65521
+    if i%16384==1 then J.checkpoint(i/#value) end
+  end
+  for i=last+1,#value do
     a=(a+value:byte(i))%65521
     b=(b+a)%65521
   end
   return string.format('%08x',b*65536+a)
 end
-function N.write(sprite,board)
+function N.prepareWrite(board)
   board=N.validate(board)
   local encoded=json.encode(board)
   assert(#encoded<=N.bytes,'Ideenwand ist voll')
+  J.checkpoint()
+  local count=math.ceil(#encoded/60000)
+  assert(count<=150,'Zu viele Ideenwand-Datenabschnitte')
+  return {encoded=encoded,count=count,header='CS7:'..count..':'..#encoded..':'..N.checksum(encoded)}
+end
+function N.writePrepared(sprite,prepared)
+  local encoded,count=prepared.encoded,prepared.count
   local props=sprite.properties(N.key)
   local previous=props.board
   local oldCount=type(previous)=='string' and tonumber(previous:match('^CS7:(%d+):')) or 0
-  local count=math.ceil(#encoded/60000)
-  assert(count<=150,'Zu viele Ideenwand-Datenabschnitte')
   for i=1,count do
     local part=encoded:sub((i-1)*60000+1,i*60000)
     local key='board_'..i
     if props[key]~=part then props[key]=part end
   end
-  local header='CS7:'..count..':'..#encoded..':'..N.checksum(encoded)
+  local header=prepared.header
   if previous~=header then props.board=header end
   for i=count+1,oldCount do props['board_'..i]=nil end
 end
+function N.write(sprite,board) N.writePrepared(sprite,N.prepareWrite(board)) end
 function N.card(board,id) for _,c in ipairs(board.cards) do if c.id==id then return c end end end
 function N.newCard(title,parent,x,y)
   local c={id=N.uid(),title=title or '',text='',parent=parent or '',dock='below',x=x or 30,y=y or 30,color='',status='idea',kind='text',listStyle='check',checks='',image=false,tag='',tagStart=0,frame=0,versions={}}
@@ -255,9 +271,12 @@ function N.localAction(board,history,op,author)
     else next,inverse=N.commit(board,patches,author) end
     history.undo[#history.undo+1]=inverse;if #history.undo>32 then table.remove(history.undo,1) end;history.redo={}
   end
+  J.checkpoint()
   while #json.encode({history.undo,history.redo})>16*1024*1024 do
     if #history.undo>0 then table.remove(history.undo,1) else table.remove(history.redo,1) end
+    J.checkpoint()
   end
+  J.checkpoint()
   return N.validate(next)
 end
 return N

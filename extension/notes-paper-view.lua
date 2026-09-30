@@ -43,23 +43,31 @@ local function checkbox(gc,x,y,selected)
     F.box(gc,x+7,y+3,2,5,F.color('#D7EFE3'))
   end
 end
-function V.open(ui,s,id)
+function V.open(ui,s,id,image)
   local card=N.card(s.board,id)
   if not card or card.kind~='paper' then return end
-  local pv=s.paperDrafts[id] or {image=P.unpack(card.image),baseVersion=card.versions.image,
+  if ui.async and not s.paperDrafts[id] and not image then
+    ui:task(s,'Skizzenblatt öffnen',function() return P.unpack(card.image) end,function(ok,decoded)
+      local current=N.card(s.board,id)
+      if ok and current and current.kind=='paper' and current.versions.image==card.versions.image then V.open(ui,s,id,decoded) end
+    end,'open-paper:'..id)
+    return
+  end
+  local pv=s.paperDrafts[id] or {image=image or P.unpack(card.image),baseVersion=card.versions.image,
     dirty=false,tool='pen',size=8,pressure=false,stabilizer=false,strength=50,colorIndex=1,paletteOffset=0}
   pv.undo=pv.undo or {};pv.redo=pv.redo or {}
   setSize(pv,pv.size)
-  pv.palette=P.palette(s.sprite);pv.id=id;s.paperDrafts[id]=pv;s.paper=pv
+  pv.palette=P.palette(s.sprite);pv.id=id;pv.origin=N.copy(card);s.paperDrafts[id]=pv;s.paper=pv
   if #pv.palette==0 then app.tip('Die Bildpalette enthält keine deckende Farbe.',4) end
   ui:refresh(s)
 end
 function V.close(ui,s)
   local pv=s.paper;if not pv then return end
   commitSize(pv)
-  pv.drawing=nil;s.paper=nil
-  if not pv.dirty and not pv.sending then s.paperDrafts[pv.id]=nil
-  elseif pv.dirty then app.tip('Skizze noch nicht bestätigt; Entwurf bleibt in dieser Aseprite-Sitzung erhalten.',5) end
+  if pv.drawing then V.up(ui,s) end
+  pv.commitError=nil
+  pv.finishRequested=true
+  V.commit(ui,s,pv,true)
   ui:refresh(s)
 end
 function V.paint(ui,s,ev)
@@ -85,13 +93,17 @@ function V.paint(ui,s,ev)
   F.box(gc,SIDE-1,HEADER,1,gc.height-HEADER,F.color('#596166'))
   F.box(gc,0,0,gc.width,24,F.color('#30353A'))
   F.draw(gc,'Blatt',SIDE+5,5,1,'ui',true)
+  button(gc,gc.width-44,2,19,19,false)
+  F.box(gc,gc.width-41,6,13,11,F.color('#DEE9E5'))
+  F.box(gc,gc.width-39,8,9,7,F.color('#40464C'))
+  F.box(gc,gc.width-37,9,2,2,F.color('#DEE9E5'))
+  F.box(gc,gc.width-36,12,5,2,F.color('#A9CDBE'))
   button(gc,gc.width-22,2,19,19,false)
-  F.box(gc,gc.width-17,7,2,2,F.color('#E8EDEE'))
-  F.box(gc,gc.width-15,9,2,2,F.color('#E8EDEE'))
-  F.box(gc,gc.width-13,11,2,2,F.color('#E8EDEE'))
-  F.box(gc,gc.width-13,7,2,2,F.color('#E8EDEE'))
-  F.box(gc,gc.width-15,9,2,2,F.color('#E8EDEE'))
-  F.box(gc,gc.width-17,11,2,2,F.color('#E8EDEE'))
+  F.box(gc,gc.width-18,10,2,3,F.color('#D7EFE3'))
+  F.box(gc,gc.width-16,12,2,3,F.color('#D7EFE3'))
+  F.box(gc,gc.width-14,10,2,3,F.color('#D7EFE3'))
+  F.box(gc,gc.width-12,8,2,3,F.color('#D7EFE3'))
+  F.box(gc,gc.width-10,6,2,3,F.color('#D7EFE3'))
   button(gc,5,29,23,22,pv.tool=='pen')
   F.box(gc,10,33,10,2,F.color('#E4ECEB'))
   F.box(gc,14,35,3,9,F.color('#E4ECEB'))
@@ -142,7 +154,7 @@ function V.paint(ui,s,ev)
     F.box(gc,x+1,y+1,16,16,pv.palette[index].color)
   end
   F.draw(gc,'▼',26,gc.height-18,1,'ui',true)
-  F.unbind()
+  ui:busyLabel(s,gc);F.unbind()
 end
 local function sliderValue(x,start,width,max)
   return clamp(math.floor((x-start)/math.max(1,width-1)*max+0.5),0,max)
@@ -163,6 +175,7 @@ local function draw(ui,s,ev)
   if not pressure or pressure<=0 then pressure=1 end
   local size=pv.size*(pv.pressure and clamp(pressure,0.15,1) or 1)
   local prev=pv.drawing or {x=x,y=y}
+  pv.commitError=nil
   P.stroke(pv.image,prev.x,prev.y,x,y,size,selected and selected.color or Color{r=0,g=0,b=0,a=0},pv.tool=='eraser')
   pv.drawing={x=x,y=y};pv.dirty=true;pv.previewRevision=(pv.previewRevision or 0)+1;ui:refresh(s)
 end
@@ -170,7 +183,12 @@ function V.down(ui,s,ev)
   local pv=s.paper;if ev.button~=MouseButton.LEFT then return end
   local x,y=ev.x,ev.y;local w=s.width or 160
   if pv.sizeInput and not (x>=5 and x<55 and y>=114 and y<134) then commitSize(pv) end
-  if y<HEADER then if x>=w-24 then V.close(ui,s) end;return end
+  if y<HEADER then
+    if x>=w-24 then V.close(ui,s)
+    elseif x>=w-46 and not pv.finishRequested then ui:import(s) end
+    return
+  end
+  if s.importing or pv.loading or pv.finishRequested then return end
   if x<SIDE then
     if y>=29 and y<51 then
       if x>=5 and x<28 then pv.tool='pen';setSize(pv,pv.penSize or 8)
@@ -233,24 +251,59 @@ function V.key(ui,s,ev)
     elseif ev.code=='KeyY' then V.redo(ui,s) end
   elseif ev.code=='Escape' then V.close(ui,s) end
 end
-function V.commit(ui,s)
-  local pv=s.paper;if not pv or not pv.dirty or pv.sending then return end
+function V.commit(ui,s,pv,finish)
+  local pv=pv or s.paper;if not pv then return end
+  pv.finishRequested=pv.finishRequested or finish
+  if (not pv.dirty and not pv.finishRequested) or pv.sending or s.ack or pv.commitError then return end
   local card=N.card(s.board,pv.id)
-  if not card then app.tip('Skizzenblatt wurde entfernt.',4);return end
-  if card.versions.image~=pv.baseVersion then
-    app.tip('Blatt wurde inzwischen geändert. Dein Entwurf bleibt erhalten.',5);return
+  if not card then
+    if pv.finishRequested and pv.origin then card=pv.origin;pv.preserveAsNew=true
+    else return end
   end
-  if not ui:editable(s) then app.tip('Verbindung fehlt. Entwurf bleibt erhalten.',4);return end
+  if card.versions.image~=pv.baseVersion then
+    if pv.finishRequested then pv.preserveAsNew=true
+    else
+      if not pv.conflictShown then app.tip('Blatt wurde inzwischen geändert. Dein Entwurf bleibt erhalten; Häkchen übernimmt ihn als separates Bild.',6);pv.conflictShown=true end
+      return
+    end
+  end
+  if not ui:editable(s) then return end
   pv.sending=true
-  local packed=P.pack(pv.image)
-  ui:action(s,{action='patch',patches={N.patch(card,'image',packed)}},function(ok,message)
+  local dirty,revision=pv.dirty,pv.previewRevision
+  -- Later strokes may arrive while a cooperative pack job is yielding.
+  -- Only the complete image at this mouse-up belongs to this submission.
+  local snapshot=dirty and Image(pv.image)
+  ui:task(s,pv.finishRequested and 'Skizze übernehmen' or 'Skizze speichern',function()
+    return dirty and P.pack(snapshot) or card.image
+  end,function(prepared,packed,error)
+  if not prepared then pv.sending=false;pv.commitError=true;app.tip('Skizze bleibt als Entwurf erhalten: '..tostring(error),6);return end
+  if not ui:editable(s) then pv.sending=false;return end
+  local patches={}
+  local newCard
+  if pv.preserveAsNew then
+    newCard=N.newCard('','',math.min(10000,card.x+190),card.y)
+    newCard.kind='image';newCard.image=packed;newCard.color=card.color
+    patches={{id=newCard.id,expected=false,value=newCard}}
+  else
+    if dirty then patches[#patches+1]=N.patch(card,'image',packed) end
+    if pv.finishRequested then patches[#patches+1]=N.patch(card,'kind','image') end
+  end
+  local submitted,problem=pcall(function() ui:action(s,{action='patch',patches=patches},function(ok,message)
     pv.sending=false
     if ok then
-      pv.dirty=false
-      local updated=N.card(s.board,pv.id);if updated then pv.baseVersion=updated.versions.image end
-      if s.paper~=pv then s.paperDrafts[pv.id]=nil end
-    else app.tip(message or 'Skizze nicht gespeichert. Entwurf bleibt erhalten.',5) end
+      pv.dirty=(pv.previewRevision~=revision)
+      local updated=N.card(s.board,newCard and newCard.id or pv.id);if updated then pv.baseVersion=updated.versions.image end
+      if updated and updated.kind=='image' then
+        pv.finishRequested=nil
+        if s.paper==pv then s.paper=nil end
+        s.paperDrafts[pv.id]=nil
+        if s.dialog then ui:reveal(s,updated.id) end
+      elseif pv.finishRequested then V.commit(ui,s,pv,true) end
+    else pv.commitError=true;app.tip(message or 'Skizze nicht gespeichert. Entwurf bleibt erhalten.',5) end
     ui:refresh(s)
+  end)
+  end)
+  if not submitted then pv.sending=false;pv.commitError=true;app.tip('Skizze bleibt als Entwurf erhalten: '..tostring(problem):match('[^\r\n]+'),7) end
   end)
 end
 function V.up(ui,s)
@@ -263,7 +316,7 @@ function V.up(ui,s)
       if #pv.undo>MAX_HISTORY then table.remove(pv.undo,1) end
       pv.before=nil;pv.redo={}
     end
-    ui:run(function() V.commit(ui,s) end)
+    V.commit(ui,s)
   end
 end
 local function historyStep(ui,s,redo)
@@ -275,8 +328,8 @@ local function historyStep(ui,s,redo)
   local from=redo and pv.redo or pv.undo
   if #from==0 then return end
   remember(redo and pv.undo or pv.redo,pv.image)
-  pv.image=table.remove(from);pv.dirty=true;pv.previewRevision=(pv.previewRevision or 0)+1
-  ui:run(function() V.commit(ui,s) end)
+  pv.image=table.remove(from);pv.dirty=true;pv.commitError=nil;pv.previewRevision=(pv.previewRevision or 0)+1
+  V.commit(ui,s)
   ui:refresh(s)
 end
 function V.undo(ui,s) historyStep(ui,s,false) end
@@ -289,9 +342,14 @@ function V.clear(ui,s)
   end
   if pv.image:isEmpty() then return end
   remember(pv.undo,pv.image);pv.redo={}
-  pv.image=Image(P.width,P.height,ColorMode.RGB);pv.dirty=true
+  pv.image=Image(P.width,P.height,ColorMode.RGB);pv.dirty=true;pv.commitError=nil
   pv.previewRevision=(pv.previewRevision or 0)+1
-  ui:run(function() V.commit(ui,s) end);ui:refresh(s)
+  V.commit(ui,s);ui:refresh(s)
+end
+function V.replace(ui,s,pv,image)
+  remember(pv.undo,pv.image);pv.redo={}
+  pv.image=image;pv.dirty=true;pv.commitError=nil;pv.previewRevision=(pv.previewRevision or 0)+1
+  V.commit(ui,s,pv);ui:refresh(s)
 end
 function V.wheel(ui,s,ev)
   local pv=s.paper

@@ -33,7 +33,7 @@ for(const forced of [false,true]) {
     assert.ok(proc.CommandLine.includes(`--owner-pid=${child.pid}`),'Launcher did not bind the real Aseprite ancestor');
     ws=new WebSocket(`ws://127.0.0.1:${port}`);
     const welcomed=new Promise((yes,no)=>ws.on('message',d=>{const m=JSON.parse(d);if(m.type==='welcome')yes(m);if(m.type==='error')no(Error(m.message));}));
-    await once(ws,'open');ws.send(JSON.stringify({type:'hello',protocol:13,mode:'host',name:'Owner test',snapshot:{format:1,name:'Owner test',width:4,height:4,layers:[{name:'Shared'}],frames:[100],cels:[],palette:[]}}));
+    await once(ws,'open');ws.send(JSON.stringify({type:'hello',protocol:14,mode:'host',name:'Owner test',snapshot:{format:1,name:'Owner test',width:4,height:4,layers:[{name:'Shared'}],frames:[100],cels:[],palette:[]}}));
     const welcome=await welcomed;
     const exit=once(child,'exit');
     if(forced)child.kill();else writeFileSync(stop,'exit');

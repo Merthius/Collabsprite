@@ -2,6 +2,8 @@
 
 # Collabsprite — English guide
 
+> **Locally prepared: 0.12.1 beta.** Cooperative board/image preparation, fixed PNG/JPG sketch import, reliable discovery and a checkmark that turns the sheet into a full-resolution board image. Not published yet; download links below still point to public 0.12.0. All participants using 0.12.1 need protocol 14 / notes format 9. [Changes (German)](docs/releases/v0.12.1.md).
+
 > **New in 0.12.0 beta:** A native pixel-perfect idea board, animation cards and shared sketch sheets. Pen: 5–20 px; eraser: 5–100 px. The server stops when its host image or Aseprite closes. [Release notes (German)](docs/releases/v0.12.0.md).
 
 [Deutsch](README.md) · [Download v0.12.0 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.12.0/Collabsprite.aseprite-extension)
@@ -59,7 +61,7 @@ Collabsprite does not open Radmin automatically because it is unnecessary on a s
 
 1. Install the same extension, restart Aseprite, and choose **File/Datei → Multiplayer (Collabsprite) → Server erstellen / beitreten → Join/Beitreten**. You do not need to open a sprite first.
 2. Only if you are on different networks, start Radmin VPN and join the host's VPN network.
-3. Paste the full **invitation code** and click **Join/Beitreten**. Collabsprite tries the listed LAN/VPN addresses. You may also search for active sessions; if discovery finds nothing, use the code.
+3. Paste the full **invitation code** and click **Join/Beitreten**. Collabsprite tries the listed LAN/VPN addresses. You may also search: from 0.12.1 a single discovered session joins automatically; multiple results remain selectable. If discovery finds nothing, use the code.
 4. Wait for **Connected/Verbunden** and draw in the shared session copy.
 
 An invitation may look like `192.168.1.10:8766,26.1.2.3:8766/ROOM/TOKEN`; without an active Radmin adapter, there is no `26.…` address. The entire code is a **session access key**. Never publish it in an issue or screenshot. If Radmin starts after the session, click **Copy invitation** again.
@@ -75,6 +77,7 @@ The board opens once when hosting/joining, or when opening a saved document with
 - Images open a preview. Animation cards offer absolute frame selection, play/stop and quarter speed. Sketch sheets open inside the board with a compact sidebar: **5–20 px pen, 5–100 px block eraser**, palette, optional pressure sensitivity, pen-only stabilization, undo/redo and clear-all. Current sketches stay visible in the board thumbnail.
 - Host and guests can edit every box. Short field leases, revision checks, personal note undo and bounded trash protect collaboration.
 - **The host saves the session copy as .aseprite**. Notes and embedded image pixels travel with the file; PNG/spritesheets do not preserve the board. Saved boards also open offline with their artwork.
+- From 0.12.1 the sketch **checkmark** confirms a full-resolution image on the board; closing the sketch view also commits it. A normal save/close waits for confirmation and then resumes. Drag the finished image onto a new sheet to edit it again. This does not export a separate PNG or replace the host's `.aseprite` file save.
 - Old notes migrate into ordered stacks. Keep an original file copy before saving: older releases cannot edit the new format. Unconfirmed drafts are not crash-safe.
 - Limits: 128 boxes, 4096 UTF-8 bytes per box, 128 list items, 512×512 reference images, 8 MiB including trash. [Full guide (German)](docs/shared-notes.md).
 

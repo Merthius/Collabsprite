@@ -2,6 +2,8 @@
 
 # Collabsprite
 
+> **Lokal vorbereitet: 0.12.1 Beta.** Flüssigere Ideenwand-/Bildvorbereitung, korrigierter PNG/JPG-Import ins Skizzenblatt, zuverlässige Sitzungssuche und automatisches Übernehmen der Skizze als Bild über das Häkchen. Noch nicht veröffentlicht; die Downloadlinks unten führen weiterhin zum öffentlichen 0.12.0. [Änderungen](docs/releases/v0.12.1.md). 0.12.1 benötigt auf allen PCs Protokoll 14 / Notizformat 9.
+
 > **Neu in 0.12.0 Beta:** Pixelgenaue Ideenwand direkt in Aseprite, Animationen und gemeinsame Skizzenblätter. Stift: 5–20 px, Radierer: 5–100 px. Der Host-Server endet mit seinem Bildtab oder Aseprite. [Versionshinweise](docs/releases/v0.12.0.md).
 
 [![Version](https://img.shields.io/badge/version-0.12.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.12.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
@@ -70,7 +72,7 @@ Radmin wird nicht automatisch geöffnet: Im LAN wird es nicht gebraucht, und fü
 
 1. Installiere dieselbe Erweiterung, starte Aseprite neu und öffne **Datei → Multiplayer (Collabsprite) → Server erstellen / beitreten → Beitreten**. Ein eigenes Bild musst du dafür nicht öffnen.
 2. Falls ihr nicht im selben LAN seid: Starte Radmin VPN und tritt demselben VPN-Netz wie der Host bei.
-3. Füge den privaten **Einladungscode** ein und klicke **Beitreten**. Collabsprite probiert die enthaltenen Adressen der Reihe nach. Du kannst alternativ **Sitzungen suchen** verwenden; falls die Suche nichts zeigt, nutze den Einladungscode.
+3. Füge den privaten **Einladungscode** ein und klicke **Beitreten**. Collabsprite probiert die enthaltenen Adressen der Reihe nach. Du kannst alternativ **Sitzungen suchen** verwenden; ab 0.12.1 wird genau eine gefundene Sitzung automatisch geöffnet, bei mehreren wählst du aus. Falls die Suche nichts zeigt, nutze den Einladungscode.
 4. Warte auf **Verbunden** und zeichne in der neuen Sitzungskopie.
 
 Der Einladungscode hat etwa die Form `192.168.1.10:8766,26.1.2.3:8766/RAUM/TOKEN`; ohne aktives Radmin fehlt die `26.…`-Adresse. Der ganze Code ist ein **Zugangsschlüssel**: nicht öffentlich posten oder in Issues/Screenshots zeigen. Wenn Radmin erst später gestartet wird, **Einladung kopieren** erneut anklicken.
@@ -84,7 +86,7 @@ Beim Erstellen oder Beitreten öffnet sich die **Ideenwand**. **X** schließt nu
 3. Auf freier Fläche ein **Auswahlrechteck** ziehen, um mehrere Boxen gemeinsam zu verschieben, zu kopieren oder zu löschen. Rechtsklick auf eine Box zeigt die kräftigeren Farben direkt. Abgehakte Listeneinträge werden durchgestrichen.
 4. Die Wand bleibt **pixelgenau bei fester Größe**, ohne Zoom. **Rechtsziehen** verschiebt die Wand; Mausrad scrollt, Umschalt+Mausrad horizontal. Text am Zweiganfang wird groß und fett. Oben rechts stehen eigene Undo-/Redo-Pfeile; jede Box zeigt ihren zuletzt ändernden Autor.
 5. Ein Klick auf ein Bild zeigt die eingebettete Vorschau. Animationen haben Frame-Auswahl, Play und ¼-Geschwindigkeit. Skizzenblätter öffnen direkt in der Wand eine kompakte Zeichenansicht: **Stift 5–20 px, Radierer 5–100 px**, Palette, optional Drucksensitivität und Stift-Stabilisierung, Undo/Redo sowie „Alles löschen“.
-6. Der **Host speichert die Sitzungskopie als .aseprite**. Bilder und Notizen bleiben zusammen. PNG/Spritesheets enthalten keine Ideenwand. Die Wand lässt sich bei aktiviertem Aseprite-Mehrfenster-Modus als normales Windows-Fenster einrasten; es gibt keine automatische Splitfunktion.
+6. Ab 0.12.1 übernimmt das **Häkchen** eine Skizze als vollauflösendes Bild auf der Wand. Auch beim Verlassen der Zeichenansicht werden Änderungen übernommen; beim Schließen/Speichern wartet Aseprite auf die Bestätigung und setzt den Befehl dann fort. Zur weiteren Bearbeitung das Bild auf ein neues Skizzenblatt ziehen. Der **Host speichert die Sitzungskopie als .aseprite**: Bilder und Notizen bleiben zusammen. Das Häkchen ersetzt diese Dateispeicherung nicht und exportiert keine separate PNG-Datei. PNG/Spritesheets enthalten keine Ideenwand. Die Wand lässt sich bei aktiviertem Aseprite-Mehrfenster-Modus als normales Windows-Fenster einrasten; es gibt keine automatische Splitfunktion.
 
 Eigener Notizverlauf und Feldschutz gegen gleichzeitiges Überschreiben sind enthalten. Unbestätigte Entwürfe sind nicht absturzfest. Alte Notizen werden übernommen; **vor dem ersten Speichern eine Dateikopie behalten**, da ältere Versionen das neue Format nicht bearbeiten können. [Bedienung und Grenzen](docs/shared-notes.md).
 

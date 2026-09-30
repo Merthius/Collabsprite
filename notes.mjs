@@ -11,7 +11,7 @@ const clone = value => structuredClone(value);
 const idOK = id => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id);
 const int = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
 const same = isDeepStrictEqual;
-export function emptyNotes() { return { format: 8, revision: 0, cards: [], trash: [], authors: {} }; }
+export function emptyNotes() { return { format: 9, revision: 0, cards: [], trash: [], authors: {} }; }
 function imageOK(v) {
   if (v === false) return true;
   if (!v || typeof v !== 'object' || typeof v.pixels !== 'string') return false;
@@ -55,7 +55,7 @@ function card(input, revision) {
     if (!fieldOK(f, value) || !int(version, 0, revision)) reject('Ungültige Notizfelder oder Versionen.');
     c[f] = clone(value); c.versions[f] = version;
   }
-  if (c.kind === 'image' && (!c.image || c.image.encoding)) reject('Referenzbild fehlt.');
+  if (c.kind === 'image' && !c.image) reject('Referenzbild fehlt.');
   if (c.kind === 'paper' && (!c.image || !(
     (c.image.width === 128 && c.image.height === 128 && !c.image.encoding) ||
     (c.image.width === 1000 && c.image.height === 1000 && c.image.encoding)))) reject('Skizzenblatt fehlt.');
@@ -88,10 +88,10 @@ function migrate(input) {
 export function validateNotes(input) {
   if (input == null) return emptyNotes();
   if (input.format === 1) input = migrate(input);
-  if ([2, 3, 4, 5, 6, 7].includes(input.format)) input = { ...input, format: 8, authors: input.authors || {} };
-  if (input.format !== 8 || !int(input.revision, 0, 1e12) || !Array.isArray(input.cards) || input.cards.length > NOTE_LIMITS.cards ||
+  if ([2, 3, 4, 5, 6, 7, 8].includes(input.format)) input = { ...input, format: 9, authors: input.authors || {} };
+  if (input.format !== 9 || !int(input.revision, 0, 1e12) || !Array.isArray(input.cards) || input.cards.length > NOTE_LIMITS.cards ||
       !Array.isArray(input.trash) || input.trash.length > NOTE_LIMITS.trash) reject('Notizformat oder Größenlimit stimmt nicht.');
-  const output = { format: 8, revision: input.revision, cards: input.cards.map(c => card(c, input.revision)), trash: [], authors: {} };
+  const output = { format: 9, revision: input.revision, cards: input.cards.map(c => card(c, input.revision)), trash: [], authors: {} };
   const map = new Map(output.cards.map(c => [c.id, c]));
   if (map.size !== output.cards.length) reject('Doppelte Notizkennung.');
   const attached = new Set();

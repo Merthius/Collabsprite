@@ -1,10 +1,13 @@
 -- Full-resolution sketch sheets with compact, bounded storage.
 local dir=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local I=dofile(app.fs.joinPath(dir,'notes-image.lua'))
+local J=dofile(app.fs.joinPath(dir,'jobs.lua'))
 local P={width=1000,height=1000}
 local alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 local lookup={}
+local chars={}
 for i=1,#alphabet do lookup[alphabet:sub(i,i)]=i-1 end
+for i=0,63 do chars[i]=alphabet:sub(i+1,i+1) end
 local function hexPixel(pixel)
   return (pixel:gsub('.',function(ch) return string.format('%02x',ch:byte()) end))
 end
@@ -13,23 +16,31 @@ local function pixelBytes(hex)
 end
 local function base64(raw)
   local out={}
-  for i=1,#raw,3 do
-    local a,b,c=raw:byte(i,i+2);b=b or 0;c=c or 0
-    out[#out+1]=alphabet:sub(math.floor(a/4)+1,math.floor(a/4)+1)..
-      alphabet:sub((a%4)*16+math.floor(b/16)+1,(a%4)*16+math.floor(b/16)+1)..
-      (i+1<=#raw and alphabet:sub((b%16)*4+math.floor(c/64)+1,(b%16)*4+math.floor(c/64)+1) or '=')..
-      (i+2<=#raw and alphabet:sub(c%64+1,c%64+1) or '=')
+  for start=1,#raw,12288 do
+    local chunk=raw:sub(start,start+12287)
+    out[#out+1]=(chunk:gsub('...',function(bytes)
+      local a,b,c=bytes:byte(1,3)
+      return chars[a>>2]..chars[((a&3)<<4)|(b>>4)]..chars[((b&15)<<2)|(c>>6)]..chars[c&63]
+    end))
+    local remaining=#chunk%3
+    if remaining>0 then
+      out[#out]=out[#out]:sub(1,-remaining-1)
+      local a,b=chunk:byte(#chunk-remaining+1,#chunk);b=b or 0
+      out[#out+1]=chars[a>>2]..chars[((a&3)<<4)|(b>>4)]..(remaining==2 and chars[(b&15)<<2] or '=')..'='
+    end
+    J.checkpoint(start/#raw)
   end
   return table.concat(out)
 end
 local function unbase64(encoded)
   local out={}
-  for i=1,#encoded,4 do
-    local a,b,c,d=encoded:sub(i,i+3):match('(.)(.)(.)(.)')
-    a,b,c,d=lookup[a],lookup[b],lookup[c],lookup[d]
-    out[#out+1]=string.char(a*4+math.floor(b/16))
-    if c then out[#out+1]=string.char((b%16)*16+math.floor(c/4)) end
-    if d then out[#out+1]=string.char((c%4)*64+d) end
+  for start=1,#encoded,16384 do
+    out[#out+1]=(encoded:sub(start,start+16383):gsub('....',function(bytes)
+      local a,b,c,d=lookup[bytes:sub(1,1)],lookup[bytes:sub(2,2)],lookup[bytes:sub(3,3)],lookup[bytes:sub(4,4)]
+      return string.char((a<<2)|(b>>4))..(c and string.char(((b&15)<<4)|(c>>2)) or '')..
+        (d and string.char(((c&3)<<6)|d) or '')
+    end))
+    J.checkpoint(start/#encoded)
   end
   return table.concat(out)
 end
@@ -56,6 +67,7 @@ function P.unpack(data)
     local runs={}
     for count,pixel in data.pixels:gmatch('(%x%x%x%x)(%x%x%x%x%x%x%x%x)') do
       runs[#runs+1]=string.rep(pixelBytes(pixel),tonumber(count,16))
+      if #runs%256==0 then J.checkpoint() end
     end
     raw=table.concat(runs)
   elseif data.encoding=='b64' then raw=unbase64(data.pixels)
@@ -68,6 +80,12 @@ function P.pack(image)
   local raw=image.bytes
   assert(#raw==P.width*P.height*4,'Unerwartete Skizzenblatt-Zeilenbreite')
   local out,previous,count={},nil,0;local maxRle=math.ceil(#raw/3)*4
+  -- Avoid constructing hundreds of thousands of RLE strings for photos.
+  local changes=0
+  for offset=1,#raw-4,4096 do if raw:sub(offset,offset+3)~=raw:sub(offset+4,offset+7) then changes=changes+1 end end
+  if changes>math.ceil(#raw/4096)*0.55 then
+    return {width=P.width,height=P.height,encoding='b64',pixels=base64(raw)}
+  end
   for i=1,#raw,4 do
     local pixel=raw:sub(i,i+3)
     if pixel~=previous or count==65535 then
@@ -75,6 +93,7 @@ function P.pack(image)
       previous=pixel;count=1
       if #out*12>maxRle then return {width=P.width,height=P.height,encoding='b64',pixels=base64(raw)} end
     else count=count+1 end
+    if i%16384==1 then J.checkpoint(i/#raw) end
   end
   out[#out+1]=string.format('%04x',count)..hexPixel(previous)
   local encoded=table.concat(out)
@@ -117,6 +136,7 @@ function P.thumbnail(image,size)
       end
       pixels[#pixels+1]=best
     end
+    J.checkpoint(yy/size)
   end
   local thumbnail=Image(size,size,ColorMode.RGB)
   thumbnail.bytes=table.concat(pixels)
@@ -141,7 +161,7 @@ function P.stroke(image,x1,y1,x2,y2,size,color,erase)
   for n=0,steps do local t=n/steps;P.paint(image,x1+(x2-x1)*t,y1+(y2-y1)*t,size,color,erase) end
 end
 function P.source(sprite,card,frame)
-  if card.kind=='image' then return I.unpack(card.image) end
+  if card.kind=='image' then return card.image.encoding and P.unpack(card.image) or I.unpack(card.image) end
   if card.kind=='paper' then return P.unpack(card.image) end
   if card.kind~='animation' then return nil end
   if sprite.width*sprite.height>4*1024*1024 then return nil end
@@ -149,13 +169,13 @@ function P.source(sprite,card,frame)
   image:drawSprite(sprite,frame or card.frame)
   return image
 end
-function P.overlay(paper,source)
+function P.overlay(paper,source,deferPack)
   assert(source and source.width>0 and source.height>0,'Bild fehlt')
   local scale=math.min(paper.width/source.width,paper.height/source.height)
   local w,h=math.max(1,math.floor(source.width*scale)),math.max(1,math.floor(source.height*scale))
   local copy=Image(source)
   if copy.width~=w or copy.height~=h then copy:resize{width=w,height=h,method='nearest'} end
   paper:drawImage(copy,Point(math.floor((paper.width-w)/2),math.floor((paper.height-h)/2)))
-  return P.pack(paper)
+  return deferPack and paper or P.pack(paper)
 end
 return P

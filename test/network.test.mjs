@@ -28,7 +28,7 @@ async function connect(port,hello,address='127.0.0.1') {
     return new Promise((resolve,reject)=>{const p={type,resolve};p.timeout=setTimeout(()=>reject(Error('Timeout '+type)),4000);pending.push(p);});
   };
   await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
-  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:13,...hello});
+  const send=message=>ws.send(JSON.stringify(message));send({type:'hello',protocol:14,...hello});
   return {ws,send,next};
 }
 async function waitFor(check,description) {
@@ -334,7 +334,7 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
   t.after(()=>service.close());
   assert.deepEqual(await (await fetch(`http://127.0.0.1:${service.port}/status`)).json(),
-    {app:'Collabsprite',protocol:13,localOnly:true,port:service.port});
+    {app:'Collabsprite',protocol:14,localOnly:true,port:service.port});
   const a=await connect(service.port,{mode:'host',name:'Local A',snapshot:snapshot()});
   const welcome=await a.next('welcome');
   assert.equal(welcome.localOnly,true);
@@ -352,6 +352,14 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
     // A fresh Windows CI runner can take several seconds to start PowerShell.
     const {stdout}=await execFileAsync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',probe,String(service.discoveryPort),'-LoopbackOnly'],{timeout:15000});
     assert.equal(JSON.parse(stdout.trim().split(/\r?\n/)[0]).rooms[0].invite,welcome.invite);
+    // Discovery must also reach Bootstrap's PowerShell success stream. A
+    // Console.WriteLine bypassed its @(& Probe.ps1) result collection.
+    const bootstrap=join(import.meta.dirname,'..','extension','Bootstrap.ps1');
+    const nested=await execFileAsync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',bootstrap,
+      '-Action','Search','-Mode','Test','-Port',String(service.discoveryPort)],{timeout:15000});
+    assert.ok(nested.stdout.startsWith('SEARCH\r\n')||nested.stdout.startsWith('SEARCH\n'));
+    const responses=nested.stdout.trim().split(/\r?\n/).slice(1).filter(Boolean).map(JSON.parse);
+    assert.ok(responses.some(r=>r.protocol===14 && r.rooms.some(room=>room.invite===welcome.invite)),'Detached search worker discarded found sessions');
   }
   a.send({type:'paint',seq:1,structure:0,patches:[{layer:1,frame:1,runs:[0,1,0xff123456]}]});
   await Promise.all([a.next('patch'),b.next('patch')]);

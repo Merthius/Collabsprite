@@ -1,16 +1,23 @@
 Option Explicit
 
-Dim fso, shell, arguments, action, mode, port, resultPath, endpoints, worker, command, ownerPid
+Dim fso, shell, arguments, action, mode, port, resultPath, endpoints, worker, command, ownerPid, ownerToken, re
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
 Set arguments = WScript.Arguments
 
-If arguments.Count <> 5 Then WScript.Quit 11
+If arguments.Count <> 5 And arguments.Count <> 6 Then WScript.Quit 11
 action = arguments(0)
 mode = arguments(1)
 port = arguments(2)
 resultPath = fso.GetAbsolutePathName(arguments(3))
 endpoints = arguments(4)
+ownerToken = ""
+If arguments.Count = 6 Then
+  ownerToken = arguments(5)
+  Set re = New RegExp
+  re.Pattern = "^[a-f0-9]{32}$"
+  If action <> "Host" Or Not re.Test(ownerToken) Then WScript.Quit 20
+End If
 
 If action <> "Host" And action <> "Join" And action <> "Search" And action <> "Update" Then WScript.Quit 12
 If mode <> "Network" And mode <> "Test" Then WScript.Quit 13
@@ -42,9 +49,13 @@ If action = "Update" Then
     " -ResultPath " & Quote(resultPath) & " -InstalledVersion " & Quote(endpoints)
 Else
   ownerPid = 0
-  If action = "Host" Then ownerPid = FindAsepriteOwner()
+  ' Native UI calls pass their exact window token. Resolve its PID entirely in
+  ' the detached worker, never wait for slow WMI on Aseprite's UI thread.
+  ' The legacy ancestry path is retained for batch mode / single-window UI.
+  If action = "Host" And ownerToken = "" Then ownerPid = FindAsepriteOwner()
   command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Quote(worker) & _
     " -Action " & action & " -Mode " & mode & " -Port " & port & " -ResultPath " & Quote(resultPath) & " -Endpoints " & Quote(endpoints) & " -OwnerPid " & ownerPid
+  If ownerToken <> "" Then command = command & " -OwnerToken " & ownerToken
 End If
 On Error Resume Next
 shell.Run command, 0, False

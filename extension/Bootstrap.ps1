@@ -4,7 +4,8 @@ param([ValidateSet('Host','Join','Search')][string]$Action,
       [ValidateRange(1,65535)][int]$Port = 8766,
       [string]$ResultPath = '',
       [string]$Endpoints = '0',
-      [ValidateRange(0,2147483647)][int]$OwnerPid = 0)
+      [ValidateRange(0,2147483647)][int]$OwnerPid = 0,
+      [ValidatePattern('^$|^[a-f0-9]{32}$')][string]$OwnerToken = '')
 $ErrorActionPreference = 'Stop'
 function Report([string]$line) {
     if ($ResultPath) {
@@ -14,11 +15,43 @@ function Report([string]$line) {
     } else { [Console]::WriteLine($line) }
 }
 function Fail([string]$message) { Report ('ERROR ' + $message); exit 1 }
+function Check-Cancel {
+    if ($ResultPath -and (Test-Path -LiteralPath ($ResultPath+'.cancel'))) { Fail 'Vorbereitung abgebrochen.' }
+}
+function Find-Owner([string]$token) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class CollabspriteSessionWindow {
+  public delegate bool Callback(IntPtr h,IntPtr state);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(Callback fn,IntPtr state);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h,StringBuilder text,int length);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
+}
+'@
+    $title='Collabsprite #'+$token.Substring(0,12)
+    $matches=[Collections.Generic.List[int]]::new()
+    [void][CollabspriteSessionWindow]::EnumWindows({
+        param($handle,$state)
+        $text=[Text.StringBuilder]::new(256)
+        [void][CollabspriteSessionWindow]::GetWindowText($handle,$text,$text.Capacity)
+        if ($text.ToString() -cne $title) { return $true }
+        $ownerProcess=[uint32]0
+        [void][CollabspriteSessionWindow]::GetWindowThreadProcessId($handle,[ref]$ownerProcess)
+        $owner=Get-Process -Id $ownerProcess -ErrorAction SilentlyContinue
+        if ($owner -and $owner.ProcessName -eq 'aseprite') { $matches.Add([int]$ownerProcess) }
+        return $true
+    },[IntPtr]::Zero)
+    if ($matches.Count -ne 1) { Fail 'Das Multiplayer-Fenster wurde geschlossen. Bitte erneut erstellen.' }
+    return $matches[0]
+}
 function ServerStatus {
     try { return Invoke-RestMethod -Uri ('http://127.0.0.1:' + $Port + '/status') -TimeoutSec 1 -UseBasicParsing }
     catch { return $null }
 }
 try {
+    Check-Cancel
     if ($Action -eq 'Search') {
         $probe = Join-Path $PSScriptRoot 'Probe.ps1'
         if (-not (Test-Path -LiteralPath $probe)) { Fail 'Sitzungssuche fehlt. Collabsprite neu installieren.' }
@@ -40,7 +73,7 @@ try {
             if (-not $private) { continue }
             try {
                 $status = Invoke-RestMethod -Uri ('http://' + $candidate + '/status') -TimeoutSec 1 -UseBasicParsing
-                if ($status.app -eq 'Collabsprite' -and $status.protocol -eq 13 -and $status.port -eq $candidatePort) {
+                if ($status.app -eq 'Collabsprite' -and $status.protocol -eq 14 -and $status.port -eq $candidatePort) {
                     Report ('READY ' + $candidate); exit 0
                 }
             } catch { }
@@ -48,17 +81,19 @@ try {
         Fail 'Host nicht erreichbar. Beide PCs im selben LAN oder Radmin-Netz? Windows-Firewall prüfen.'
     }
     . (Join-Path $PSScriptRoot 'Runtime.ps1')
+    if ($OwnerToken) { $OwnerPid=Find-Owner $OwnerToken }
     $node = Get-CollabspriteNode
     $serverFile = Join-Path $PSScriptRoot 'server.mjs'
     if (-not (Test-Path -LiteralPath $serverFile)) { Fail 'Serverdateien fehlen. Collabsprite neu installieren.' }
     $status = ServerStatus
     if ($status) {
-        if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 13 -or [bool]$status.localOnly -ne ($Mode -eq 'Test')) {
+        if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 14 -or [bool]$status.localOnly -ne ($Mode -eq 'Test')) {
             Fail ('Port ' + $Port + ' ist durch einen anderen Server belegt.')
         }
         Report ('READY ' + $Port); exit 0
     }
     if ($Mode -eq 'Network') {
+        Check-Cancel
         $rules = @('Collabsprite-LAN-TCP-8766','Collabsprite-LAN-UDP-8766','Collabsprite-Radmin-TCP-8766','Collabsprite-Radmin-UDP-8766')
         $needsFirewall = @($rules | Where-Object {
             $rule = Get-NetFirewallRule -Name $_ -ErrorAction SilentlyContinue
@@ -74,6 +109,7 @@ try {
         }
     }
     $serverMode = if ($Mode -eq 'Test') { '--local' } else { '--network' }
+    Check-Cancel
     $arguments = @(('"' + $serverFile + '"'), $serverMode, ('--port=' + $Port), '--managed')
     if ($OwnerPid) {
         $owner = Get-Process -Id $OwnerPid -ErrorAction Stop
@@ -87,7 +123,7 @@ try {
     while ([DateTime]::UtcNow -lt $deadline) {
         Start-Sleep -Milliseconds 150
         $status = ServerStatus
-        if ($status -and $status.app -eq 'Collabsprite' -and $status.protocol -eq 13 -and [bool]$status.localOnly -eq ($Mode -eq 'Test')) {
+        if ($status -and $status.app -eq 'Collabsprite' -and $status.protocol -eq 14 -and [bool]$status.localOnly -eq ($Mode -eq 'Test')) {
             Report ('READY ' + $Port); exit 0
         }
         if ($serverProcess.HasExited) { break }

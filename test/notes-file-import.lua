@@ -16,7 +16,8 @@ assert(app.sprite==sprite and #app.sprites==count,'Import changed active documen
 ui:action(s,{action='undo'});assert(#s.board.cards==0,'Batch import is not atomic/undoable')
 ui:action(s,{action='redo'});assert(#s.board.cards==2,'Batch import redo lost an image')
 local before=N.copy(s.board)
-assert(not pcall(function() ui:importFiles(s,{one,root..'/test-results/missing.png'}) end),'Missing image accepted')
+ui:importFiles(s,{one,root..'/test-results/missing.png'})
+assert(not s.importing,'Failed image import left the UI permanently busy')
 assert(N.equal(before,s.board),'Failed batch changed the board')
 local received,started
 local fake={start=function(token,mode,board) started={token=token,mode=mode,board=board} end,

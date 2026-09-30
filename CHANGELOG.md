@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.1 beta — 2026-10-01 — locally prepared, not published
+
+- Cooperative board loading, image/sketch encoding, thumbnails and host capture; prepare local metadata before an atomic native write. Native file/transaction steps remain indivisible.
+- Fix the re-entry guard silently dropping internal picker polling and sketch commits. PNG/JPG imports target the open sheet; indexed palettes survive closing temporary documents. Prepare drag-to-sheet imports and remote sheet updates.
+- Replace the sketch close icon with a checkmark that confirms a full-resolution board image. Auto-commit on leaving; defer and resume native save/close commands after confirmation. Preserve concurrent/deleted-sheet drafts as separate images and avoid repeated failed-write loops.
+- Fix PowerShell discovery output capture, automatically join a single result, and show Disconnect only while connected. Cancelled/denied startup clears its busy state.
+- Protocol 14 / notes format 9 supports full-resolution confirmed sketch images; migrate existing file notes. All peers must update. One installer remains shared by host and guests.
+
 ## 0.12.0 beta — 2026-09-30
 
 This release includes the development milestones below. Both host and guests must update: protocol 13 / notes format 8 replaces protocol 7 / notes format 2.

@@ -105,9 +105,9 @@ ui:action(s,op)
 local saved=root..'/test-results/notes-animation-roundtrip.aseprite'
 sprite:saveAs(saved);sprite:close()
 local reopened=app.open(saved)
-local board=N.read(reopened);assert(board.format==8 and #board.cards==3 and board.cards[1].frame==2 and A.resolve(reopened,board.cards[1]).last==3,'Animation link and selected frame did not survive .aseprite save')
+local board=N.read(reopened);assert(board.format==9 and #board.cards==3 and board.cards[1].frame==2 and A.resolve(reopened,board.cards[1]).last==3,'Animation link and selected frame did not survive .aseprite save')
 local old=N.copy(board);old.format=4;old.cards[1].frame=nil;old.cards[1].versions.frame=nil
-local migrated=N.validate(old);assert(migrated.format==8 and migrated.cards[1].frame==1 and board.cards[1].frame==2,'Format-4 animation did not inherit its tag start frame')
+local migrated=N.validate(old);assert(migrated.format==9 and migrated.cards[1].frame==1 and board.cards[1].frame==2,'Format-4 animation did not inherit its tag start frame')
 reopened:close()
 print('PASS native tag picker, thumbnail, filmstrip selection, clipboard and .aseprite roundtrip')
 io.stdout:flush();app.exit()

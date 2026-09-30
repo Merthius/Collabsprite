@@ -63,7 +63,7 @@ local reopened=app.open(saved)
 local loaded=N.read(reopened)
 assert(loaded.cards[1].kind=='paper' and loaded.cards[1].image.pixels==paper.image.pixels,'Shared sheet lost pixels when saved')
 local old=N.copy(loaded);old.format=6
-assert(N.validate(old).format==8,'Previous notes format did not migrate to paper format')
+assert(N.validate(old).format==9,'Previous notes format did not migrate to paper format')
 local second=N.newCard('','',40,40);second.kind='paper';second.image=P.blank()
 loaded.cards[#loaded.cards+1]=second
 N.write(reopened,loaded)

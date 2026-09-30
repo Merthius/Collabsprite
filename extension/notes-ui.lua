@@ -10,23 +10,67 @@ local P=dofile(app.fs.joinPath(dir,'notes-paper.lua'))
 local V=dofile(app.fs.joinPath(dir,'notes-paper-view.lua'))
 local A=dofile(app.fs.joinPath(dir,'notes-animation.lua'))
 local L=dofile(app.fs.joinPath(dir,'ui-layout.lua'))
+local J=dofile(app.fs.joinPath(dir,'jobs.lua'))
 local UI={};UI.__index=UI
 local function inside(r,x,y) return x>=r.x and y>=r.y and x<r.x+r.w and y<r.y+r.h end
 local function rect(x,y,w,h) return {x=x,y=y,w=w,h=h} end
 local function clamp(v) return math.floor(math.max(-10000,math.min(10000,v))) end
-function UI.new(getSession,guestGuard,safe,getName,promote,files)
-  return setmetatable({states={},getSession=getSession,guestGuard=guestGuard,safe=safe,getName=getName or function() return 'Künstler' end,promote=promote,files=files},UI)
+function UI.new(getSession,guestGuard,safe,getName,promote,files,log)
+  return setmetatable({states={},async=app.isUIAvailable,getSession=getSession,guestGuard=guestGuard,safe=safe,getName=getName or function() return 'Künstler' end,promote=promote,files=files,log=log or function() end},UI)
+end
+function UI:task(s,label,fn,done,key)
+  if not self.async then
+    local ok,value=pcall(fn)
+    if done then done(ok,ok and value or nil,not ok and value or nil)
+    elseif not ok then error(value) end
+    return
+  end
+  s.jobs=s.jobs or {}
+  if key then for _,job in ipairs(s.jobs) do if job.key==key then return end end end
+  assert(#s.jobs<140,'Zu viele ausstehende Ideenwand-Aktionen')
+  local job=J.new(fn);job.label=label;job.doneCallback=done;job.key=key
+  s.jobs[#s.jobs+1]=job
+  if s.dialog then s.dialog:repaint() end
+end
+function UI:stepJobs(s)
+  local job=s.jobs and s.jobs[1];if not job then return end
+  if J.step(job) then
+    table.remove(s.jobs,1)
+    if job.error then self.log('notes task error',job.label..'; '..job.error) end
+    if job.elapsed>0.08 then self.log('notes slow slice',job.label..'; cpuSeconds='..string.format('%.3f',job.elapsed)) end
+    if job.doneCallback then
+      local ok,error=pcall(job.doneCallback,not job.error,job.value,job.error)
+      if not ok then self.log('notes completion error',job.label..'; '..tostring(error));app.tip('Ideenwand-Aktion fehlgeschlagen: '..tostring(error):match('[^\r\n]+'),6) end
+    elseif job.error then app.tip('Ideenwand: '..job.error:match('[^\r\n]+'),6) end
+    self:refresh(s)
+  elseif s.dialog then s.dialog:repaint() end
+end
+function UI:busyLabel(s,gc)
+  local job=s.jobs and s.jobs[1];if not job then return end
+  F.box(gc,0,gc.height-18,gc.width,18,F.color('#30353A'))
+  local percent=type(job.progress)=='number' and (' '..math.floor(job.progress*100)..'%') or ' …'
+  F.draw(gc,L.short(job.label,math.max(10,math.floor(gc.width/7)-6))..percent,5,gc.height-15,1,'ui',true)
 end
 function UI:state(sprite)
   if not self.states[sprite.id] then
-    local s={sprite=sprite,board=N.read(sprite),history={undo={},redo={}},zoom=1,ox=24,oy=90,drafts={},paperDrafts={},seen=false,images={},animationThumbs={},selection={},slow={},windowToken=N.uid()}
+    local saved=sprite.properties(N.key).board
+    local s={sprite=sprite,board=self.async and N.empty() or N.read(sprite),history={undo={},redo={}},zoom=1,ox=24,oy=90,drafts={},paperDrafts={},seen=false,images={},animationThumbs={},selection={},slow={},windowToken=N.uid(),raw=saved}
     s.changeListener=sprite.events:on('change',function() s.animationDirty=true end)
     self.states[sprite.id]=s
+    if self.async and saved and saved~='' then
+      s.loading=true
+      self:task(s,'Ideenwand laden',function() return N.read(sprite) end,function(ok,board,error)
+        s.loading=nil
+        if ok then s.board=board;self:refresh(s)
+        else s.loadError=true;app.tip('Ideenwand konnte nicht geladen werden: '..tostring(error),7) end
+      end)
+    end
   end
   return self.states[sprite.id]
 end
 function UI:session(s) local c=self.getSession();return c and c.sprite==s.sprite and (c.connected or c.connecting or c.reconnecting) and c or nil end
 function UI:editable(s)
+  if s.loading or s.importing or s.localPending or s.loadError then return false end
   local c=self:session(s);if c then return c.connected and not c.leaving end
   return not self.guestGuard(s.sprite)
 end
@@ -36,18 +80,42 @@ function UI:action(s,op,callback)
   local c=self:session(s)
   if c then assert(not s.ack,'Eine Notizänderung wird noch bestätigt');c:noteAction(op);s.ack=callback or function() end
   else
+    if self.async then
+      local before,raw,author=s.board,s.raw,self.getName()
+      s.localPending=true
+      self:task(s,'Notizen übernehmen',function()
+        local history=N.copy(s.history)
+        local board=N.localAction(before,history,op,author)
+        return {board=board,history=history,prepared=N.prepareWrite(board)}
+      end,function(ok,result,error)
+        s.localPending=nil
+        if ok and (not s.sprite.isValid or s.board~=before or s.sprite.properties(N.key).board~=raw) then
+          ok=false;error='Bildnotizen wurden inzwischen verändert. Entwurf bleibt erhalten.'
+        end
+        if ok then
+          local previous,layer,frame=app.sprite,app.layer,app.frame;app.sprite=s.sprite
+          ok,error=pcall(function() app.transaction('Collabsprite: Ideenwand',function() N.writePrepared(s.sprite,result.prepared) end) end)
+          app.sprite=previous;if previous and previous.isValid then app.layer=layer;app.frame=frame end
+          if ok then s.board=result.board;s.history=result.history;s.raw=s.sprite.properties(N.key).board end
+        end
+        if callback then callback(ok,error) elseif not ok then app.tip('Notizen nicht übernommen: '..tostring(error),6) end
+      end)
+      self:refresh(s);return
+    end
     local history=N.copy(s.history);local next=N.localAction(s.board,history,op,self.getName())
     local previous,layer,frame=app.sprite,app.layer,app.frame;app.sprite=s.sprite
     local ok,err=pcall(function() app.transaction('Collabsprite: Ideenwand',function() N.write(s.sprite,next) end) end)
     app.sprite=previous;if previous then app.layer=layer;app.frame=frame end
     if not ok then error(err) end
-    s.board=next;s.history=history;if callback then callback(true) end
+    s.board=next;s.history=history;s.raw=s.sprite.properties(N.key).board;if callback then callback(true) end
   end
   self:refresh(s)
 end
 function UI:attach(c)
   if not c.sprite then return end
   local s=self:state(c.sprite)
+  -- The session already supplied and validated the authoritative board.
+  s.loading=nil;s.loadError=nil;s.jobs={};s.board=N.copy(c.meta and c.meta.notes or s.board)
   c.onNotes=function(message)
     if message.type=='notes' then
       s.board=N.copy(c.meta.notes)
@@ -60,9 +128,10 @@ function UI:attach(c)
 end
 function UI:canLeave(s)
   if s.inline and s.inline.dirty and not s.inline.error then self:finishInline(s) end
-  for id,draft in pairs(s.paperDrafts) do if draft.dirty then
-    app.tip('Skizzenblatt noch nicht gespeichert. Bitte öffnen und fertigstellen.',5)
-    self:paperPreview(s,id);return false
+  if s.loading or s.importing or s.localPending then return false end
+  for _,draft in pairs(s.paperDrafts) do if draft.dirty or draft.sending or draft.finishRequested then
+    V.commit(self,s,draft,true)
+    if draft.dirty or draft.sending or draft.finishRequested then return false end
   end end
   for _,d in pairs(s.drafts) do if d.dirty then
     app.tip('Notizentwurf noch offen. Rechtsklick auf das Element zum Vergleichen.',6)
@@ -83,15 +152,32 @@ function UI:refresh(s)
     if s.playing and not N.card(s.board,s.playing.id) then s.playing=nil end
     for _,c in ipairs(s.board.cards) do if c.kind=='image' or c.kind=='paper' then
       local old=s.images[c.id];images[c.id]=old and N.equal(old.data,c.image) and old or
-        {data=N.copy(c.image),image=c.kind~='paper' and I.unpack(c.image) or nil,previews={}}
+        {data=N.copy(c.image),previews={}}
+      local cached=images[c.id]
+      if c.kind=='image' and not c.image.encoding and not cached.image then
+        self:task(s,'Bildvorschau laden',function() return I.unpack(cached.data) end,function(ok,image)
+          if ok then cached.image=image end
+        end,'image:'..c.id..':'..c.versions.image)
+      end
     end end
     s.images=images;s.cachedBoard=s.board
     for id,draft in pairs(s.paperDrafts) do
       local current=N.card(s.board,id)
-      if not current then s.paperDrafts[id]=nil
+      if not current and not draft.dirty and not draft.sending then s.paperDrafts[id]=nil
+      elseif not current then draft.missing=true
+      elseif current.kind~='paper' and not draft.dirty and not draft.sending then
+        s.paperDrafts[id]=nil;if s.paper==draft then s.paper=nil end
       elseif not draft.dirty and not draft.sending and current.versions.image~=draft.baseVersion then
-        draft.image=P.unpack(current.image);draft.baseVersion=current.versions.image
-        draft.undo={};draft.redo={};draft.previewRevision=(draft.previewRevision or 0)+1
+        draft.loading=true
+        local version,data=current.versions.image,current.image
+        self:task(s,'Blatt aktualisieren',function() return P.unpack(data) end,function(ok,image)
+          draft.loading=nil
+          local latest=N.card(s.board,id)
+          if ok and latest and latest.versions.image==version and not draft.dirty and not draft.sending then
+            draft.image=image;draft.baseVersion=version;draft.undo={};draft.redo={}
+            draft.previewRevision=(draft.previewRevision or 0)+1
+          end
+        end,'refresh-paper:'..id..':'..version)
       end
     end
   end
@@ -106,10 +192,14 @@ function UI:paperThumbnail(s,card,size)
     cached.previews={};cached.previewSource=source;cached.previewRevision=revision
   end
   if not cached.previews[size] then
-    local small=P.thumbnail(source or P.unpack(card.image),size)
-    local white=Image(size,size,ColorMode.RGB)
-    white:clear(app.pixelColor.rgba(255,255,255,255));white:drawImage(small)
-    cached.previews[size]=white
+    self:task(s,'Skizzenvorschau laden',function()
+      local small=P.thumbnail(source or P.unpack(card.image),size)
+      local white=Image(size,size,ColorMode.RGB)
+      white:clear(app.pixelColor.rgba(255,255,255,255));white:drawImage(small)
+      return white
+    end,function(ok,image)
+      if ok and cached.previewSource==source and cached.previewRevision==revision then cached.previews[size]=image end
+    end,'thumb:'..card.id..':'..size..':'..revision..':'..card.versions.image)
   end
   return cached.previews[size]
 end
@@ -175,20 +265,21 @@ function UI:import(s,point,parent,dock)
   if self.files then
     if s.picker then return end
     local token=N.uid();self.files.start(token,'Pick',s.windowToken)
-    s.picker={token=token,point=point,parent=parent,dock=dock,started=os.time()}
+    s.picker={token=token,point=point,parent=parent,dock=dock,paperId=s.paper and s.paper.id or false,started=os.time()}
     return
   end
   local picker=Dialog{title='Referenzbild auswählen'}
   picker:file{id='path',title='Referenzbild',open=true,entry=false,filetypes={'png','jpg','jpeg','webp','gif','bmp'},onchange=function()
     local path=picker.data.path
-    if path and path~='' then picker:close();self:run(function() self:add(s,'image',nil,point,I.load(path),parent,dock) end) end
+    if path and path~='' then picker:close();self:run(function() self:importFiles(s,{path},point,parent,dock) end) end
   end}:button{text='Abbrechen'}
   L.show(picker)
 end
-function UI:importFiles(s,paths,point,parent,dock)
-  if s.inline then return self:finishInline(s,function() self:importFiles(s,paths,point,parent,dock) end) end
+function UI:importFiles(s,paths,point,parent,dock,paperId)
+  if s.inline then return self:finishInline(s,function() self:importFiles(s,paths,point,parent,dock,paperId) end) end
+  if paperId==nil then paperId=s.paper and s.paper.id end
   assert(type(paths)=='table' and #paths>0 and #paths<=32,'Bitte höchstens 32 Bilder gleichzeitig auswählen.')
-  assert(#s.board.cards+#paths<=128,'Die Ideenwand ist voll (höchstens 128 Elemente).')
+  assert(paperId or #s.board.cards+#paths<=128,'Die Ideenwand ist voll (höchstens 128 Elemente).')
   local cards,patches={},{}
   point=point or {x=math.floor(((s.width or 660)/2-S.width/2-s.ox)/s.zoom),y=math.floor(((s.height or 410)/2-s.oy)/s.zoom)}
   if parent then
@@ -196,19 +287,49 @@ function UI:importFiles(s,paths,point,parent,dock)
     dock=dock or 'below';assert(not S.occupied(s.board,box.card)[dock],'Diese Seite ist bereits belegt')
     point={x=dock=='left' and box.x-S.width-S.gap or dock=='right' and box.x+box.w+S.gap or box.x,y=dock=='below' and box.y+box.h+S.gap or box.y}
   end
-  -- Load/validate the entire batch before submitting one atomic operation.
+  assert(not s.importing,'Ein Bildimport läuft bereits')
+  s.importing=true
+  -- Stage all sources before one atomic operation; no partially imported batch.
+  self:task(s,'Bilder einfügen',function()
+  local paper=paperId and assert(N.card(s.board,paperId),'Skizzenblatt wurde entfernt')
+  local draft=paper and s.paperDrafts[paperId]
+  local sheet=paper and Image(draft and draft.image or P.unpack(paper.image))
   for i,path in ipairs(paths) do
     assert(type(path)=='string' and #path>0 and #path<=32767,'Ungültiger Bildpfad')
     local ext=path:lower():match('%.([^%.\\/]+)$')
     assert(({png=true,jpg=true,jpeg=true,webp=true,gif=true,bmp=true})[ext],'Nicht unterstütztes Bildformat')
+    if sheet then
+      local source=assert(Image{fromFile=path},'Das Bild konnte nicht geöffnet werden.')
+      assert(source.width<=8192 and source.height<=8192,'Bild ist zu groß (maximal 8192 × 8192).')
+      if source.colorMode~=ColorMode.RGB then source=I.unpack(I.load(path)) end
+      P.overlay(sheet,source,true)
+    else
     local image=I.load(path)
     local c=N.newCard('',i==1 and (parent or '') or '',clamp(point.x+((i-1)%3)*(S.width+16)),clamp(point.y+math.floor((i-1)/3)*148))
     c.kind='image';c.image=image;c.color=F.colors[7];c.dock=dock or 'below'
     cards[#cards+1]=c;patches[#patches+1]={id=c.id,expected=false,value=c}
+    end
   end
+  if sheet then return {sheet=sheet,paper=paper,draft=draft} end
+  return {patches=patches,cards=cards}
+  end,function(ok,result,error)
+  s.importing=nil
+  if not ok then app.tip('Bildimport fehlgeschlagen: '..tostring(error):match('[^\r\n]+'),6);return end
+  if result.sheet then
+    local pv=result.draft
+    local current=N.card(s.board,paperId)
+    if not current or current.kind~='paper' or current.versions.image~=result.paper.versions.image or (pv and pv.sending) then
+      app.tip('Blatt wurde inzwischen geändert. Bitte Bild erneut einfügen.',5);return
+    end
+    if not pv then V.open(self,s,paperId,result.sheet);pv=s.paperDrafts[paperId] end
+    V.replace(self,s,pv,result.sheet)
+    return
+  end
+  patches,cards=result.patches,result.cards
   self:action(s,{action='patch',patches=patches},function(ok,message)
     if ok then s.selection={};for _,c in ipairs(cards) do s.selection[c.id]=true end;s.selected=cards[1].id;self:reveal(s,cards[1].id)
     else app.tip(message or 'Bilder konnten nicht eingefügt werden.',5) end
+  end)
   end)
 end
 function UI:addAnimation(s,tag,point)
@@ -482,6 +603,12 @@ end
 function UI:preview(s,id)
   local c=N.card(s.board,id);local cached=s.images[id]
   if not c or c.kind~='image' or not cached then return end
+  if c.image.encoding and not cached.full then
+    self:task(s,'Bild öffnen',function() return P.unpack(c.image) end,function(ok,image)
+      if ok then cached.full=image;self:preview(s,id) end
+    end,'full:'..id..':'..c.versions.image)
+    return
+  end
   if s.preview then s.preview:close() end
   local w,h=L.viewport();local uiScale=math.max(1,app.uiScale or 1)
   local width=math.max(120,math.min(c.image.width+24,math.floor(w*0.64/uiScale)))
@@ -494,7 +621,8 @@ function UI:preview(s,id)
       local gc=ev.context;gc.color=Color{r=35,g=37,b=41};gc:fillRect(Rectangle(0,0,gc.width,gc.height))
       local x=math.floor((gc.width-c.image.width)/2+panX)
       local y=math.floor((gc.height-c.image.height)/2+panY)
-      gc:drawImage(cached.image,Rectangle(0,0,c.image.width,c.image.height),Rectangle(x,y,c.image.width,c.image.height))
+      local image=cached.full or cached.image
+      if image then gc:drawImage(image,Rectangle(0,0,c.image.width,c.image.height),Rectangle(x,y,c.image.width,c.image.height)) end
       s.previewImage=rect(x,y,c.image.width,c.image.height)
     end,
     onmousedown=function(ev)
@@ -514,11 +642,18 @@ function UI:placeOnPaper(s,sourceId,paperId,frame)
   assert(source and paper and paper.kind=='paper' and source.id~=paper.id,'Skizzenblatt oder Quelle fehlt')
   local draft=s.paperDrafts[paperId]
   assert(not draft or not draft.dirty,'Skizzenblatt hat noch ungespeicherte Striche')
-  local sourceImage=P.source(s.sprite,source,frame)
-  assert(sourceImage,'Bild/Frame konnte nicht als Vorlage gelesen werden')
-  local composed=P.overlay(P.unpack(paper.image),sourceImage)
+  assert(not s.importing,'Ein Bildimport läuft bereits')
+  s.importing=true
+  self:task(s,'Vorlage einfügen',function()
+    local sourceImage=P.source(s.sprite,source,frame)
+    assert(sourceImage,'Bild/Frame konnte nicht als Vorlage gelesen werden')
+    return P.overlay(P.unpack(paper.image),sourceImage)
+  end,function(prepared,composed,error)
+  s.importing=nil
+  if not prepared then app.tip('Vorlage nicht eingefügt: '..tostring(error),6);return end
   self:action(s,{action='patch',patches={N.patch(paper,'image',composed)}},function(ok,message)
     if not ok then app.tip(message or 'Vorlage konnte nicht auf das Blatt gelegt werden.',5) end
+  end)
   end)
 end
 function UI:paperAt(s,x,y,ignore)
@@ -587,12 +722,14 @@ function UI:paint(s,ev)
         local cached=s.images[c.id]
         if cached then
           local image=cached.image
-          if c.kind=='paper' then image=self:paperThumbnail(s,c,math.max(1,math.floor(math.min(b.w-16,126)*z))) end
+          if c.kind=='paper' or c.image.encoding then image=self:paperThumbnail(s,c,math.max(1,math.floor(math.min(b.w-16,126)*z))) end
+          if image then
           local scale=math.min((b.w-16)/image.width,(c.kind=='paper' and 126 or 112)/image.height)*z
           local iw,ih=image.width*scale,image.height*scale
           if c.kind=='paper' then F.box(gc,math.floor(x+(w-iw)/2),math.floor(y+20*z),math.max(1,math.floor(iw)),math.max(1,math.floor(ih)),F.color('#FFFFFF')) end
           gc.blendMode=BlendMode.NORMAL
           gc:drawImage(image,Rectangle(0,0,image.width,image.height),Rectangle(math.floor(x+(w-iw)/2),math.floor(y+20*z),math.max(1,math.floor(iw)),math.max(1,math.floor(ih))))
+          else F.draw(gc,'Lädt …',x+8*z,y+24*z,z,'ui',true) end
         end
       elseif c.kind=='animation' then
         local tag=A.resolve(s.sprite,c)
@@ -876,7 +1013,7 @@ function UI:paint(s,ev)
     if m.offset>0 then F.box(gc,m.x+m.w/2-8,m.y,16,2,F.color('#AEBECD'),1) end
     if m.offset+m.visible<#m.items then F.box(gc,m.x+m.w/2-8,m.y+mh-2,16,2,F.color('#AEBECD'),1) end
   end
-  F.unbind()
+  self:busyLabel(s,gc);F.unbind()
 end
 function UI:hit(s,x,y)
   for i=#(s.hits or {}),1,-1 do local h=s.hits[i];if inside(h.r,x,y) then return h.id,h end end
@@ -1070,8 +1207,9 @@ function UI:show(sprite)
   self:prepare(s)
   s.dialog=Dialog{title='Collabsprite - Ideenwand #'..s.windowToken:sub(1,12),resizeable=true,onclose=function()
     if s.preview then s.preview:close() end
+    s.dialog=nil;s.realDialog=nil
     if s.paper then V.close(self,s) end
-    s.dialog=nil;s.realDialog=nil;s.pointerDown=false;s.selecting=false;s.drag=nil;s.rightDown=nil;s.marquee=nil;s.menu=nil;s.tagMenu=nil;s.tagDrag=nil;s.sheet=nil;s.frameDrag=nil;s.playing=nil;self:run(function() self:finishInline(s) end)
+    s.pointerDown=false;s.selecting=false;s.drag=nil;s.rightDown=nil;s.marquee=nil;s.menu=nil;s.tagMenu=nil;s.tagDrag=nil;s.sheet=nil;s.frameDrag=nil;s.playing=nil;s.finishInlineRequested=true
   end}
   local d=s.dialog
   local width,height=145,250
@@ -1081,7 +1219,7 @@ function UI:show(sprite)
     onpaint=function(ev) self:paint(s,ev) end,
     ondblclick=function(ev) self:run(function() self:doubleClick(s,ev) end) end,
     onmousedown=function(ev) self:run(function() self:pointerDown(s,ev) end) end,
-    onmousemove=function(ev) self:pointerMove(s,ev) end,
+    onmousemove=function(ev) self:run(function() self:pointerMove(s,ev) end) end,
     onmouseup=function() self:run(function() self:pointerUp(s) end) end,
     onwheel=function(ev)
       if s.paper then V.wheel(self,s,ev);return end
@@ -1142,11 +1280,24 @@ function UI:pollFiles(s)
   local point=picker and picker.point or {
     x=math.floor(((event.x or 0.5)*(s.width or 660)-s.ox)/s.zoom),
     y=math.floor(((event.y or 0.5)*(s.height or 410)-s.oy)/s.zoom)}
-  self:importFiles(s,event.paths,point,picker and picker.parent,picker and picker.dock)
+  local target=picker and picker.paperId
+  if not picker then target=s.paper and s.paper.id end
+  self:importFiles(s,event.paths,point,picker and picker.parent,picker and picker.dock,target)
 end
 function UI:tick()
   if self.failed then return end
   self.ticks=(self.ticks or 0)+1
+  -- Main's timer already owns the re-entry guard. Calling self:run from here
+  -- would silently drop file events and sketch commits under that same guard.
+  local workStarted=os.clock()
+  for _,s in pairs(self.states) do if s.sprite.isValid then
+    self:stepJobs(s)
+    if s.finishInlineRequested then s.finishInlineRequested=nil;self:finishInline(s) end
+    for _,pv in pairs(s.paperDrafts) do
+      if pv.dirty and not pv.drawing and not pv.sending and not s.ack then V.commit(self,s,pv,pv.finishRequested) end
+    end
+    if os.clock()-workStarted>=J.budget then break end
+  end end
   for _,s in pairs(self.states) do if s.playing and s.sprite.isValid and s.dialog then
     local play=s.playing;local c=N.card(s.board,play.id);local tag=c and A.resolve(s.sprite,c)
     if not tag then s.playing=nil;self:refresh(s)
@@ -1172,7 +1323,7 @@ function UI:tick()
   for id,s in pairs(self.states) do
     if not s.sprite.isValid then if s.dialog then s.dialog:close() end;if s.preview then s.preview:close() end;if not next(s.drafts) then self.states[id]=nil end
     else
-      self:run(function() self:pollFiles(s) end)
+      self:pollFiles(s)
       if s.animationDirty or self.ticks%150==0 then
         s.animationThumbs={};s.animationDirty=false
         local visible=s.tagMenu or s.sheet
@@ -1181,7 +1332,7 @@ function UI:tick()
       end
       if s.marquee and s.pointerDown then self:autoPanMarquee(s) end
       local c=self:session(s)
-      if not c then local raw=s.sprite.properties(N.key).board
+      if not c and not s.loading then local raw=s.sprite.properties(N.key).board
         if raw~=s.raw then s.raw=raw;local board=N.read(s.sprite);if not N.equal(board,s.board) then s.board=board;s.history={undo={},redo={}} end end
       end
       local d=s.inline

@@ -28,7 +28,7 @@ test('Ideas board attributes creation and last real edit to authenticated sessio
   assert.ok(board.execute('guest', { seq: 2, action: 'undo' }, 'Freundin').ok);
   assert.equal(board.data.authors[id(11)].edited, 'Freundin');
   assert.deepEqual(new Notes(board.snapshot()).data.authors[id(11)], board.data.authors[id(11)]);
-  assert.equal(validateNotes({ ...board.snapshot(), format: 5, authors: undefined }).format, 8);
+  assert.equal(validateNotes({ ...board.snapshot(), format: 5, authors: undefined }).format, 9);
 });
 test('Notes: atomic validation, cycle and size protection', () => {
   const b = new Notes();create(b, 'a', card(1));create(b, 'a', card(2, id(1)));
@@ -85,7 +85,7 @@ test('Notes: pixel undo and structural restore never roll back the board', () =>
 test('Magnetic boxes: bounded RGBA references, list styles, stack uniqueness and legacy migration', () => {
   const original={format:1,revision:0,cards:[card(1),card(2,id(1)),card(3,id(1))],trash:[]};
   const migrated=validateNotes(original);
-  assert.equal(migrated.format,8);assert.equal(migrated.cards[2].parent,id(2));assert.equal(original.cards[2].parent,id(1));
+  assert.equal(migrated.format,9);assert.equal(migrated.cards[2].parent,id(2));assert.equal(original.cards[2].parent,id(1));
   assert.equal(migrated.cards[2].title,'Hexe');
   const b=new Notes(migrated);
   assert.equal(create(b,'guest',card(4,id(1))).ok,false,'A box cannot have two magnetic children');
@@ -146,10 +146,10 @@ test('Marquee multi-edit stays atomic on the server and keeps foreign text durin
 test('Animation tag cards validate and survive format-3 migration and personal undo', () => {
   const old=emptyNotes();old.format=3;old.cards=[card(1)];
   const migrated=validateNotes(old);
-  assert.equal(migrated.format,8);assert.equal(migrated.cards[0].tag,'');assert.equal(migrated.cards[0].tagStart,0);
+  assert.equal(migrated.format,9);assert.equal(migrated.cards[0].tag,'');assert.equal(migrated.cards[0].tagStart,0);
   const oldAnimation={...emptyNotes(),format:4,cards:[{...card(9),kind:'animation',tag:'Besenflug',tagStart:4}]};
   const upgraded=validateNotes(oldAnimation);
-  assert.equal(upgraded.format,8);assert.equal(upgraded.cards[0].frame,4);
+  assert.equal(upgraded.format,9);assert.equal(upgraded.cards[0].frame,4);
   const notes=new Notes();
   const animation={...card(2),kind:'animation',tag:'Hexe läuft',tagStart:1,image:false};
   assert.ok(create(notes,'host',animation).ok);
@@ -174,4 +174,16 @@ test('Shared 1000 px sketch sheets enforce dimensions, synchronize pixels and ke
   assert.deepEqual(new Notes(notes.snapshot()).snapshot().cards[0].image,painted);
   assert.equal(create(notes,'guest',{...card(22),kind:'paper',image:{width:127,height:128,pixels:'00000000'.repeat(127*128)}}).ok,false);
   assert.equal(create(notes,'guest',{...card(23),kind:'paper',image:{...blank,pixels:'000000000000'}}).ok,false);
+});
+
+test('A confirmed sketch becomes a full-resolution reference image with safe legacy migration',()=>{
+  const notes=new Notes();
+  const image={width:1000,height:1000,encoding:'rle',pixels:'ffff00000000'.repeat(15)+'424f00000000'};
+  assert.ok(create(notes,'host',{...card(30),kind:'paper',image}).ok);
+  assert.ok(set(notes,'guest',30,'kind','image').ok);
+  assert.equal(notes.snapshot().cards[0].kind,'image');assert.deepEqual(notes.snapshot().cards[0].image,image);
+  assert.deepEqual(new Notes(notes.snapshot()).snapshot().cards[0].image,image);
+  assert.ok(run(notes,'guest',{action:'undo'}).ok);assert.equal(notes.snapshot().cards[0].kind,'paper');
+  const legacy={...notes.snapshot(),format:8};assert.equal(validateNotes(legacy).format,9);
+  assert.equal(legacy.format,8);
 });

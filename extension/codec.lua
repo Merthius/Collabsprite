@@ -3,6 +3,7 @@ local M = {}
 local directory=app.fs.filePath(debug.getinfo(1,'S').source:sub(2))
 local Notes=dofile(app.fs.joinPath(directory,'notes.lua'))
 local Structure=dofile(app.fs.joinPath(directory,'structure.lua'))
+local J=dofile(app.fs.joinPath(directory,'jobs.lua'))
 M.track=Structure.track
 local identities={}
 function M.key(layer, frame) return string.format('%d:%d', layer, frame) end
@@ -19,6 +20,7 @@ function M.runs(bytes, before)
     end
   end
   for offset=1,#bytes,4 do
+    if offset%16384==1 then J.checkpoint(offset/#bytes) end
     local v = string.unpack('<I4', bytes, offset)
     local old = before and string.unpack('<I4', before, offset) or 0
     if v ~= old then

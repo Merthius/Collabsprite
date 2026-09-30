@@ -99,6 +99,7 @@ function Client:connect(url,hello)
   self.inbox={};self.inboxBytes=0;self.inboxOverflow=false
   self:trace('websocket','connect-start; endpoint hidden')
   self:statusText('Verbinde ...')
+  local ok,problem=pcall(function()
   self.ws=WebSocket{url=url,deflate=true,minreconnectwait=60,maxreconnectwait=60,
     onreceive=function(kind,data,err)
       -- No document mutations here: Aseprite can still hold a document lock.
@@ -114,10 +115,19 @@ function Client:connect(url,hello)
       end
     end}
   self.ws:connect()
+  end)
+  if not ok then self:disconnect('Verbindung konnte nicht geöffnet werden.');error(tostring(problem)) end
 end
-function Client:host(sprite,name,port)
+function Client:host(sprite,name,port,async)
+  if async then
+    local J=dofile(app.fs.joinPath(app.fs.filePath(debug.getinfo(1,'S').source:sub(2)),'jobs.lua'))
+    local prep=J.new(function() return C.capture(sprite) end)
+    prep.sprite=sprite;prep.name=name;prep.port=port
+    prep.listener=sprite.events:on('change',function() prep.changed=true end)
+    self.preparing=prep;self.closed=false;self:statusText('Bild wird vorbereitet ...');return
+  end
   local snapshot=C.capture(sprite)
-  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=13,mode='host',name=name,snapshot=snapshot})
+  self:connect('ws://127.0.0.1:'..(port or 8766),{type='hello',protocol=14,mode='host',name=name,snapshot=snapshot})
 end
 function Client:join(invite,name)
   invite=invite:gsub('%s',''):gsub('^ws://','')
@@ -125,7 +135,7 @@ function Client:join(invite,name)
   assert(address and #code==8 and #token==32,'Bitte den gesamten Einladungscode vom Host einfuegen.')
   self:trace('session','join-requested; address and invite hidden')
   self.invite=invite
-  self:connect('ws://'..address,{type='hello',protocol=13,mode='join',name=name,room=code,token=token})
+  self:connect('ws://'..address,{type='hello',protocol=14,mode='join',name=name,room=code,token=token})
 end
 function Client:unfreeze()
   if not self.frozen then return end
@@ -162,7 +172,12 @@ function Client:suspend()
   self:statusText('Verbindung unterbrochen · verbinde erneut ...')
 end
 function Client:disconnect(reason)
-  local wasActive=self.connected or self.connecting or self.reconnecting
+  local wasActive=self.connected or self.connecting or self.reconnecting or self.preparing
+  if self.preparing then
+    local p=self.preparing
+    if p.sprite.isValid then pcall(function() p.sprite.events:off(p.listener) end) end
+    self.preparing=nil
+  end
   self:trace('session','disconnect requested')
   if self.ws and self.connected then pcall(function() self.ws:sendText(json.encode{type='leave'}) end) end
   self.closed=true;self.connected=false;self.connecting=false;self.reconnecting=false;self.leaving=nil
@@ -474,7 +489,7 @@ function Client:receive(message)
     end
   elseif message.type=='welcome' then
     assert(not self.connected,'Doppelte Anmeldung')
-    assert(message.protocol==nil or message.protocol==13,'Unpassende Erweiterungsversion')
+    assert(message.protocol==nil or message.protocol==14,'Unpassende Erweiterungsversion')
     local resumed=self.reconnecting
     if resumed then
       self.noteResend=true
@@ -739,6 +754,18 @@ function Client:tick()
   if self.closed or self.ticking then return end
   self.ticking=true
   local ok,err=xpcall(function()
+    if self.preparing then
+      local p=self.preparing
+      if not p.sprite.isValid or p.changed then self:disconnect('Bild während der Vorbereitung verändert. Bitte erneut erstellen.');return end
+      local J=dofile(app.fs.joinPath(app.fs.filePath(debug.getinfo(1,'S').source:sub(2)),'jobs.lua'))
+      local done=J.step(p)
+      if done then
+        p.sprite.events:off(p.listener);self.preparing=nil
+        if p.error then error(p.error) end
+        self:connect('ws://127.0.0.1:'..(p.port or 8766),{type='hello',protocol=14,mode='host',name=p.name,snapshot=p.value})
+      end
+      return
+    end
     if self.inboxOverflow then
       self:disconnect('Zu viele empfangene Daten. Lokale Kopie bleibt offen; Host/Netz prüfen.');return
     end
@@ -746,7 +773,7 @@ function Client:tick()
       if os.time()>=self.resumeDeadline then self:disconnect('Wiederverbindung abgelaufen. Lokale Ansicht bleibt offen.');return end
       if self.connecting and os.time()-self.started>10 then self:suspend() end
       if not self.connecting and os.time()>=self.retryAt then
-        self:connect(self.url,{type='hello',protocol=13,mode='resume',room=self.room,author=self.author,resumeToken=self.resumeToken})
+        self:connect(self.url,{type='hello',protocol=14,mode='resume',room=self.room,author=self.author,resumeToken=self.resumeToken})
       end
     elseif self.connecting and os.time()-self.started>20 then error('Keine Verbindung: Host, LAN/Radmin und Firewall prüfen.') end
     if self.connected or self.reconnecting then

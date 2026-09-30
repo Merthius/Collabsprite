@@ -151,13 +151,15 @@ assert(N.equal(P.pack(draft.image),original),'Clear-all is not undoable')
 V.redo(ui,s);assert(draft.image:isEmpty(),'Clear-all redo failed')
 V.undo(ui,s)
 ui:pointerDown(s,{button=MouseButton.LEFT,x=260,y=10})
-assert(not s.paper,'Sketch X did not return to ideas board')
+assert(not s.paper and N.card(s.board,paper.id).kind=='image','Checkmark did not finish the sketch as an image')
+assert(N.card(s.board,paper.id).image.width==1000 and P.source(sprite,N.card(s.board,paper.id)):getPixel(500,500)==draft.image:getPixel(500,500),
+  'Finalized image lost full-resolution sketch pixels')
 local boardCanvas=Image(700,440,ColorMode.RGB)
 ui:paint(s,{context=boardCanvas.context})
 local paperHit
 for _,hit in ipairs(s.hits) do if hit.id==paper.id and hit.kind=='drag' then paperHit=hit end end
 assert(paperHit,'Sketch card disappeared after returning to the ideas board')
-local rendered=boardCanvas:getPixel(paperHit.r.x+70,paperHit.r.y+82)
+local rendered=boardCanvas:getPixel(paperHit.r.x+70,paperHit.r.y+76)
 assert(rendered==draft.palette[1].color.rgbaPixel,
   'Saved sketch mark was not rendered on the ideas-board card')
 if app.params.captureBoard then boardCanvas:saveAs(app.params.captureBoard) end

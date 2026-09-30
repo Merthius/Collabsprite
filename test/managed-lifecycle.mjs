@@ -19,7 +19,7 @@ async function connect(hello) {
     });
   });
   await once(socket, 'open');
-  socket.send(JSON.stringify({ type: 'hello', protocol: 13, ...hello }));
+  socket.send(JSON.stringify({ type: 'hello', protocol: 14, ...hello }));
   return { socket, welcome: await welcome };
 }
 

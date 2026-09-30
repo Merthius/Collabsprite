@@ -35,11 +35,11 @@ assert(not pcall(N.validate,{format=7,revision=0,cards={a,b,N.newCard('Doppelt',
 local conflict=N.copy(moved);conflict.revision=conflict.revision+1;N.card(conflict,c.id).versions.parent=conflict.revision
 assert(not pcall(N.localAction,conflict,{undo={},redo={}},S.move(moved,b.id,200,200)),'Stale tail topology accepted')
 local old=N.copy(board);old.format=1;old.cards[3].parent=a.id
-local migrated=N.validate(old);assert(migrated.format==8 and migrated.cards[3].parent==b.id and old.format==1 and old.cards[3].parent==a.id,'Old branching notes were not safely migrated')
+local migrated=N.validate(old);assert(migrated.format==9 and migrated.cards[3].parent==b.id and old.format==1 and old.cards[3].parent==a.id,'Old branching notes were not safely migrated')
 local previous=N.copy(board);previous.format=2
 for _,item in ipairs(previous.cards) do item.dock=nil;item.versions.dock=nil end
 local upgraded=N.validate(previous)
-assert(upgraded.format==8 and upgraded.cards[2].dock=='below' and previous.format==2 and previous.cards[2].dock==nil,'Format-2 notes were not safely upgraded')
+assert(upgraded.format==9 and upgraded.cards[2].dock=='below' and previous.format==2 and previous.cards[2].dock==nil,'Format-2 notes were not safely upgraded')
 assert(S.checks({text='a\nb\nc',checks='101'},'a\nnew\nb\nc')=='1001','List insertion moved checks to wrong row')
 assert(S.checks({text='a\nb\nc',checks='101'},'a\nc')=='11')
 local im=Image(3,2,ColorMode.RGB);im:drawPixel(1,1,app.pixelColor.rgba(12,34,56,78))

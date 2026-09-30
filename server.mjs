@@ -67,7 +67,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
   const server = http.createServer((req, res) => {
     if (req.url === '/status' && allowedPeer(req.socket.remoteAddress, localOnly)) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 13, localOnly, port: server.address()?.port }));
+      res.end(JSON.stringify({ app: 'Collabsprite', protocol: 14, localOnly, port: server.address()?.port }));
       return;
     }
     if (!allowedPeer(req.socket.remoteAddress, localOnly)) { res.writeHead(403); res.end(); return; }
@@ -143,7 +143,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
         if (!message || typeof message !== 'object' || Array.isArray(message) || typeof message.type !== 'string') throw new Error('Ungueltige Nachricht');
         if (socket.room && !['paint','document'].includes(message.type) && data.length > (message.type === 'note' ? 9 * 1024 * 1024 : 8192)) throw new Error('Steuernachricht zu gross');
         if (!socket.room) {
-          if (message.type !== 'hello' || message.protocol !== 13) throw new Error('Unpassende Erweiterungsversion');
+          if (message.type !== 'hello' || message.protocol !== 14) throw new Error('Unpassende Erweiterungsversion');
           socket.name = String(message.name || 'Kuenstler').replace(/[\x00-\x1f]/g, '').slice(0, 30);
           socket.author = randomBytes(16).toString('hex');
           let room, code, token, resumeToken = randomBytes(32).toString('hex');
@@ -185,7 +185,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
           socket.room = room; socket.code = code; room.clients.add(socket); room.core.user(socket.author);
           room.leases.set(socket.author, { tokenHash: hash(resumeToken), name: socket.name, socket, expires: Infinity });
           const actualPort = server.address().port;
-          send(socket, { type: 'welcome', protocol: 13, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision, structure: room.core.structure,
+          send(socket, { type: 'welcome', protocol: 14, author: socket.author, room: code, host: room.hostAuthor === socket.author, revision: room.core.revision, structure: room.core.structure,
             invite: token ? invite(localOnly ? [] : addresses(), actualPort, code, token) : undefined,
             localOnly, restored: room.restored, acceptingGuests: room.acceptingGuests !== false, snapshot: room.core.snapshot(),
             resumed: message.mode === 'resume', resumeToken, resumeMs, confirmedSeq: room.core.user(socket.author).seq });
@@ -363,7 +363,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
       visible.push({ name: room.hostName || 'Kuenstler', image: room.core.meta.name,
         invite: invite([address], server.address().port, code, room.discoveryToken) });
     }
-    const response = Buffer.from(JSON.stringify({ protocol: 13, rooms: visible }));
+    const response = Buffer.from(JSON.stringify({ protocol: 14, rooms: visible }));
     if (response.length <= 1200) discovery.send(response, peer.port, peer.address);
   });
   discovery.on('error', error => log(`Sitzungssuche: ${error.message}`));
