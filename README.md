@@ -2,21 +2,19 @@
 
 # Collabsprite
 
-**Lokaler Arbeitsstand 0.13.0:** kompakter Sitzungsdialog sowie Korrekturen an Start, Suche, Synchronisation und Skizzen. [Änderungen und Prüfung](docs/releases/v0.13.0.md). Noch nicht veröffentlicht; die folgenden Download-Links führen weiterhin zur öffentlichen Beta 0.12.1.
+**Neu in 0.13.0 Beta** · Im Sitzungsdialog siehst du deine Rolle und die Anzahl der Teilnehmenden. Die Suche fasst mehrfach erreichbare Räume zusammen. Beim Skizzieren kannst du weiterzeichnen, während der vorige Strich synchronisiert wird. [Versionshinweise](docs/releases/v0.13.0.md).
 
-> **Neu in 0.12.1 Beta:** Flüssigere Ideenwand-/Bildvorbereitung, korrigierter PNG/JPG-Import ins Skizzenblatt, zuverlässige Sitzungssuche und automatisches Übernehmen der Skizze als Bild über das Häkchen. [Versionshinweise](docs/releases/v0.12.1.md). Host und Gäste benötigen dieselbe neue Version.
-
-[![Version](https://img.shields.io/badge/version-0.12.1%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.12.1) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/badge/version-0.13.0%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.13.0) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)
 
 **Gemeinsam Pixel-Art und Animationen direkt in Aseprite bearbeiten.** Eine Person hostet, die anderen treten bei. Alle nutzen dieselbe Erweiterung und dieselben Rasterebenen und Frames. `Strg+Z`/`Strg+Y` wirken auf die eigenen synchronisierten Pixel-, Struktur- und Eigenschaftsänderungen, ohne neuere fremde Pixel zu entfernen.
 
-**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.12.1/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
+**[⬇ Collabsprite für Aseprite herunterladen](https://github.com/Merthius/Collabsprite/releases/download/v0.13.0/Collabsprite.aseprite-extension)** · [English guide](README.en.md) · [Probleme & Grenzen](#probleme-und-grenzen)
 
-Version **0.12.1 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Die **gemeinsame Ideenwand mit magnetischen Text-, Listen-, Bild-, Animations- und Skizzenboxen** bleibt direkt am Bild gespeichert. [Notiz-Tutorial](docs/shared-notes.md).
+Version **0.13.0 Beta** enthält alles für **Erstellen und Beitreten in einer Datei**, einschließlich der Host-Laufzeit für Windows x64. Eine separate Node.js-Installation ist nicht erforderlich. Die **gemeinsame Ideenwand mit magnetischen Text-, Listen-, Bild-, Animations- und Skizzenboxen** bleibt direkt am Bild gespeichert. [Notiz-Tutorial](docs/shared-notes.md).
 
 Die **Diagnosekonsole** erreichst du unter **Datei → Multiplayer (Collabsprite) → Diagnosekonsole**. Dort per Mausrad, Scrollleiste oder Bild-auf/Bild-ab ältere Einträge lesen. **Protokoll kopieren** kopiert nur den aktuellen Host-/Beitrittsversuch; vor einer Verbindung nur den aktuellen Aseprite-Start. Frühere Einträge bleiben zur Ansicht in `%TEMP%\Collabsprite-debug.log` (maximal 512 KiB). Das Protokoll enthält technische Ereignisse und Fehler, keine Bilddaten oder Einladungscodes. **Leeren** entfernt die gesamte lokale Aufnahme – nur vor einem erneuten Fehlertest verwenden. Ob der zuvor gemeldete „C stack overflow“ auf dem betroffenen Freund-PC behoben ist, muss dort geprüft werden.
 
-**Alle Beteiligten müssen auf 0.12.1 aktualisieren:** Protokoll 14 und Notizformat 9 sind nicht zu alten Sitzungen kompatibel. Alte Bildnotizen werden beim Lesen übernommen; vor dem ersten Speichern eine Dateikopie behalten. Wiederverbindung, persönlicher Verlauf, Diagnose und Beitrittssperre bleiben enthalten. Eigene Rücknahmen laufen über Undo/Redo. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
+**Für gemeinsame Sitzungen empfehlen wir 0.13.0 auf allen PCs.** Wie 0.12.1 verwendet diese Beta Protokoll 14 und Notizformat 9. Alte Bildnotizen werden beim Lesen übernommen; vor dem ersten Speichern eine Dateikopie behalten. Wiederverbindung, persönlicher Verlauf, Diagnose und Beitrittssperre bleiben enthalten. Eigene Rücknahmen laufen über Undo/Redo. [Prüfergebnisse und Grenzen](docs/multiplayer-checklist.md).
 
 ## Schnellstart
 
@@ -40,7 +38,7 @@ Keine Cloud-Anmeldung, kein externer Collabsprite-Server und keine separate Host
 
 ## Installation – auf jedem PC
 
-1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.12.1) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
+1. Lade auf der [Release-Seite](https://github.com/Merthius/Collabsprite/releases/tag/v0.13.0) unter **Assets** die einzelne Datei **`Collabsprite.aseprite-extension`** herunter. Das automatisch angebotene „Source code (zip)“ ist **nicht** der Installer.
 2. Öffne Aseprite → **Bearbeiten → Einstellungen → Erweiterungen → Erweiterung hinzufügen** und wähle die Datei. Ein Doppelklick auf die Datei kann ebenfalls funktionieren ([offizielle Aseprite-Anleitung](https://www.aseprite.org/docs/extensions/)).
 3. Starte Aseprite neu. Öffne **Datei → Multiplayer (Collabsprite) → Server erstellen / beitreten**.
 
@@ -49,8 +47,8 @@ Für Host und Gäste gilt exakt dieselbe Installationsdatei. Du kannst jederzeit
 ### Eine ältere Version aktualisieren
 
 1. Sitzungskopie speichern und die laufende Sitzung über **Trennen** beenden.
-2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.12.1** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
-3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Datei → Multiplayer (Collabsprite) → Info** muss **0.12.1** stehen.
+2. Die neue **`Collabsprite.aseprite-extension`** über **Erweiterung hinzufügen** auswählen und das Update von **pixelkollab-native / Collabsprite** auf **0.13.0** bestätigen. Die technische Kennung `pixelkollab-native` bleibt absichtlich gleich.
+3. Aseprite auf **allen beteiligten PCs neu starten**. Unter **Datei → Multiplayer (Collabsprite) → Info** muss **0.13.0** stehen.
 
 **Datei → Multiplayer (Collabsprite) → Update** zeigt ein kompaktes Fortschrittsfenster für Versionsprüfung, Download, Paketprüfung und Installation. Nach dem Download öffnet sich Aseprites Installer automatisch mit der richtigen Datei. Die Installation/Aktualisierung dort bestätigen und anschließend Aseprite neu starten. Kein Suchen im Downloads-Ordner; keine automatische Beendigung deiner Arbeit. Eine laufende Multiplayer-Sitzung vorher über **Trennen** beenden. Die bisherige Installation und Einstellungen werden vorab unter `Aseprite/Collabsprite-backups` gesichert; Sitzungsdaten bleiben unangetastet. Schließen des Fortschrittsfensters vor der Installation verhindert die Installation; ein laufender Download kann noch fertig werden.
 
@@ -126,7 +124,7 @@ Der Host ordnet und prüft die Änderungen. Die Verbindung benutzt WebSocket **o
 | **Aseprite reagiert nicht** | Speichere ungesicherte Arbeit und melde den genauen Schritt in einem [Issue](https://github.com/Merthius/Collabsprite/issues). |
 | **Verbindung weg** | Bis zu zwei Minuten auf automatische Wiederverbindung warten und Netzwerk/Host prüfen. Bei Abbruch lokale Ansicht nicht voreilig schließen, Diagnose kopieren; Host speichert. Kein allgemeines Offline-Merging. |
 
-Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Slices, Farbprofile, versetzt verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. Ideenwand: bis 128 Boxen und 8 MiB inklusive Papierkorb; importierte Referenzen bis 512×512 Pixel, Skizzenblätter und daraus bestätigte Bilder 1000×1000. Bei Netzabbruch während einer unbestätigten Strukturaktion bleibt die lokale Fassung erhalten; dafür gibt es noch keine automatische Wiederaufnahme. **0.12.1 verwendet Protokoll 14; ältere Sitzungen sind nicht kompatibel.** [Technische Details](docs/technical-notes.md).
+Unterstützt werden RGB/RGBA-Rasterebenen. Nicht vollständig synchronisiert werden u. a. Tilemaps, Referenzebenen, Slices, Farbprofile, versetzt verknüpfte Cels und animierte Paletten. Auswahl, Zoom und Farbauswahl sind persönliche Arbeitsansichten. Grenzen: maximal 8 Personen einschließlich kurz unterbrochener Teilnehmer, 1024×1024 Pixel, 32 Ebenen, 120 Frames und 4.194.304 Cel-Pixel. Ideenwand: bis 128 Boxen und 8 MiB inklusive Papierkorb; importierte Referenzen bis 512×512 Pixel, Skizzenblätter und daraus bestätigte Bilder 1000×1000. Bei Netzabbruch während einer unbestätigten Strukturaktion bleibt die lokale Fassung erhalten; dafür gibt es noch keine automatische Wiederaufnahme. **Die Sitzung benötigt Protokoll 14.** [Technische Details](docs/technical-notes.md).
 
 ## Entwickeln und beitragen
 

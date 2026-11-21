@@ -1,6 +1,6 @@
 # Review und Prüfstand 0.13.0
 
-21. November 2026 · Windows · Aseprite 1.3.18.6 · lokal vorbereitete Beta
+21. November 2026 · Windows · Aseprite 1.3.18.6 · lokale Prüfung der Beta
 
 Geprüft wurden insbesondere Sitzungszustände und Lebenszyklus, Netzwerk-/Notizvalidierung, Synchronisation und eigenes Undo/Redo, asynchrone Skizzen, native Dialoge, Paketierung und Updates. Die Änderungen und Bedienung beschreibt der [Versionshinweis](releases/v0.13.0.md). Dieser Prüfstand belegt die genannten Szenarien, keine vollständige Fehlerfreiheit oder vollständige Aseprite-Funktionsparität.
 
@@ -30,7 +30,7 @@ Ein gemeinsamer Host-/Gast-Installer, Protokoll 14 / Notizformat 9 unverändert.
 - Größe: `36.234.808` Byte
 - SHA-256: `65D3C6DF25812C013FD1B49B9E8766E4C6A0E2244D519138E19C9279C8B7ACAD`
 
-Das Paket wurde lokal gebaut. Die normale Aseprite-Installation wurde nicht verändert; keine Veröffentlichung mit diesem Review.
+Die Prüfsumme oben gehört zum [Installer der Beta 0.13.0](https://github.com/Merthius/Collabsprite/releases/download/v0.13.0/Collabsprite.aseprite-extension).
 
 ## Noch im praktischen Einsatz prüfen
 

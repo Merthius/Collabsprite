@@ -1,6 +1,6 @@
 # Ideenwand: freie Elemente und magnetische Verbindungen
 
-**Collabsprite 0.12.1 Beta** verwendet Protokoll 14 und Notizformat 9. [Download und Versionshinweise](releases/v0.12.1.md). Alle Beteiligten müssen aktualisieren; Sitzungen mit älteren Versionen sind nicht kompatibel. Alte Dateien werden beim Lesen übernommen.
+**Collabsprite 0.13.0 Beta** verwendet Protokoll 14 und Notizformat 9. [Download und Versionshinweise](releases/v0.13.0.md). Host und Gäste erhalten die Korrekturen mit Version 0.13.0. Alte Dateien werden beim Lesen übernommen.
 
 Die Ideenwand bleibt vollständig in Aseprite. Normale Texte verwenden Aseprites UI-Schrift, größere Haupttitel einen hart gerasterten, mitgelieferten OFL-Schriftatlas. Das Canvas wird automatisch an die UI-Skalierung angepasst; Karten und Bedienelemente haben klare Pixelkanten. Es öffnet sich kein Browser und kein lokaler Ideenwand-Dienst.
 

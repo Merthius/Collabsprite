@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.13.0 beta — 2026-11-21, prepared locally
+## 0.13.0 beta — 2026-11-21
 
 - Compact native session dialog: separate create/join forms while disconnected; role, participant count, invitation, admission and idea-board actions while connected. Routine status updates preserve the user's window size and position.
 - Prevent duplicate starts during connection/preparation/reconnect/leave; block updates until those operations finish. Empty worker status files are pending, not failures. Cancellation, timeouts and extension shutdown notify background workers; denied cleanup reads no longer repeat every timer tick.
@@ -9,7 +9,7 @@
 - Budget incoming-message processing and rotate background work across idea boards. Sketches accept a new local stroke while the previous complete stroke awaits confirmation; only completed snapshots are queued, and finishing retains the latest drawing.
 - Truncate Unicode names at complete characters; reject malformed note text before broadcasting it to native clients. This fixes a separate reproducible decoder-disconnection path, not a claim that the historical guest-PC stack overflow is resolved.
 - Stabilize atomic status-file readers; add repeatable native test suite and remove per-message curl process launches from the real WebSocket/native-document test.
-- One host/guest installer, unchanged protocol 14 / notes format 9. This local beta has not been published or installed in the regular Aseprite profile. See [validation and remaining checks](docs/review-0.13.0.md).
+- One host/guest installer, unchanged protocol 14 / notes format 9. See [validation and remaining checks](docs/review-0.13.0.md).
 
 ## 0.12.1 beta — 2026-10-01
 

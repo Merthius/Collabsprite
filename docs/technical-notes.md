@@ -1,6 +1,6 @@
 # Technische Hinweise / Technical notes
 
-Aktueller Release: **0.12.1 Beta, Protokoll 14, Notizformat 9**. [Download und Versionshinweise](releases/v0.12.1.md). Die nach Versionsnummern gegliederten älteren Abschnitte dokumentieren die Entwicklung und sind keine aktuelle Funktionsliste. Aktuelle Bedienung: [Zeichnen](cooperative-editing.md) und [Ideenwand](shared-notes.md).
+Aktueller Release: **0.13.0 Beta, Protokoll 14, Notizformat 9**. [Download und Versionshinweise](releases/v0.13.0.md). Die nach Versionsnummern gegliederten älteren Abschnitte dokumentieren die Entwicklung und sind keine aktuelle Funktionsliste. Aktuelle Bedienung: [Zeichnen](cooperative-editing.md) und [Ideenwand](shared-notes.md).
 
 ## 0.13.0: lokaler Reviewstand vom 21.11.2026
 
