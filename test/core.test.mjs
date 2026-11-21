@@ -5,6 +5,16 @@ export const snapshot = () => ({ format: 1, name: 'Test', width: 4, height: 4,
   layers: [{ name: 'Gemeinsam' }], frames: [100], cels: [], palette: [] });
 const paint = (room, author, seq, runs, layer = 1, frame = 1) => room.paint(author, seq, [{ layer, frame, runs }],room.structure);
 const pixels = room => [...room.cells.get('1:1').pixels];
+
+test('Unicode names are truncated at whole characters for native JSON clients',()=>{
+  const s=snapshot();s.name='x'.repeat(99)+'🎨';s.layers[0].name=s.name;
+  s.tags=[{name:s.name,from:1,to:1}];
+  const r=new Room(s);
+  for(const name of [r.meta.name,r.meta.layers[0].name,r.meta.tags[0].name]) {
+    assert.equal(name,s.name);assert.ok(name.isWellFormed());
+  }
+  s.name='bad\ud800';assert.equal(new Room(s).meta.name,'bad�');
+});
 test('Stable IDs rebase delayed pixels, reject deleted targets and deduplicate a lost ack', () => {
   const r=new Room(snapshot());r.append('layer','Second');r.append('frame');
   const layerId=r.meta.layers[1].id,frameId=r.meta.frameIds[1];

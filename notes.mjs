@@ -31,14 +31,14 @@ function imageOK(v) {
   return total === 1000000;
 }
 function fieldOK(field, v) {
-  if (field === 'title' || field === 'text') return typeof v === 'string' && Buffer.byteLength(v) <= NOTE_LIMITS[field] && !/[\x00-\x08\x0b-\x1f]/.test(v);
+  if (field === 'title' || field === 'text') return typeof v === 'string' && v.isWellFormed() && Buffer.byteLength(v) <= NOTE_LIMITS[field] && !/[\x00-\x08\x0b-\x1f]/.test(v);
   if (field === 'parent') return v === '' || idOK(v);
   if (field === 'dock') return ['below', 'left', 'right'].includes(v);
   if (field === 'x' || field === 'y') return int(v, -10000, 10000);
   if (field === 'color') return typeof v === 'string' && /^(|#[0-9A-Fa-f]{6})$/.test(v);
   if (field === 'status') return ['idea', 'decided', 'done'].includes(v);
   if (field === 'kind') return ['text', 'list', 'image', 'animation', 'paper'].includes(v);
-  if (field === 'tag') return typeof v === 'string' && Buffer.byteLength(v) <= 120 && !/[\x00-\x08\x0b-\x1f]/.test(v);
+  if (field === 'tag') return typeof v === 'string' && v.isWellFormed() && Buffer.byteLength(v) <= 120 && !/[\x00-\x08\x0b-\x1f]/.test(v);
   if (field === 'tagStart') return int(v, 0, 100000);
   if (field === 'frame') return int(v, 0, 100000);
   if (field === 'listStyle') return ['check', 'bullet', 'number'].includes(v);
@@ -124,6 +124,7 @@ export function validateNotes(input) {
   for (const [key, info] of Object.entries(authors)) {
     if (!idOK(key) || !info || typeof info !== 'object' || Array.isArray(info) ||
         typeof info.created !== 'string' || typeof info.edited !== 'string' ||
+        !info.created.isWellFormed() || !info.edited.isWellFormed() ||
         Buffer.byteLength(info.created) > 160 || Buffer.byteLength(info.edited) > 160 ||
         /[\x00-\x1f]/.test(info.created + info.edited)) reject('Ungültige Autorenangabe.');
     if (validIds.has(key)) output.authors[key] = { created: info.created, edited: info.edited };

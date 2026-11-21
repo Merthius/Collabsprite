@@ -37,7 +37,10 @@ try {
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     $result = ''
     while ([DateTime]::UtcNow -lt $deadline) {
-        if (Test-Path -LiteralPath $resultPath) { $result = Get-Content -LiteralPath $resultPath -Raw }
+        # Worker replaces QUEUED atomically; absence/sharing during replacement
+        # is a pending result, not a failed build (notably on Windows runners).
+        try { $result = [IO.File]::ReadAllText($resultPath) }
+        catch [IO.IOException] { $result = '' }
         if ($result -and $result -ne 'QUEUED') { break }
         Start-Sleep -Milliseconds 100
     }
@@ -45,7 +48,7 @@ try {
     if ($result -notlike 'READY 18765*') { throw ('Worker meldet: ' + $result) }
     $status = Invoke-RestMethod -Uri ('http://127.0.0.1:' + $port + '/status') -TimeoutSec 2
     if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 14 -or -not $status.localOnly) { throw 'Falscher Serverstatus.' }
-    $joinResult = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $testRoot 'Bootstrap.ps1') -Action Join -Mode Network -Port $port -Endpoints ('127.0.0.1:' + $port)
+    $joinResult = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $testRoot 'Bootstrap.ps1') -Action Join -Mode Network -Port $port -Endpoints ('999.999.999.999:8766,127.0.0.1:' + $port)
     if ($LASTEXITCODE -ne 0 -or $joinResult -ne ('READY 127.0.0.1:' + $port)) { throw ('Join-Adresse nicht erkannt: ' + $joinResult) }
     $listener = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction Stop | Select-Object -First 1
     $process = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $listener.OwningProcess)
@@ -60,6 +63,15 @@ try {
     if ($backupFiles.Count -ne 1) { throw 'Sitzungsbackup beim Host-Shutdown fehlt.' }
     & (Join-Path $testRoot 'runtime\node.exe') (Join-Path $PSScriptRoot 'host-owner.mjs') $testRoot $port
     if ($LASTEXITCODE -ne 0) { throw 'Nativer Host-Prozess-Lebenszyklustest fehlgeschlagen.' }
+    # A late worker must acknowledge a preserved cancellation marker before
+    # touching the server/runtime, then remove its own tombstone.
+    [IO.File]::WriteAllText(($resultPath+'.cancel'),'CANCEL')
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $testRoot 'Bootstrap.ps1') -Action Host -Mode Test -Port $port -ResultPath $resultPath
+    $cancelExitCode=$LASTEXITCODE
+    # The failed start is expected; do not leak code 1 into GitHub's shell wrapper.
+    $global:LASTEXITCODE=0
+    if ($cancelExitCode -ne 1 -or ([IO.File]::ReadAllText($resultPath)) -notlike 'ERROR Vorbereitung abgebrochen*' -or
+        (Test-Path -LiteralPath ($resultPath+'.cancel'))) { throw 'Late worker ignored cancellation or failed to clean it up.' }
     Write-Output ('PASS: Launcher in ' + [Math]::Round($watch.Elapsed.TotalSeconds,2) + ' s zurück; Server später bereit.')
 } finally {
     if ($originalPath) { $env:PATH = $originalPath }
@@ -78,6 +90,7 @@ try {
         Wait-Process -Id $ownedPid -Timeout 5 -ErrorAction SilentlyContinue
     }
     if (Test-Path -LiteralPath $resultPath) { Remove-Item -LiteralPath $resultPath }
+    if (Test-Path -LiteralPath ($resultPath+'.cancel')) { Remove-Item -LiteralPath ($resultPath+'.cancel') }
     if (-not $testRoot.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase) -or
         [IO.Path]::GetFileName($testRoot) -notmatch '^Collabsprite-test-[a-f0-9]{32}$') { throw 'Unerwartetes Testverzeichnis.' }
     Remove-Item -LiteralPath $testRoot -Recurse -Force

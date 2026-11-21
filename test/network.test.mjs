@@ -370,6 +370,27 @@ test('Local-only server advertises loopback and joins without VPN',async t=>{
   assert.deepEqual(result.patches,[{layer:1,frame:1,runs:[0,1,0]}]);
   assert.equal(service.rooms.get(room).core.cells.get('1:1').pixels[1],0xff654321);
 });
+test('Eight rooms with long Unicode names remain discoverable in bounded UDP packets',async t=>{
+  const service=await startServer({port:0,host:'127.0.0.1',dataDir:null,log:()=>{}});
+  t.after(()=>service.close());
+  const expected=new Set();
+  for(let i=0;i<8;i++) {
+    const state=snapshot();state.name='絵'.repeat(100);
+    const host=await connect(service.port,{mode:'host',name:`${i}`+'友'.repeat(29),snapshot:state});
+    expected.add((await host.next('welcome')).invite);
+  }
+  const socket=dgram.createSocket('udp4');t.after(()=>socket.close());
+  await new Promise(resolve=>socket.bind(0,'127.0.0.1',resolve));
+  const found=new Set();let tooLarge=false;
+  socket.on('message',data=>{
+    tooLarge ||= data.length>1200;
+    for(const room of JSON.parse(data).rooms)found.add(room.invite);
+  });
+  socket.send(Buffer.from('COLLABSPRITE_DISCOVER_V7'),service.discoveryPort,'127.0.0.1');
+  await waitFor(()=>found.size===8,'all rooms discovered');
+  assert.deepEqual(found,expected);assert.equal(tooLarge,false);
+});
+
 test('A full backup folder never blocks hosting and old backups are preserved',async t=>{
   const dataDir=await mkdtemp(join(tmpdir(),'collabsprite-full-backups-'));
   t.after(()=>rm(dataDir,{recursive:true,force:true}));

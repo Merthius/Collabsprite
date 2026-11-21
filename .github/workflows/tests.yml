@@ -17,6 +17,8 @@ jobs:
       - run: npm test
       - shell: pwsh
         run: ./test/update.ps1
+      - shell: powershell
+        run: ./test/board-files.ps1
       - shell: pwsh
         run: ./build.ps1
       - shell: pwsh

@@ -220,7 +220,8 @@ function V.down(ui,s,ev)
     end
     ui:refresh(s);return
   end
-  if pv.sending or s.ack then app.tip('Vorigen Strich kurz bestätigen lassen.',3);return end
+  -- Keep drawing locally while a previous complete stroke is being confirmed.
+  -- The next snapshot is sent only after that acknowledgement.
   if inside(pv.paperRect,x,y) then pv.before=Image(pv.image) end
   draw(ui,s,ev)
 end
@@ -254,7 +255,8 @@ end
 function V.commit(ui,s,pv,finish)
   local pv=pv or s.paper;if not pv then return end
   pv.finishRequested=pv.finishRequested or finish
-  if (not pv.dirty and not pv.finishRequested) or pv.sending or s.ack or pv.commitError then return end
+  if (not pv.dirty and not pv.finishRequested) or pv.drawing or pv.commitError then return end
+  if pv.sending or s.ack then pv.commitQueued=true;return end
   local card=N.card(s.board,pv.id)
   if not card then
     if pv.finishRequested and pv.origin then card=pv.origin;pv.preserveAsNew=true
@@ -268,7 +270,7 @@ function V.commit(ui,s,pv,finish)
     end
   end
   if not ui:editable(s) then return end
-  pv.sending=true
+  pv.sending=true;pv.commitQueued=nil
   local dirty,revision=pv.dirty,pv.previewRevision
   -- Later strokes may arrive while a cooperative pack job is yielding.
   -- Only the complete image at this mouse-up belongs to this submission.
@@ -286,7 +288,11 @@ function V.commit(ui,s,pv,finish)
     patches={{id=newCard.id,expected=false,value=newCard}}
   else
     if dirty then patches[#patches+1]=N.patch(card,'image',packed) end
-    if pv.finishRequested then patches[#patches+1]=N.patch(card,'kind','image') end
+    -- Finish only the latest complete drawing. The user may have added more
+    -- strokes while packing this older snapshot and then pressed the checkmark.
+    if pv.finishRequested and revision==pv.previewRevision and not pv.drawing then
+      patches[#patches+1]=N.patch(card,'kind','image')
+    end
   end
   local submitted,problem=pcall(function() ui:action(s,{action='patch',patches=patches},function(ok,message)
     pv.sending=false
@@ -298,7 +304,7 @@ function V.commit(ui,s,pv,finish)
         if s.paper==pv then s.paper=nil end
         s.paperDrafts[pv.id]=nil
         if s.dialog then ui:reveal(s,updated.id) end
-      elseif pv.finishRequested then V.commit(ui,s,pv,true) end
+      elseif pv.commitQueued or pv.finishRequested then V.commit(ui,s,pv,pv.finishRequested) end
     else pv.commitError=true;app.tip(message or 'Skizze nicht gespeichert. Entwurf bleibt erhalten.',5) end
     ui:refresh(s)
   end)

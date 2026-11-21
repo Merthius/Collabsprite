@@ -2,6 +2,8 @@
 
 # Collabsprite — English guide
 
+**Local working version 0.13.0:** a compact session dialog and fixes to startup, discovery, synchronization and sketch commits. [Changes and validation (German)](docs/releases/v0.13.0.md). Not published yet; the download links below still point to public beta 0.12.1.
+
 > **New in 0.12.1 beta:** Cooperative board/image preparation, fixed PNG/JPG sketch import, reliable discovery and a checkmark that turns the sheet into a full-resolution board image. [Release notes (German)](docs/releases/v0.12.1.md). Host and guests must use the same new version.
 
 [Deutsch](README.md) · [Download v0.12.1 beta](https://github.com/Merthius/Collabsprite/releases/download/v0.12.1/Collabsprite.aseprite-extension)

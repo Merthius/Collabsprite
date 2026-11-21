@@ -18,14 +18,14 @@ local function integer(v,lo,hi) return type(v)=='number' and v%1==0 and v>=lo an
 local function id(v) return type(v)=='string' and #v==32 and v:match('^[a-f0-9]+$') end
 function N.uid() return tostring(Uuid()):gsub('-',''):lower() end
 function N.field(f,v)
-  if f=='title' or f=='text' then return type(v)=='string' and #v<=(f=='title' and 120 or 4096) and not v:find('[%z\1-\8\11-\31]') end
+  if f=='title' or f=='text' then return type(v)=='string' and #v<=(f=='title' and 120 or 4096) and utf8.len(v)~=nil and not v:find('[%z\1-\8\11-\31]') end
   if f=='parent' then return v=='' or id(v) end
   if f=='dock' then return v=='below' or v=='left' or v=='right' end
   if f=='x' or f=='y' then return integer(v,-10000,10000) end
   if f=='color' then return type(v)=='string' and (v=='' or (#v==7 and v:match('^#%x+$'))) end
   if f=='status' then return v=='idea' or v=='decided' or v=='done' end
   if f=='kind' then return v=='text' or v=='list' or v=='image' or v=='animation' or v=='paper' end
-  if f=='tag' then return type(v)=='string' and #v<=120 and not v:find('[%z\1-\8\11-\31]') end
+  if f=='tag' then return type(v)=='string' and #v<=120 and utf8.len(v)~=nil and not v:find('[%z\1-\8\11-\31]') end
   if f=='tagStart' then return integer(v,0,100000) end
   if f=='frame' then return integer(v,0,100000) end
   if f=='listStyle' then return v=='check' or v=='bullet' or v=='number' end
@@ -217,7 +217,14 @@ function N.commit(board,patches,author)
       if value then next.cards[#next.cards+1]=value;changed[p.id]=true end
     end
   end
-  author=type(author)=='string' and author:sub(1,160) or 'Künstler'
+  author=type(author)=='string' and author or 'Künstler'
+  if not utf8.len(author) then author='Künstler' end
+  -- The storage limit counts UTF-8 bytes. Never cut a multibyte character.
+  if #author>160 then
+    local boundary=1
+    for position in utf8.codes(author) do if position>161 then break end;boundary=position end
+    author=author:sub(1,boundary-1)
+  end
   for cardId in pairs(changed) do
     local info=next.authors[cardId] or {created=author,edited=author}
     info.edited=author;next.authors[cardId]=info

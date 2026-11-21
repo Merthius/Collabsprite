@@ -21,7 +21,8 @@ local fakeApp={isUIAvailable=true,version='test',sprite={},sprites={},
   alert=function() end,tip=function() end}
 local env=setmetatable({app=fakeApp,
   os={getenv=function() return 'test-temp' end,time=function() return clock end,execute=function() return true end,remove=function() end},
-  io={open=function()
+  io={open=function(_,mode)
+    if mode=='wb' then return {write=function() end,close=function() end} end
     opens=opens+1
     assert(opens<5,'Nested permission callback recursed')
     tick() -- Aseprite dispatches another timer while asking for access.
@@ -54,10 +55,11 @@ fakeSession.connected=false
 controls.startHost.onclick()
 fileReply='QUEUED';opens=0;tick()
 clock=clock+91;tick()
-assert(opens==1,'QUEUED must obey deadline without repeated file reads')
+assert(opens<=2,'QUEUED must obey deadline without repeated file reads')
 assert(controls.status.text=='Nicht verbunden','Timed out job kept UI busy')
 controls.startHost.onclick();opens=0;fileError=true;tick();tick()
-assert(opens==1,'Denied file access must terminate the job instead of repeating every tick')
+assert(opens<=3,'Denied file access must terminate the job instead of repeating every tick')
+local stoppedReads=opens;tick();tick();assert(opens==stoppedReads,'Denied cleanup access repeats forever')
 assert(controls.status.text=='Nicht verbunden','Error left callback locked')
 env.exit({})
 

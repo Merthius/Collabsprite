@@ -61,6 +61,7 @@ function Client:syncStatusText()
   if self.backupError and self.isHost then return 'Sicherung fehlgeschlagen' end
   if self.documentPending then return 'Strukturänderung wird abgeglichen ...' end
   if self.lastReceived and os.time()-self.lastReceived>15 then return 'Host antwortet nicht ...' end
+  if self.notePending then return 'Ideenwand wird abgeglichen ...' end
   if #self.pending>0 then return 'Verbunden · '..#self.pending..' Pixelaktionen offen' end
   return self.acceptingGuests==false and 'Verbunden · Beitritt gesperrt' or 'Verbunden'
 end
@@ -794,7 +795,9 @@ function Client:tick()
     end
     -- Yield back to Aseprite between bounded batches; a busy peer must not
     -- keep the UI inside one Lua timer callback indefinitely.
-    for _=1,math.min(#self.inbox,64) do
+    local receiveDeadline=os.clock()+0.008
+    for index=1,math.min(#self.inbox,64) do
+      if index>1 and os.clock()>=receiveDeadline then break end
       if self.closed or #self.inbox==0 then break end
       local message=table.remove(self.inbox,1)
       if message.type=='_text' then

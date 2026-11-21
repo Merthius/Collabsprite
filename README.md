@@ -2,6 +2,8 @@
 
 # Collabsprite
 
+**Lokaler Arbeitsstand 0.13.0:** kompakter Sitzungsdialog sowie Korrekturen an Start, Suche, Synchronisation und Skizzen. [Änderungen und Prüfung](docs/releases/v0.13.0.md). Noch nicht veröffentlicht; die folgenden Download-Links führen weiterhin zur öffentlichen Beta 0.12.1.
+
 > **Neu in 0.12.1 Beta:** Flüssigere Ideenwand-/Bildvorbereitung, korrigierter PNG/JPG-Import ins Skizzenblatt, zuverlässige Sitzungssuche und automatisches Übernehmen der Skizze als Bild über das Häkchen. [Versionshinweise](docs/releases/v0.12.1.md). Host und Gäste benötigen dieselbe neue Version.
 
 [![Version](https://img.shields.io/badge/version-0.12.1%20beta-7c5cff)](https://github.com/Merthius/Collabsprite/releases/tag/v0.12.1) [![Windows](https://img.shields.io/badge/platform-Windows-2575d0)](#voraussetzungen) [![MIT](https://img.shields.io/badge/license-MIT-31a67a)](LICENSE) [![Tests](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml/badge.svg)](https://github.com/Merthius/Collabsprite/actions/workflows/tests.yml)

@@ -14,6 +14,11 @@ local Layout
 local windowToken
 local pendingCommand
 local cancelledStarts={}
+local dialogPhase
+
+local function active(s)
+  return s and (s.connected or s.connecting or s.reconnecting or s.preparing or s.leaving)
+end
 
 local function traceback(err)
   return debug and debug.traceback and debug.traceback(tostring(err),2) or tostring(err)
@@ -47,19 +52,33 @@ local function refresh(s)
   for _,sprite in ipairs(s.recoverySprites or {}) do if sprite.isValid then guarded[sprite.id]={guest=s.isHost==false} end end
   if notesUI and s.sprite and s.sprite.isValid and not s.notesAttached then notesUI:attach(s);s.notesAttached=true end
   if not dialog then return end
-  local busy=not not (startup~=nil or s.reconnecting or s.preparing)
+  local busy=not not (startup~=nil or active(s))
   local status=startup and (startup.action=='Search' and 'Suche läuft ...' or 'Vorbereitung ...') or
     s.preparing and 'Bild wird vorbereitet ...' or s.reconnecting and 'Verbinde erneut ...' or
-    s.connected and (s.syncStatus or 'Verbunden') or s.connecting and 'Verbinde ...' or 'Nicht verbunden'
-  dialog:modify{id='status',text=Layout.short(status,36)}
+    s.connected and (s.syncStatus or 'Verbunden') or s.connecting and 'Verbinde ...' or s.status or 'Nicht verbunden'
+  dialog:modify{id='status',text=Layout.short(status,38)}
+  local idle=not busy
+  for _,id in ipairs({'tabHost','tabJoin','name'}) do dialog:modify{id=id,visible=idle} end
+  dialog:modify{id='startHost',visible=idle and pane=='host'}
+  for _,id in ipairs({'manual','joinManual','search'}) do dialog:modify{id=id,visible=idle and pane=='join'} end
+  for _,id in ipairs({'sessions','joinFound'}) do dialog:modify{id=id,visible=idle and pane=='join' and discoveredCount>0} end
+  local count=math.max(1,#(s.members or {}))
+  dialog:modify{id='people',visible=not not s.connected,
+    text=(s.isHost and 'Host' or 'Gast')..' · '..count..(count==1 and ' Person' or ' Personen')}
+  dialog:modify{id='notes',visible=not not s.connected}
   dialog:modify{id='startHost',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='joinManual',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='joinFound',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='search',enabled=not busy and not s.connected and not s.connecting}
   dialog:modify{id='copy',visible=s.connected and s.isHost}
   dialog:modify{id='admission',visible=s.connected and s.isHost,selected=s.acceptingGuests~=false}
-  dialog:modify{id='disconnect',visible=not not (busy or s.connected or s.connecting),text=s.connected and 'Trennen' or 'Abbrechen'}
-  Layout.fit(dialog,280*(app.uiScale or 1),(pane=='host' and 160 or 210)*(app.uiScale or 1))
+  dialog:modify{id='disconnect',visible=busy,enabled=not s.leaving,text=s.leaving and 'Warte ...' or s.connected and 'Trennen' or 'Abbrechen'}
+  local phase=busy and (s.connected and 'connected' or 'busy') or pane..(discoveredCount>0 and ':found' or '')
+  -- Status/participant changes must not undo a user's window position or size.
+  if phase~=dialogPhase then
+    dialogPhase=phase
+    Layout.fit(dialog,0,0,true)
+  end
 end
 
 local function artistName()
@@ -78,6 +97,7 @@ end
 local function beginBootstrap(action,endpoints,onReady)
   assert(not (updater and updater.busy),'Bitte zuerst das Update abschließen oder abbrechen.')
   assert(not startup,'Verbindung wird bereits vorbereitet.')
+  assert(not active(session),'Bereits mit einer Sitzung verbunden. Bitte zuerst trennen.')
   if action=='Host' or action=='Join' then
     if diagnostics and diagnostics.beginSession then pcall(function() diagnostics:beginSession(action) end) end
   end
@@ -100,10 +120,20 @@ local function beginBootstrap(action,endpoints,onReady)
   refresh(session or {})
 end
 
+local function cancelBootstrap()
+  if not startup then return end
+  local job=startup;startup=nil
+  local ok,problem=pcall(function()
+    local f=assert(io.open(job.path..'.cancel','wb'));f:write('CANCEL');f:close()
+  end)
+  if ok then cancelledStarts[#cancelledStarts+1]=job
+  else logDiagnostic('bootstrap cancel error',problem) end
+end
+
 local function pollBootstrap()
   if not startup then return end
   if os.time()-startup.started>90 then
-    startup=nil;refresh(session or {})
+    cancelBootstrap();refresh(session or {})
     logDiagnostic('bootstrap error','worker timeout')
     alert('Verbindungsstart dauert zu lange. Netzwerk und Windows-Freigabe prüfen.')
     return
@@ -111,7 +141,7 @@ local function pollBootstrap()
   local file=io.open(startup.path,'rb')
   if not file then return end
   local reply=file:read('*a') or ''
-  if reply=='QUEUED' then file:close();return end
+  if reply=='' or reply=='QUEUED' then file:close();return end
   file:close();os.remove(startup.path)
   local job=startup;startup=nil
   refresh(session or {})
@@ -144,16 +174,27 @@ local function searchSessionsNow(output)
     local choices,seen={},{}
     for line in (output or ''):gmatch('[^\r\n]+') do
       local ok,result=pcall(function() return decodeJson(line) end)
-      if ok and result and result.protocol==14 then
+      if ok and type(result)=='table' and result.protocol==14 and type(result.rooms)=='table' then
         for _,room in ipairs(result.rooms or {}) do
-          local invite=tostring(room.invite or '')
-          local address=invite:match('^([^/]+)/') or ''
-          if address:match('^[%d%.]+:%d+$') and invite:match('^[%d%.]+:%d+/%x+/%x+$') and not seen[invite] then
-            seen[invite]=true
-            local label=Layout.short(room.name or 'Kuenstler',16)..' · '..Layout.short(room.image or 'Bild',18)
-            if discovered[label] then label=label..' ('..(#choices+1)..')' end
-            discovered[label]=invite;choices[#choices+1]=label
-            discoveredCount=discoveredCount+1
+          local invite=type(room)=='table' and type(room.invite)=='string' and room.invite or ''
+          local address,code,token=invite:match('^([%d%.]+:%d+)/(%x+)/(%x+)$')
+          if address and #code==8 and #token==32 then
+            local key=code:upper()..'/'..token:lower()
+            local known=seen[key]
+            if known then
+              if not known.addresses[address] and #known.endpoints+1+#address<160 then
+                known.addresses[address]=true;known.endpoints=known.endpoints..','..address
+                discovered[known.label]=known.endpoints..'/'..key
+              end
+            else
+              local name=type(room.name)=='string' and room.name or 'Künstler'
+              local imageName=type(room.image)=='string' and room.image or 'Bild'
+              local label=Layout.short(name,16)..' · '..Layout.short(imageName,18)
+              if discovered[label] then label=label..' ('..(#choices+1)..')' end
+              seen[key]={label=label,endpoints=address,addresses={[address]=true}}
+              discovered[label]=address..'/'..key;choices[#choices+1]=label
+              discoveredCount=discoveredCount+1
+            end
           end
         end
       end
@@ -172,6 +213,7 @@ local function searchSessionsNow(output)
         joinCodeNow(discovered[choices[1]])
       end
     end
+    refresh(session or {})
   end
 end
 
@@ -289,15 +331,12 @@ local function showPane(which)
   local host=which=='host'
   dialog:modify{id='tabHost',text=host and '● Erstellen' or 'Erstellen'}
   dialog:modify{id='tabJoin',text=host and 'Beitreten' or '● Beitreten'}
-  dialog:modify{id='startHost',visible=host}
-  for _,id in ipairs({'manual','joinManual','search'}) do dialog:modify{id=id,visible=not host} end
-  dialog:modify{id='sessions',visible=not host and discoveredCount>0}
-  dialog:modify{id='joinFound',visible=not host and discoveredCount>0}
-  Layout.fit(dialog,280*(app.uiScale or 1),(host and 160 or 210)*(app.uiScale or 1))
+  refresh(session or {})
 end
 
 local function show()
   if dialog then dialog:close();dialog=nil end
+  dialogPhase=nil
   windowToken=tostring(Uuid()):gsub('-',''):lower()
   dialog=Dialog{title='Collabsprite #'..windowToken:sub(1,12),onclose=function()
     if dialog then preferences.name=dialog.data.name end
@@ -306,7 +345,7 @@ local function show()
   dialog:button{id='tabHost',text='● Erstellen',onclick=function() showPane('host') end}
     :button{id='tabJoin',text='Beitreten',onclick=function() showPane('join') end}
     :newrow()
-    :entry{id='name',label='Dein Name',text=preferences.name or 'Kuenstler'}:newrow()
+    :entry{id='name',label='Dein Name',text=preferences.name or 'Künstler'}:newrow()
     :button{id='startHost',text='Sitzung erstellen',onclick=function()
       if not app.sprite then alert('Bitte zuerst ein Bild öffnen');return end
       if app.sprite and guarded[app.sprite.id] and guarded[app.sprite.id].guest then
@@ -327,7 +366,8 @@ local function show()
       joinCode(discovered[dialog.data.sessions])
     end}
     :separator{}
-    :label{id='status',label='Aktive Sitzung',text='Nicht verbunden'}
+    :label{id='status',label='Status',text='Nicht verbunden'}
+    :newrow():label{id='people',text='',visible=false}
     :check{id='admission',label='Zugriff',text='Beitritte erlauben',selected=true,visible=false,onclick=function()
       safely(function()
         if session and session.connected and session.isHost then session:send{type='admission',open=dialog.data.admission==true} end
@@ -335,8 +375,12 @@ local function show()
     end}
     :newrow()
     :button{id='copy',text='Einladung kopieren',visible=false,onclick=function() copyInvite() end}
+    :button{id='notes',text='Ideenwand',visible=false,onclick=function()
+      safely(function() if session and session.sprite then notesUI.failed=nil;notesUI:show(session.sprite) end end)
+    end}
+    :newrow()
     :button{id='disconnect',text='Trennen',visible=false,onclick=function() disconnect() end}
-  Layout.show(dialog)
+  Layout.show(dialog,true)
   showPane(pane)
   if session then refresh(session) end
 end
@@ -351,8 +395,7 @@ end
 
 disconnect=function()
   if startup then
-    local job=startup;startup=nil;cancelledStarts[#cancelledStarts+1]=job
-    pcall(function() local f=assert(io.open(job.path..'.cancel','wb'));f:write('CANCEL');f:close() end)
+    cancelBootstrap()
     refresh(session or {})
     app.tip('Collabsprite: Vorbereitung abgebrochen. Ein bereits gestarteter Server beendet sich bei Leerlauf.',5)
     return
@@ -390,7 +433,7 @@ function init(plugin)
   updater=dofile(app.fs.joinPath(plugin.path,'update-ui.lua')).new{
     path=extensionPath,version=installedVersion,decode=decodeJson,safely=safely,log=logDiagnostic,
     blocked=function()
-      if startup or (session and (session.connected or session.connecting or session.reconnecting)) then
+      if startup or active(session) then
         return 'Bitte die Multiplayer-Sitzung vor dem Update über Trennen beenden.'
       end
       if notesUI then
@@ -483,9 +526,19 @@ function init(plugin)
       pollBootstrap()
       for index=#cancelledStarts,1,-1 do
         local job=cancelledStarts[index]
-        local f=io.open(job.path,'rb');local reply=f and f:read('*a');if f then f:close() end
-        if (reply and reply~='QUEUED') or os.time()-job.started>95 then
+        local readable,reply=pcall(function()
+          local f=io.open(job.path,'rb');local value=f and f:read('*a');if f then f:close() end
+          return value
+        end)
+        if not readable then
+          -- A denied cleanup read must never recurse or disconnect a new session.
+          logDiagnostic('bootstrap cleanup','status unavailable');table.remove(cancelledStarts,index)
+        elseif reply and reply~='' and reply~='QUEUED' then
           os.remove(job.path);os.remove(job.path..'.cancel');table.remove(cancelledStarts,index)
+        elseif os.time()-job.started>95 then
+          -- Keep the tombstone for a worker still waiting on Windows/UAC.
+          -- Deleting it here would let a late worker start a cancelled host.
+          os.remove(job.path);table.remove(cancelledStarts,index)
         end
       end
       if updater then
@@ -520,7 +573,7 @@ function init(plugin)
     end,traceback)
     if not ok then
       -- Do not repeat a failed protected file operation every 33 ms.
-      startup=nil
+      cancelBootstrap()
       logDiagnostic('FATAL main timer',err)
       if session then pcall(function() session:disconnect('Diagnoseprotokoll bitte kopieren.') end) end
       pcall(function() refresh(session or {});app.tip('Collabsprite: Fehler. Diagnoseprotokoll bitte kopieren.',8) end)
@@ -532,6 +585,7 @@ end
 
 function exit(plugin)
   if timer then timer:stop() end
+  cancelBootstrap()
   if updater then updater:close() end
   if session then session:disconnect() end
   if notesUI then notesUI:close() end

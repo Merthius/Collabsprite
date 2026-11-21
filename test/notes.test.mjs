@@ -7,6 +7,15 @@ const card = (n, parent = '') => ({ id: id(n), parent, title: 'Hexe', text: '', 
 const run = (b, author, op) => b.execute(author, { seq: b.user(author).seq + 1, ...op });
 const create = (b, author, c) => run(b, author, { action: 'patch', patches: [{ id: c.id, expected: false, value: c }] });
 const set = (b, author, n, field, value) => run(b, author, { action: 'patch', patches: [{ id: id(n), field, value, expected: b.data.cards.find(c => c.id === id(n)).versions[field] }] });
+
+test('Malformed Unicode note text cannot break every native peer decoder',()=>{
+  const b=new Notes();create(b,'host',card(1));const before=b.snapshot();
+  assert.equal(set(b,'guest',1,'text','bad\ud800').ok,false);
+  assert.deepEqual(b.snapshot(),before);
+  assert.equal(set(b,'guest',1,'text','Besen 🎨').ok,true);
+  const broken=b.snapshot();broken.authors[id(1)]={created:'\udfff',edited:'Host'};
+  assert.throws(()=>validateNotes(broken),/Autorenangabe/);
+});
 test('Notes: field revisions, personal undo and foreign ABA conflict protection', () => {
   const b = new Notes();assert.ok(create(b, 'host', card(1)).ok);
   assert.ok(set(b, 'a', 1, 'title', 'Hexe A').ok);

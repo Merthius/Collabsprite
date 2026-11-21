@@ -15,8 +15,14 @@ function Report([string]$line) {
     } else { [Console]::WriteLine($line) }
 }
 function Fail([string]$message) { Report ('ERROR ' + $message); exit 1 }
-function Check-Cancel {
-    if ($ResultPath -and (Test-Path -LiteralPath ($ResultPath+'.cancel'))) { Fail 'Vorbereitung abgebrochen.' }
+function Check-Cancel([Diagnostics.Process]$OwnedProcess = $null) {
+    if ($ResultPath -and (Test-Path -LiteralPath ($ResultPath+'.cancel'))) {
+        # Only this worker's newly started host may be stopped, never a reused one.
+        if ($OwnedProcess -and -not $OwnedProcess.HasExited) { $OwnedProcess.Kill() }
+        Report 'ERROR Vorbereitung abgebrochen.'
+        Remove-Item -LiteralPath ($ResultPath+'.cancel') -ErrorAction SilentlyContinue
+        exit 1
+    }
 }
 function Find-Owner([string]$token) {
     Add-Type -TypeDefinition @'
@@ -56,16 +62,22 @@ try {
         $probe = Join-Path $PSScriptRoot 'Probe.ps1'
         if (-not (Test-Path -LiteralPath $probe)) { Fail 'Sitzungssuche fehlt. Collabsprite neu installieren.' }
         $found = @(& $probe -Port $Port)
+        Check-Cancel
         Report ("SEARCH`n" + ($found -join "`n")); exit 0
     }
     if ($Action -eq 'Join') {
         if ($Endpoints -eq '0') { Report ('READY ' + $Port); exit 0 }
         if ($Endpoints.Length -gt 160 -or $Endpoints -notmatch '^[0-9.,:]+$') { Fail 'Einladungscode enthält ungültige Adressen.' }
+        $incompatible = $false
         foreach ($candidate in ($Endpoints -split ',' | Select-Object -First 8)) {
+            Check-Cancel
             if ($candidate -notmatch '^((?:\d{1,3}\.){3}\d{1,3}):(\d{1,5})$') { continue }
             $ip = $Matches[1]; $candidatePort = [int]$Matches[2]
             if ($candidatePort -lt 1 -or $candidatePort -gt 65535) { continue }
-            $parsed = [Net.IPAddress]::Parse($ip)
+            $parsed = $null
+            if (-not [Net.IPAddress]::TryParse($ip,[ref]$parsed) -or
+                $parsed.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork -or
+                $parsed.ToString() -ne $ip) { continue }
             $bytes = $parsed.GetAddressBytes()
             $private = $ip -eq '127.0.0.1' -or $bytes[0] -eq 10 -or
                 ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or
@@ -74,10 +86,13 @@ try {
             try {
                 $status = Invoke-RestMethod -Uri ('http://' + $candidate + '/status') -TimeoutSec 1 -UseBasicParsing
                 if ($status.app -eq 'Collabsprite' -and $status.protocol -eq 14 -and $status.port -eq $candidatePort) {
+                    Check-Cancel
                     Report ('READY ' + $candidate); exit 0
                 }
+                if ($status.app -eq 'Collabsprite' -and $status.protocol -ne 14) { $incompatible = $true }
             } catch { }
         }
+        if ($incompatible) { Fail 'Unterschiedliche Collabsprite-Versionen. Bitte Host und Gast aktualisieren.' }
         Fail 'Host nicht erreichbar. Beide PCs im selben LAN oder Radmin-Netz? Windows-Firewall prüfen.'
     }
     . (Join-Path $PSScriptRoot 'Runtime.ps1')
@@ -90,6 +105,7 @@ try {
         if ($status.app -ne 'Collabsprite' -or $status.protocol -ne 14 -or [bool]$status.localOnly -ne ($Mode -eq 'Test')) {
             Fail ('Port ' + $Port + ' ist durch einen anderen Server belegt.')
         }
+        Check-Cancel
         Report ('READY ' + $Port); exit 0
     }
     if ($Mode -eq 'Network') {
@@ -121,9 +137,11 @@ try {
     $serverProcess = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(8)
     while ([DateTime]::UtcNow -lt $deadline) {
+        Check-Cancel $serverProcess
         Start-Sleep -Milliseconds 150
         $status = ServerStatus
         if ($status -and $status.app -eq 'Collabsprite' -and $status.protocol -eq 14 -and [bool]$status.localOnly -eq ($Mode -eq 'Test')) {
+            Check-Cancel $serverProcess
             Report ('READY ' + $Port); exit 0
         }
         if ($serverProcess.HasExited) { break }

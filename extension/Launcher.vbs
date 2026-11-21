@@ -72,29 +72,36 @@ End Function
 Function FindAsepriteOwner()
   ' Only this unique launcher and its real ancestors, never other Aseprites.
   On Error Resume Next
-  Dim service, candidates, proc, current, matches, parents, parent, depth
+  Dim service, candidates, proc, current, matches, processes, parent, depth, parentKey
   FindAsepriteOwner = 0
   Set service = GetObject("winmgmts:\\.\root\cimv2")
-  Set candidates = service.ExecQuery("SELECT ProcessId,ParentProcessId,Name,CommandLine,CreationDate FROM Win32_Process WHERE Name='wscript.exe' OR Name='cscript.exe'")
+  ' One snapshot instead of a separate WMI round trip for every ancestor.
+  ' On busy Windows systems those sequential queries can freeze single-window
+  ' Aseprite for several seconds. Native multi-window UI uses the detached
+  ' window-token resolver and never enters this compatibility path.
+  Set processes = CreateObject("Scripting.Dictionary")
+  Set candidates = service.ExecQuery("SELECT ProcessId,ParentProcessId,Name,CommandLine,CreationDate FROM Win32_Process")
   matches = 0
   For Each proc In candidates
-    If InStr(1, Replace(CStr(proc.CommandLine), "/", "\"), resultPath, vbTextCompare) > 0 Then
-      Set current = proc
-      matches = matches + 1
+    Set processes(CStr(proc.ProcessId)) = proc
+    If LCase(proc.Name) = "wscript.exe" Or LCase(proc.Name) = "cscript.exe" Then
+      If InStr(1, Replace(CStr(proc.CommandLine), "/", "\"), resultPath, vbTextCompare) > 0 Then
+        Set current = proc
+        matches = matches + 1
+      End If
     End If
   Next
   If Err.Number <> 0 Or matches <> 1 Then Exit Function
   For depth = 1 To 8
-    Set parents = service.ExecQuery("SELECT ProcessId,ParentProcessId,Name,CreationDate FROM Win32_Process WHERE ProcessId=" & CLng(current.ParentProcessId))
-    If Err.Number <> 0 Or parents.Count <> 1 Then Exit Function
-    For Each parent In parents
-      If CStr(parent.CreationDate) > CStr(current.CreationDate) Then Exit Function
-      If LCase(parent.Name) = "aseprite.exe" Then
-        FindAsepriteOwner = CLng(parent.ProcessId)
-        Exit Function
-      End If
-      Set current = parent
-    Next
+    parentKey = CStr(current.ParentProcessId)
+    If Not processes.Exists(parentKey) Then Exit Function
+    Set parent = processes(parentKey)
+    If CStr(parent.CreationDate) > CStr(current.CreationDate) Then Exit Function
+    If LCase(parent.Name) = "aseprite.exe" Then
+      FindAsepriteOwner = CLng(parent.ProcessId)
+      Exit Function
+    End If
+    Set current = parent
   Next
   On Error GoTo 0
 End Function

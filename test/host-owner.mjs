@@ -23,10 +23,14 @@ for(const forced of [false,true]) {
   try {
     child=spawn(exe,['--batch','--script-param',`root=${root.replaceAll('\\','/')}`,
       '--script-param',`result=${result.replaceAll('\\','/')}`,'--script-param',`stop=${stop.replaceAll('\\','/')}`,
-      '--script-param',`port=${port}`,'--script',resolve('test/host-owner.lua')],{windowsHide:true});
+      '--script-param',`port=${port}`,'--script',resolve('test/host-owner.lua')],{windowsHide:true,
+        env:{...process.env,ASEPRITE_USER_FOLDER:join(root,'test-profile')}});
     let output='';child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>output+=d);
     await until(()=>output.includes('OWNER_READY'),'Aseprite launcher');
-    await until(()=>existsSync(result)&&readFileSync(result,'utf8').startsWith(`READY ${port}`),'host ready');
+    await until(()=>{
+      try { return readFileSync(result,'utf8').startsWith(`READY ${port}`); }
+      catch(error) { if(['ENOENT','EBUSY','EPERM'].includes(error.code))return false;throw error; }
+    },'host ready');
     const proc=JSON.parse(execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',
       `$p=Get-NetTCPConnection -LocalPort ${port} -State Listen | Select-Object -First 1; Get-CimInstance Win32_Process -Filter ('ProcessId='+$p.OwningProcess) | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress`],{encoding:'utf8',windowsHide:true}));
     assert.ok(proc.CommandLine.includes(root));ownerServerPid=proc.ProcessId;

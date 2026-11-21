@@ -2,6 +2,7 @@
 -- Do not multiply these by app.uiScale a second time.
 local L={}
 local natural=setmetatable({},{__mode='k'})
+local scrolling=setmetatable({},{__mode='k'})
 function L.viewport()
   local w=app.window
   return w and w.width or 1100,w and w.height or 760
@@ -17,17 +18,27 @@ function L.bounds(width,height)
   height=math.max(80,math.floor(math.min(height,h*0.76)))
   return Rectangle(math.floor((w-width)/2),math.floor((h-height)/2),width,height)
 end
-function L.show(dialog)
+function L.show(dialog,adaptive)
   local hint=dialog.sizeHint
   natural[dialog]={width=hint.width,height=hint.height}
-  dialog:show{wait=false,bounds=L.bounds(hint.width,hint.height),autoscrollbars=true}
+  local b=L.bounds(hint.width,hint.height)
+  scrolling[dialog]=not adaptive or hint.width>b.width or hint.height>b.height
+  dialog:show{wait=false,bounds=b,autoscrollbars=scrolling[dialog]}
 end
-function L.fit(dialog,minWidth,minHeight)
+function L.fit(dialog,minWidth,minHeight,compact)
   -- Once shown with autoscrollbars, Aseprite reports the scroll VIEW's minimum,
   -- not its contents. Reusing that hint collapses the dialog to 100x80.
   local old=dialog.bounds;local hint=natural[dialog] or old
+  if compact and not scrolling[dialog] then
+    hint=dialog.sizeHint
+    natural[dialog]={width=hint.width,height=hint.height}
+  end
   local b=L.bounds(math.max(hint.width,minWidth or 0),math.max(hint.height,minHeight or 0))
   local w,h=L.viewport();b.x=math.max(0,math.min(old.x,w-b.width));b.y=math.max(0,math.min(old.y,h-b.height))
+  if compact and not scrolling[dialog] and (hint.width>b.width or hint.height>b.height) then
+    scrolling[dialog]=true
+    dialog:show{wait=false,bounds=b,autoscrollbars=true}
+  end
   dialog.bounds=b
 end
 function L.short(text,limit)

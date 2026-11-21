@@ -1290,14 +1290,18 @@ function UI:tick()
   -- Main's timer already owns the re-entry guard. Calling self:run from here
   -- would silently drop file events and sketch commits under that same guard.
   local workStarted=os.clock()
-  for _,s in pairs(self.states) do if s.sprite.isValid then
+  local work={}
+  for _,s in pairs(self.states) do if s.sprite.isValid then work[#work+1]=s end end
+  for _=1,#work do
+    self.jobCursor=(self.jobCursor or 0)%#work+1
+    local s=work[self.jobCursor]
     self:stepJobs(s)
     if s.finishInlineRequested then s.finishInlineRequested=nil;self:finishInline(s) end
     for _,pv in pairs(s.paperDrafts) do
       if pv.dirty and not pv.drawing and not pv.sending and not s.ack then V.commit(self,s,pv,pv.finishRequested) end
     end
     if os.clock()-workStarted>=J.budget then break end
-  end end
+  end
   for _,s in pairs(self.states) do if s.playing and s.sprite.isValid and s.dialog then
     local play=s.playing;local c=N.card(s.board,play.id);local tag=c and A.resolve(s.sprite,c)
     if not tag then s.playing=nil;self:refresh(s)

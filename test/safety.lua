@@ -3,8 +3,9 @@ local root=assert(app.params.root)
 local Codec=dofile(root..'/extension/codec.lua')
 local Json=dofile(root..'/extension/json.lua')
 local clock,tips=1000,{}
+local cpu=0
 local fakeApp=setmetatable({tip=function(text) tips[#tips+1]=text end},{__index=function(_,key) return app[key] end})
-local env=setmetatable({app=fakeApp,os={time=function() return clock end}},{__index=_G})
+local env=setmetatable({app=fakeApp,os={time=function() return clock end,clock=function() return cpu end}},{__index=_G})
 local Client=assert(loadfile(root..'/extension/client.lua','t',env))()
 local source=Sprite(4,4,ColorMode.RGB)
 local snapshot=Codec.capture(source)
@@ -35,6 +36,12 @@ for i=1,150 do c:enqueue{type='_text',data='{"type":"pong"}'} end
 c:tick();assert(#c.inbox==86 and c.inboxBytes==86*15,'Receive batch not bounded')
 c:tick();assert(#c.inbox==22)
 c:tick();assert(#c.inbox==0 and c.inboxBytes==0 and not c.closed)
+c=Client.new();local handled=0
+c.receive=function() handled=handled+1;cpu=cpu+0.005 end
+for i=1,20 do c:enqueue{type='test'} end
+c:tick();assert(handled==2 and #c.inbox==18,'Expensive receive batch did not yield to the UI')
+for _=1,9 do c:tick() end
+assert(handled==20 and #c.inbox==0,'Bounded batches lost messages')
 c=Client.new();c.pendingBytes=64*1024*1024
 c.ws={sendText=function() error('Over-budget edit was sent') end}
 local sent,problem=pcall(function() c:send{type='paint',seq=1,structure=0,patches={}} end)
@@ -45,6 +52,8 @@ host:receive{type='welcome',protocol=14,host=true,author='host',room='test',snap
 host.ws={sendText=function() end,close=function() end}
 host:receive{type='admission',open=false}
 assert(host:syncStatusText():find('Beitritt gesperrt',1,true),'Admission status missing')
+host.notePending={seq=1};assert(host:syncStatusText()=='Ideenwand wird abgeglichen ...','Unconfirmed notes look synchronized')
+host.notePending=nil
 local before=#tips
 host:receive{type='backup',state='error',revision=0}
 host:receive{type='backup',state='error',revision=0}

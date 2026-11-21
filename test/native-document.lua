@@ -5,12 +5,21 @@ local Json=dofile(root..'/extension/json.lua')
 local seq=0
 local function bridge(peer,action,data)
   seq=seq+1
-  local request=root..'/test-results/native-document-request.json'
-  local response=root..'/test-results/native-document-response.json'
-  local file=assert(io.open(request,'wb'));file:write(json.encode{peer=peer,action=action,data=data,token=app.params.token});file:close()
-  local cmd='curl.exe --silent --show-error --fail --max-time 5 --data-binary @"'..request..'" --output "'..response..'" http://127.0.0.1:'..app.params.bridge
-  local ok=os.execute(cmd);assert(ok,'Bridge failed')
-  file=assert(io.open(response,'rb'));local out=Json.decode(file:read('*a'));file:close();return out
+  local folder=assert(app.params.mailbox)
+  local request=folder..'/request.json';local response=folder..'/response.json'
+  local file=assert(io.open(request..'.tmp','wb'))
+  file:write(json.encode{seq=seq,peer=peer,action=action,data=data,token=app.params.token});file:close()
+  assert(os.rename(request..'.tmp',request))
+  local deadline=os.time()+15
+  repeat
+    file=io.open(response,'rb')
+    if file then
+      local out=Json.decode(file:read('*a'));file:close();os.remove(response)
+      assert(out.seq==seq,'Unexpected bridge response')
+      assert(out.ok,out.error or 'Bridge failed');return out.value
+    end
+  until os.time()>=deadline
+  error('Bridge response timed out')
 end
 local function client(key)
   local c=Client.new(nil,function(event,detail)

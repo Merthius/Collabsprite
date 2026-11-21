@@ -7,6 +7,10 @@ local notesShown,notesTicks,groups=nil,0,{}
 local notesReady=true
 local notesStates={}
 local bootstrapResult='READY 127.0.0.1:8766'
+local now=os.time()
+local cancelled=0
+local launched=0
+local removed,lastCancel={},nil
 local owned={id=1,isValid=true,close=function() closed=closed+1 end}
 local other={id=2}
 local dlg={data={name='Test',manual='127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef'},sizeHint={width=300,height=200},bounds=Rectangle(0,0,300,200)}
@@ -35,8 +39,8 @@ local fakeClient={blockGuestSave=RealClient.blockGuestSave,new=function(n)
 end}
 local env=setmetatable({app=fakeApp,
   Dialog=function() return dlg end,Timer=function(t) tick=t.ontick;return {start=function() end,stop=function() end} end,
-  os={time=os.time,getenv=function() return 'test-temp' end,execute=function() return true end,remove=function() end},
-  io={open=function() return {read=function() return bootstrapResult end,close=function() end} end},
+  os={time=function() return now end,getenv=function() return 'test-temp' end,execute=function() launched=launched+1;return true end,remove=function(path) removed[path]=true end},
+  io={open=function(path,mode) return {read=function() return bootstrapResult end,write=function(_,text) if text=='CANCEL' then cancelled=cancelled+1;lastCancel=path end end,close=function() end} end},
   dofile=function(path)
     if path:find('ui-layout.lua',1,true) then return dofile(root..'/extension/ui-layout.lua') end
     if path:find('update-ui.lua',1,true) then return {new=function() return {tick=function() end,close=function() end} end} end
@@ -53,6 +57,13 @@ callbacks.CollabspriteNotes();assert(notesShown==other and client==nil,'Notes re
 tick();assert(notesTicks==1 and client==nil,'Automatic notes polling requires a multiplayer session')
 assert(not commands.CollabspriteRestoreDeletion,'Removed recovery command is still in the menu')
 callbacks.PixelKollabMultiplayer();controls.joinManual.onclick();tick()
+assert(not controls.name.visible and not controls.tabHost.visible and controls.notes.visible,'Active session still shows connection form')
+local startCount=launched
+controls.search.onclick();assert(launched==startCount,'Second worker started while already connected')
+client.members={{name='Host'},{name='Gast'}};notify(client)
+assert(controls.people.text=='Gast · 2 Personen','Participant count missing')
+dlg.bounds=Rectangle(23,34,333,222);notify(client)
+assert(dlg.bounds.x==23 and dlg.bounds.width==333,'Status update reset the resized window')
 client.reconnecting=true;client.connected=false;notify(client)
 assert(not controls.joinManual.enabled and not controls.startHost.enabled and controls.disconnect.visible,'Reconnect controls allow second session')
 client.reconnecting=false;client.connected=true;notify(client)
@@ -101,14 +112,15 @@ assert(command('CloseFile'),'Fresh wrapper for host tab bypassed the close barri
 client:disconnect();client.completeLeave()
 assert(continued==2,'Host tab with a fresh wrapper did not resume native close')
 
-bootstrapResult='SEARCH\n{"protocol":14,"rooms":[{"name":"Host","image":"Bild","invite":"127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef"}]}'
+controls.tabJoin.onclick()
+bootstrapResult='SEARCH\n{"protocol":14,"rooms":[{"name":"Host","image":"Bild","invite":"127.0.0.1:8766/12345678/0123456789abcdef0123456789abcdef"}]}\n{"protocol":14,"rooms":[{"name":"Host","image":"Bild","invite":"192.168.5.8:8766/12345678/0123456789abcdef0123456789abcdef"}]}'
 controls.search.onclick();tick()
-assert(controls.sessions.visible and controls.joinFound.visible and #controls.sessions.options==1,'Current protocol sessions hidden by discovery UI')
+assert(#controls.sessions.options==1,'Same room appeared twice for different network interfaces')
 assert(controls.disconnect.text=='Abbrechen','Discovery/connect preparation falsely shows Disconnect')
 bootstrapResult='READY 127.0.0.1:8766';tick()
 assert(client.connected and controls.disconnect.text=='Trennen','Single discovered session did not join automatically')
 client:disconnect()
-bootstrapResult='SEARCH\n{"protocol":11,"rooms":[]}'
+bootstrapResult='SEARCH\n{"protocol":11,"rooms":[]}\n17\n{"protocol":14,"rooms":true}\n{"protocol":14,"rooms":[false,17,"bad",{}]}'
 controls.search.onclick();tick()
 assert(not controls.sessions.visible and not controls.joinFound.visible,'Discovery accepted an incompatible session')
 assert(not controls.disconnect.visible,'Failed search still shows Disconnect')
@@ -116,6 +128,13 @@ bootstrapResult='QUEUED';controls.search.onclick()
 assert(controls.disconnect.visible and controls.disconnect.text=='Abbrechen','Search has no cancellation state')
 controls.disconnect.onclick()
 assert(not controls.disconnect.visible and controls.search.enabled,'Cancellation left the UI stuck busy')
+assert(cancelled==1,'Cancellation did not tell the worker to stop')
+bootstrapResult='';controls.search.onclick();tick()
+assert(controls.disconnect.visible,'Empty status file ended startup too early')
+now=now+91;tick()
+assert(cancelled==2 and not controls.disconnect.visible,'Timed-out worker was not cancelled')
+now=now+10;tick()
+assert(lastCancel and not removed[lastCancel],'Late worker can restart because its cancellation marker expired')
 -- Sketch completion delays a native close, then resumes once without reentrant guards.
 fakeApp.sprite=owned;notesStates[owned.id]={sprite=owned};notesReady=false
 local before=continued
@@ -125,6 +144,7 @@ notesReady=true;tick();assert(continued==before+1,'Pending close never resumed a
 tick();assert(continued==before+1,'Pending close resumed twice')
 notesReady=false;assert(command('CloseFile'));fakeApp.sprite=other;notesReady=true;tick()
 assert(continued==before+1,'Pending sketch close targeted a different document')
-env.exit({})
+bootstrapResult='QUEUED';controls.search.onclick()
+env.exit({});assert(cancelled==3,'Plugin exit did not cancel its pending worker')
 print('PASS: controller guest save/close, detached role, local document and host close routing')
 io.stdout:flush();app.exit()

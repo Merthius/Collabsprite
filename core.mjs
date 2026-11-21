@@ -1,6 +1,7 @@
 // Ordered pixel contributions. Undo toggles only the requesting author's operation.
 // It never applies a whole-image snapshot over another participant's work.
 import { randomBytes } from 'node:crypto';
+import { label } from './text.mjs';
 import { Notes, validateNotes } from './notes.mjs';
 import { mergeDocument, documentState, documentEqual, DocumentConflict, changedPaths } from './document.mjs';
 const newId = () => randomBytes(16).toString('hex');
@@ -52,7 +53,7 @@ export function validateSnapshot(input) {
   const frameIds = frames.map((_, i) => identity(input.frameIds?.[i]));
   const layers = input.layers.map((layer, i) => ({
     id: identity(layer.id),
-    name: String(layer.name || `Ebene ${i + 1}`).slice(0, 100),
+    name: label(layer.name || `Ebene ${i + 1}`, 100),
     group: layer.group === true,
     parent: integer(layer.parent ?? 0, 0, i, 'Elterngruppe'),
     opacity: integer(layer.opacity ?? 255, 0, 255, 'Deckkraft'),
@@ -93,11 +94,11 @@ export function validateSnapshot(input) {
   }
   const tags = input.tags ?? [];
   if (!Array.isArray(tags) || tags.length > 256) throw new Error('Zu viele Animationstags');
-  const normalizedTags = tags.map(t => ({ id: identity(t.id), name: String(t.name || '').slice(0,100),
+  const normalizedTags = tags.map(t => ({ id: identity(t.id), name: label(t.name || '',100),
     from: integer(t.from,1,frames.length,'Tag-Anfang'), to: integer(t.to,t.from,frames.length,'Tag-Ende'),
     direction: integer(t.direction ?? 0,0,3,'Tag-Richtung'), repeats: integer(t.repeats ?? 0,0,65535,'Tag-Wiederholungen'),
     color: integer(t.color ?? 0,0,0xffffffff,'Tag-Farbe') })).sort((a,b)=>a.id.localeCompare(b.id));
-  return { format: 1, name: String(input.name || 'Gemeinsam').slice(0, 100), width, height, layers, frames, frameIds, cels, palette, tags: normalizedTags, notes: validateNotes(input.notes) };
+  return { format: 1, name: label(input.name || 'Gemeinsam', 100), width, height, layers, frames, frameIds, cels, palette, tags: normalizedTags, notes: validateNotes(input.notes) };
 }
 export class Room {
   constructor(snapshot, options = {}) {
@@ -319,7 +320,7 @@ export class Room {
     const layerCount = this.meta.layers.length, frameCount = this.meta.frames.length;
     if (kind === 'layer') {
       if (layerCount >= LIMITS.layers || (raster + 1) * frameCount * this.size > LIMITS.pixels) throw new OperationRejected('Ebenen-/Groessenlimit erreicht');
-      const layer = { id: newId(), name: String(name || `Ebene ${layerCount + 1}`).slice(0, 100), group: false, parent: 0, opacity: 255, blend: 3, visible: true, editable: true, continuous: false };
+      const layer = { id: newId(), name: label(name || `Ebene ${layerCount + 1}`, 100), group: false, parent: 0, opacity: 255, blend: 3, visible: true, editable: true, continuous: false };
       const copyFrom = source == null ? null : integer(source, 1, layerCount, 'Quellebene');
       if (copyFrom && this.meta.layers[copyFrom - 1].group) throw new Error('Gruppen lassen sich so nicht duplizieren');
       this.meta.layers.push(layer);
@@ -498,7 +499,7 @@ export class Room {
     } else if (kind === 'layer') {
       integer(index, 1, this.meta.layers.length, 'Ebene');
       const layer = this.meta.layers[index - 1];
-      if (field === 'name') { value = String(value || '').trim().slice(0, 100); if (!value) throw new Error('Ebenenname fehlt'); }
+      if (field === 'name') { value = label(value || '', 100).trim(); if (!value) throw new Error('Ebenenname fehlt'); }
       else if (field === 'opacity') value = integer(value, 0, 255, 'Deckkraft');
       else if (field === 'blend') value = integer(value, 0, 31, 'Mischmodus');
       else if (['visible', 'editable', 'continuous'].includes(field)) { if (typeof value !== 'boolean') throw new Error('Ungueltiger Schalter'); }

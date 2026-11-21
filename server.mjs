@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { Room, OperationRejected } from './core.mjs';
 import { NoteRejected } from './notes.mjs';
 import { watchOwner } from './owner-watch.mjs';
+import { label } from './text.mjs';
 
 const hash = value => createHash('sha256').update(String(value)).digest('hex');
 const isLocal = address => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
@@ -72,7 +73,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
     }
     if (!allowedPeer(req.socket.remoteAddress, localOnly)) { res.writeHead(403); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end('Collabsprite ist bereit. In Aseprite Ansicht > Collabsprite waehlen.\n');
+    res.end('Collabsprite ist bereit. In Aseprite Datei > Multiplayer (Collabsprite) wählen.\n');
   });
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * MiB,
     perMessageDeflate: { threshold: 1024, serverNoContextTakeover: true, clientNoContextTakeover: true, concurrencyLimit: 4 }, clientTracking: true });
@@ -144,7 +145,7 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
         if (socket.room && !['paint','document'].includes(message.type) && data.length > (message.type === 'note' ? 9 * 1024 * 1024 : 8192)) throw new Error('Steuernachricht zu gross');
         if (!socket.room) {
           if (message.type !== 'hello' || message.protocol !== 14) throw new Error('Unpassende Erweiterungsversion');
-          socket.name = String(message.name || 'Kuenstler').replace(/[\x00-\x1f]/g, '').slice(0, 30);
+          socket.name = label(message.name || 'Künstler',30).trim() || 'Künstler';
           socket.author = randomBytes(16).toString('hex');
           let room, code, token, resumeToken = randomBytes(32).toString('hex');
           expireLeases();
@@ -363,8 +364,22 @@ export async function startServer({ port = 8766, host = '0.0.0.0', dataDir = res
       visible.push({ name: room.hostName || 'Kuenstler', image: room.core.meta.name,
         invite: invite([address], server.address().port, code, room.discoveryToken) });
     }
-    const response = Buffer.from(JSON.stringify({ protocol: 14, rooms: visible }));
-    if (response.length <= 1200) discovery.send(response, peer.port, peer.address);
+    // Independent, bounded datagrams avoid IP fragmentation and allow every
+    // room to remain discoverable when several hosts share this server.
+    const batches = [];
+    let batch = [];
+    const encode = list => Buffer.from(JSON.stringify({ protocol: 14, rooms: list }));
+    for (const room of visible) {
+      if (encode([...batch, room]).length > 1200 && batch.length) {
+        batches.push(batch); batch = [];
+      }
+      batch.push(room);
+    }
+    if (batch.length || !batches.length) batches.push(batch);
+    for (const list of batches) {
+      const response = encode(list);
+      if (response.length <= 1200) discovery.send(response, peer.port, peer.address);
+    }
   });
   discovery.on('error', error => log(`Sitzungssuche: ${error.message}`));
   let discoveryPort = null;

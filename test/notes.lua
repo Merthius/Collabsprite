@@ -1,5 +1,11 @@
 local root=assert(app.params.root)
 local N=dofile(root..'/extension/notes.lua')
+assert(not N.field('text',string.char(0xff)),'Malformed UTF-8 text accepted')
+do
+  local card=N.newCard('Unicode')
+  local result=N.localAction(N.empty(),{undo={},redo={}},{action='patch',patches={{id=card.id,expected=false,value=card}}},string.rep('x',159)..'🎨')
+  assert(utf8.len(result.authors[card.id].created) and #result.authors[card.id].created<=160,'Author truncation broke UTF-8')
+end
 local C=dofile(root..'/extension/codec.lua')
 local Client=dofile(root..'/extension/client.lua')
 assert(loadfile(root..'/extension/notes-ui.lua'))
