@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Windows.Forms,System.Drawing,System.Web.Extensions
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Add-Type -Path (Join-Path $root 'extension/BoardFiles.cs') -ReferencedAssemblies System.Windows.Forms,System.Drawing,System.Web.Extensions
-$image=Join-Path $root 'test-results\file-drop.png'
+$image=Join-Path ([IO.Path]::GetTempPath()) ('Collabsprite-drop-test-'+[guid]::NewGuid().ToString('N')+'.png')
 $bitmap=New-Object Drawing.Bitmap(16,16)
 try {
   $bitmap.SetPixel(3,4,[Drawing.Color]::Blue);$bitmap.Save($image,[Drawing.Imaging.ImageFormat]::Png)
